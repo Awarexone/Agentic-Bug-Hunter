@@ -1,0 +1,11 @@
+{
+  "chaos_api_key": "YOUR_PROJECTDISCOVERY_CHAOS_API_KEY",
+  "h1_api_token": "YOUR_HACKERONE_API_TOKEN",
+  "output_dir": "./findings",
+  "recon_dir": "./recon",
+  "reports_dir": "./reports",
+  "nuclei_severity": ["critical", "high", "medium"],
+  "katana_depth": 3,
+  "ffuf_threads": 40,
+  "interactsh_server": "oast.pro"
+}

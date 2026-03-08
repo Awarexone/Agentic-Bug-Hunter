@@ -4,7 +4,7 @@ mindmap.py — Generates a Mermaid mind map + prioritized hunting checklist
 based on target type and detected technologies.
 
 Usage:
-  python3 tools/mindmap.py --target worldcoin.org --type opensrc --tech "nextjs,graphql,solidity"
+  python3 tools/mindmap.py --target target.com --type opensrc --tech "nextjs,graphql,solidity"
   python3 tools/mindmap.py --target example.com --type website --tech "nginx,react"
   python3 tools/mindmap.py --target api.example.com --type api --tech "jwt,openapi"
 """

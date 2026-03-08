@@ -519,7 +519,7 @@ def main():
 
     # Collect basic info upfront
     section("Target Information")
-    target_program = args.program or ask("HackerOne program handle (e.g., 'worldcoin')", "unknown")
+    target_program = args.program or ask("HackerOne program handle (e.g., 'target-program')", "unknown")
     vuln_type      = ask("Vulnerability type (e.g., 'IDOR', 'Stored XSS', 'SSRF')")
     endpoint       = ask("Affected endpoint (e.g., '/api/invoices/:id')")
 

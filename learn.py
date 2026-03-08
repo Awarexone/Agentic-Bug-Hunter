@@ -5,8 +5,8 @@ Queries GitHub Advisory Database, NVD CVE API, and HackerOne Hacktivity.
 
 Usage:
   python3 tools/learn.py --tech "nextjs,graphql"
-  python3 tools/learn.py --tech "nextjs,graphql" --target worldcoin --output recon/worldcoin/intel.md
-  python3 tools/learn.py --tech "solidity" --hackerone-program worldcoin
+  python3 tools/learn.py --tech "nextjs,graphql" --target target.com --output recon/target.com/intel.md
+  python3 tools/learn.py --tech "solidity" --hackerone-program target-program
 """
 
 import argparse

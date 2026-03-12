@@ -328,7 +328,6 @@ Questions, ideas, or want to collaborate? Reach out:
 | LinkedIn | [linkedin.com/in/shuvonsec](https://linkedin.com/in/shuvonsec) |
 | X / Twitter | [x.com/shuvonsec](https://x.com/shuvonsec) |
 | Instagram | [instagram.com/shuvonsec](https://instagram.com/shuvonsec) |
-| TikTok | [tiktok.com/@shuvonsec](https://tiktok.com/@shuvonsec) |
 
 ---
 

@@ -1,12 +1,12 @@
 <div align="center">
 
-<img src="https://img.shields.io/badge/Claude-AI%20Co--Pilot-orange?style=for-the-badge&logo=anthropic&logoColor=white" />
+<img src="https://img.shields.io/badge/Claude_Code-Skill-orange?style=for-the-badge&logo=anthropic&logoColor=white" />
 <img src="https://img.shields.io/badge/Bug%20Bounty-HackerOne%20%7C%20Bugcrowd%20%7C%20Intigriti-red?style=for-the-badge" />
 <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-blue?style=for-the-badge&logo=linux&logoColor=white" />
 
 # Claude Bug Bounty Hunter
 
-**The AI-native bug bounty framework.** Claude acts as your co-pilot — mapping attack surfaces, guiding hunts, validating findings, and writing your reports. You focus on the target. Claude handles the rest.
+**A Claude Code skill that turns Claude into your AI bug bounty co-pilot.** Point it at any target and Claude maps the attack surface, runs your scanners, validates findings, and writes the HackerOne or Bugcrowd report — all from a single conversation.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
@@ -143,8 +143,7 @@ python3 report_generator.py findings/
 
 ## Vulnerability Classes Covered
 
-<details>
-<summary><strong>Web2 (click to expand)</strong></summary>
+### Web Application
 
 | Class | Techniques |
 |-------|-----------|
@@ -160,10 +159,7 @@ python3 report_generator.py findings/
 | **XXE** | Classic entity injection, blind OOB via DNS/HTTP |
 | **HTTP Smuggling** | CL.TE, TE.CL, TE.TE, H2.CL request tunneling |
 
-</details>
-
-<details>
-<summary><strong>AI / LLM Features (click to expand)</strong></summary>
+### AI / LLM Features
 
 | Class | Techniques |
 |-------|-----------|
@@ -173,10 +169,7 @@ python3 report_generator.py findings/
 | **LLM RCE** | Code execution via AI tool use, sandboxed environment escape |
 | **ASCII Smuggling** | Invisible unicode characters as covert exfil channels |
 
-</details>
-
-<details>
-<summary><strong>Web3 / DeFi (click to expand)</strong></summary>
+### Web3 / DeFi
 
 | Class | Techniques |
 |-------|-----------|
@@ -185,8 +178,6 @@ python3 report_generator.py findings/
 | **Access Control** | Missing `onlyOwner`, misconfigured roles, function visibility |
 | **Integer Issues** | Overflow, underflow, precision loss, division before multiplication |
 | **Signature Replay** | Missing nonce, chain ID not included, front-running signatures |
-
-</details>
 
 ---
 
@@ -301,6 +292,6 @@ git push origin feature/my-scanner
 
 MIT License · Built by bug hunters, for bug hunters
 
-**Star ⭐ if this helped you find a bug**
+**Star if this helped you find a bug**
 
 </div>

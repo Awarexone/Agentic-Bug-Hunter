@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-learn.py — Fetches recent bug intelligence for a tech stack.
+learn.py  Fetches recent bug intelligence for a tech stack.
 Queries GitHub Advisory Database, NVD CVE API, and HackerOne Hacktivity.
 
 Usage:

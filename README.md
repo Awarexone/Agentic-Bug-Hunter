@@ -14,6 +14,15 @@
 
 [Quick Start](#quick-start) · [Tools](#tool-reference) · [Pipeline](#full-hunt-pipeline) · [Claude Prompts](#claude-prompts) · [Install](#installation)
 
+## Also in This Repo
+
+| File | What's Inside |
+|------|--------------|
+| [`SKILL.md`](SKILL.md) | Installable Claude Code skill — full hunting methodology, recon, validation, reporting |
+| [`docs/payloads.md`](docs/payloads.md) | Complete payload arsenal — XSS, SQLi, SSRF, XXE, SSTI, SAML, JWT, CSRF, race conditions, and more |
+| [`docs/smart-contract-audit.md`](docs/smart-contract-audit.md) | Web3 audit guide — Immunefi workflow, EVM/Solana/CosmWasm, Foundry PoC templates, real paid writeups |
+| [`CLAUDE_INTEGRATION.md`](CLAUDE_INTEGRATION.md) | Claude API integration examples |
+
 </div>
 
 ---

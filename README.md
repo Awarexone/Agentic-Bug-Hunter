@@ -46,37 +46,55 @@ Every step is Claude-assisted. Drop into Claude Code, point it at a target, and 
 
 ## Quick Start
 
+> **Recommended:** Use with [Claude Code](https://claude.ai/claude-code) for the full AI co-pilot experience.
+
+**Step 1 — Clone and install tools**
+
 ```bash
-# Clone and install
 git clone https://github.com/shuvonsec/claude-bug-bounty.git
 cd claude-bug-bounty
 chmod +x install_tools.sh && ./install_tools.sh
+```
 
-# Run a full hunt
+**Step 2 — Install the Claude Code skill**
+
+```bash
+mkdir -p ~/.claude/skills/bug-bounty
+cp SKILL.md ~/.claude/skills/bug-bounty/SKILL.md
+```
+
+**Step 3 — Start hunting**
+
+```bash
+claude
+```
+
+Then just talk to Claude:
+
+```
+"Run recon on target.com and tell me what to hunt"
+"I found a potential IDOR on /api/invoices — validate it"
+"Write a HackerOne report for this SSRF finding"
+"What GraphQL bugs should I look for on this target?"
+```
+
+Claude reads your recon files, reasons about the attack surface, and drives the tools.
+
+---
+
+**Or run the pipeline directly (no Claude Code):**
+
+```bash
+# Full automated hunt
 python3 hunt.py --target hackerone.com
 
-# Or step by step
+# Step by step
 ./recon_engine.sh target.com
 python3 learn.py --tech "nextjs,graphql,jwt" --target target.com
 python3 hunt.py --target target.com --scan-only
 python3 validate.py
 python3 report_generator.py findings/
 ```
-
-### With Claude Code (Recommended)
-
-```bash
-npm install -g @anthropic-ai/claude-code
-cd claude-bug-bounty
-claude
-```
-
-Then just talk:
-> *"Run recon on target.com and tell me what to hunt"*
-> *"I found a potential IDOR — validate it"*
-> *"Write a HackerOne report for this SSRF"*
-
-Claude reads your recon files, reasons about the attack surface, and drives the tools.
 
 ---
 

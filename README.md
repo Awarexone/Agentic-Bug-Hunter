@@ -304,14 +304,31 @@ Only test targets within an approved bug bounty scope. Never test systems withou
 
 ## Contributing
 
-PRs welcome — especially new vuln scanners, Claude prompt templates, and platform support (YesWeHack, Synack).
+PRs are welcome. If you've found a bug class that's missing, have a better Claude prompt, or want to add platform support (YesWeHack, Synack, HackenProof) — open a PR.
+
+Good contributions:
+- New vulnerability scanners
+- Claude prompt templates for specific bug classes
+- Payload additions to `docs/payloads.md`
+- Real-world hunting methodology improvements
 
 ```bash
-git checkout -b feature/my-scanner
-git commit -m "Add: scanner for X vuln class"
-git push origin feature/my-scanner
-# Open a PR
+git checkout -b feature/my-contribution
+git commit -m "Add: description of what you added"
+git push origin feature/my-contribution
+# Open a PR with a short description
 ```
+
+Questions, ideas, or want to collaborate? Reach out:
+
+| Platform | Link |
+|----------|------|
+| Email | [shuvonsec@gmail.com](mailto:shuvonsec@gmail.com) |
+| GitHub | [github.com/shuvonsec](https://github.com/shuvonsec) |
+| LinkedIn | [linkedin.com/in/shuvonsec](https://linkedin.com/in/shuvonsec) |
+| X / Twitter | [x.com/shuvonsec](https://x.com/shuvonsec) |
+| Instagram | [instagram.com/shuvonsec](https://instagram.com/shuvonsec) |
+| TikTok | [tiktok.com/@shuvonsec](https://tiktok.com/@shuvonsec) |
 
 ---
 

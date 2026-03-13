@@ -19,7 +19,7 @@
 | Repo | What It Does |
 |------|-------------|
 | **[claude-bug-bounty](https://github.com/shuvonsec/claude-bug-bounty)** ← you are here | AI-assisted web2 + web3 bug bounty — recon, scanning, validation, report writing |
-| **[web3-bounty-ai-skills](https://github.com/shuvonsec/web3-bounty-ai-skills)** | Smart contract security skills for Claude — 10 bug classes, Foundry PoC templates, real Immunefi case studies |
+| **[web3-bug-bounty-hunting-ai-skills](https://github.com/shuvonsec/web3-bug-bounty-hunting-ai-skills)** | Smart contract security skills for Claude — 10 bug classes, Foundry PoC templates, real Immunefi case studies |
 | **[public-skills-builder](https://github.com/shuvonsec/public-skills-builder)** | Feed 500 public writeups → get skill files back out |
 
 Use all three together: `public-skills-builder` generates skills → `web3-bounty-ai-skills` holds the knowledge → `claude-bug-bounty` runs the hunt.
@@ -31,6 +31,7 @@ Use all three together: `public-skills-builder` generates skills → `web3-bount
 | [`SKILL.md`](SKILL.md) | Installable Claude Code skill — full hunting methodology, recon, validation, reporting |
 | [`docs/payloads.md`](docs/payloads.md) | Complete payload arsenal — XSS, SQLi, SSRF, XXE, SSTI, SAML, JWT, CSRF, race conditions, and more |
 | [`docs/smart-contract-audit.md`](docs/smart-contract-audit.md) | Web3 audit guide — Immunefi workflow, EVM/Solana/CosmWasm, Foundry PoC templates, real paid writeups |
+| [`web3/`](web3/) | Full smart contract security skill chain — 10 bug classes, Foundry PoC templates, case studies, AI tools |
 | [`CLAUDE_INTEGRATION.md`](CLAUDE_INTEGRATION.md) | Claude API integration examples |
 
 </div>

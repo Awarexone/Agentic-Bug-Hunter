@@ -14,6 +14,16 @@
 
 [Quick Start](#quick-start) · [Tools](#tool-reference) · [Pipeline](#full-hunt-pipeline) · [Claude Prompts](#claude-prompts) · [Install](#installation)
 
+## The Trilogy
+
+| Repo | What It Does |
+|------|-------------|
+| **[claude-bug-bounty](https://github.com/shuvonsec/claude-bug-bounty)** ← you are here | AI-assisted web2 + web3 bug bounty — recon, scanning, validation, report writing |
+| **[web3-bounty-ai-skills](https://github.com/shuvonsec/web3-bounty-ai-skills)** | Smart contract security skills for Claude — 10 bug classes, Foundry PoC templates, real Immunefi case studies |
+| **[public-skills-builder](https://github.com/shuvonsec/public-skills-builder)** | Feed 500 public writeups → get skill files back out |
+
+Use all three together: `public-skills-builder` generates skills → `web3-bounty-ai-skills` holds the knowledge → `claude-bug-bounty` runs the hunt.
+
 ## Also in This Repo
 
 | File | What's Inside |

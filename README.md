@@ -1,17 +1,10 @@
 <div align="center">
 
-```
-   _____ _                 _        ____                   _   _             _
-  / ____| |               | |      |  _ \                 | | | |           | |
- | |    | | __ _ _   _  __| | ___  | |_) |_   _  __ _    | |_| |_   _ _ __ | |_ ___ _ __
- | |    | |/ _` | | | |/ _` |/ _ \ |  _ <| | | |/ _` |   |  _  | | | | '_ \| __/ _ \ '__|
- | |____| | (_| | |_| | (_| |  __/ | |_) | |_| | (_| |   | | | | |_| | | | | ||  __/ |
-  \_____|_|\__,_|\__,_|\__,_|\___| |____/ \__,_|\__, |   |_| |_|\__,_|_| |_|\__\___|_|
-                                                  __/ |
-                                                 |___/
-```
+# Claude Bug Hunter
 
 **AI-powered bug bounty hunting from your terminal.**
+
+<sub>by <a href="https://github.com/shuvonsec">shuvonsec</a></sub>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://python.org)

@@ -1,65 +1,56 @@
 <div align="center">
 
-<img src="https://img.shields.io/badge/Claude_Code-Skill-orange?style=for-the-badge&logo=anthropic&logoColor=white" />
-<img src="https://img.shields.io/badge/Bug%20Bounty-HackerOne%20%7C%20Bugcrowd%20%7C%20Intigriti-red?style=for-the-badge" />
-<img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-blue?style=for-the-badge&logo=linux&logoColor=white" />
+```
+   _____ _                 _        ____                   _   _             _
+  / ____| |               | |      |  _ \                 | | | |           | |
+ | |    | | __ _ _   _  __| | ___  | |_) |_   _  __ _    | |_| |_   _ _ __ | |_ ___ _ __
+ | |    | |/ _` | | | |/ _` |/ _ \ |  _ <| | | |/ _` |   |  _  | | | | '_ \| __/ _ \ '__|
+ | |____| | (_| | |_| | (_| |  __/ | |_) | |_| | (_| |   | | | | |_| | | | | ||  __/ |
+  \_____|_|\__,_|\__,_|\__,_|\___| |____/ \__,_|\__, |   |_| |_|\__,_|_| |_|\__\___|_|
+                                                  __/ |
+                                                 |___/
+```
 
-# Claude Bug Bounty Hunter
+**AI-powered bug bounty hunting from your terminal.**
 
-**A Claude Code skill that turns Claude into your AI bug bounty co-pilot.** Point it at any target and Claude maps the attack surface, runs your scanners, validates findings, and writes the HackerOne or Bugcrowd report — all from a single conversation.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
+[![Python 3.8+](https://img.shields.io/badge/Python-3.8+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![Claude Code](https://img.shields.io/badge/Claude_Code-Skill-D97706.svg?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai/claude-code)
+[![GitHub Stars](https://img.shields.io/github/stars/shuvonsec/claude-bug-bounty?style=flat-square&color=yellow)](https://github.com/shuvonsec/claude-bug-bounty/stargazers)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://python.org)
-[![Stars](https://img.shields.io/github/stars/shuvonsec/claude-bug-bounty?style=social)](https://github.com/shuvonsec/claude-bug-bounty/stargazers)
-
-[Quick Start](#quick-start) · [Tools](#tool-reference) · [Pipeline](#full-hunt-pipeline) · [Claude Prompts](#claude-prompts) · [Install](#installation)
-
-## The Trilogy
-
-| Repo | What It Does |
-|------|-------------|
-| **[claude-bug-bounty](https://github.com/shuvonsec/claude-bug-bounty)** ← you are here | AI-assisted web2 + web3 bug bounty — recon, scanning, validation, report writing |
-| **[web3-bug-bounty-hunting-ai-skills](https://github.com/shuvonsec/web3-bug-bounty-hunting-ai-skills)** | Smart contract security skills for Claude — 10 bug classes, Foundry PoC templates, real Immunefi case studies |
-| **[public-skills-builder](https://github.com/shuvonsec/public-skills-builder)** | Feed 500 public writeups → get skill files back out |
-
-Use all three together: `public-skills-builder` generates skills → `web3-bounty-ai-skills` holds the knowledge → `claude-bug-bounty` runs the hunt.
-
-## Also in This Repo
-
-| File | What's Inside |
-|------|--------------|
-| [`SKILL.md`](SKILL.md) | Installable Claude Code skill — full hunting methodology, recon, validation, reporting |
-| [`docs/payloads.md`](docs/payloads.md) | Complete payload arsenal — XSS, SQLi, SSRF, XXE, SSTI, SAML, JWT, CSRF, race conditions, and more |
-| [`docs/smart-contract-audit.md`](docs/smart-contract-audit.md) | Web3 audit guide — Immunefi workflow, EVM/Solana/CosmWasm, Foundry PoC templates, real paid writeups |
-| [`web3/`](web3/) | Full smart contract security skill chain — 10 bug classes, Foundry PoC templates, case studies, AI tools |
-| [`CLAUDE_INTEGRATION.md`](CLAUDE_INTEGRATION.md) | Claude API integration examples |
+[Quick Start](#quick-start) &nbsp;&middot;&nbsp; [Architecture](#architecture) &nbsp;&middot;&nbsp; [Tools](#tool-reference) &nbsp;&middot;&nbsp; [Vuln Classes](#vulnerability-classes) &nbsp;&middot;&nbsp; [Install](#installation)
 
 </div>
 
 ---
 
-## What It Does
+Point Claude Code at any bug bounty target. It maps the attack surface, runs your scanners, validates findings through a 4-gate checklist, and writes submission-ready reports -- all from a single conversation.
 
-```
-Target → Recon → Intel → Hunt → Validate → Report → Submit
-```
+### Why this exists
 
-Every step is Claude-assisted. Drop into Claude Code, point it at a target, and it will:
+Most bug bounty toolkits give you a bag of scripts. This one gives you a **co-pilot that reasons about what to test and why.** Claude reads your recon output, prioritizes by payout likelihood, and drives 25+ tools in the right order.
 
-- Enumerate subdomains, live hosts, and crawl endpoints
-- Pull CVEs and disclosed H1 reports for the detected tech stack
-- Generate a prioritized attack mindmap
-- Run scanners for IDOR, SSRF, XSS, SQLi, OAuth, GraphQL, LLM injection
-- Walk you through the 4-gate validation checklist
-- Write a submission-ready HackerOne or Bugcrowd report
+- **Not a wrapper** -- Claude understands the methodology, not just the commands
+- **End-to-end** -- from subdomain enumeration to a formatted HackerOne report
+- **Battle-tested** -- built from real submissions across HackerOne, Bugcrowd, Intigriti, and Immunefi
+
+---
+
+## The Trilogy
+
+| Repo | Purpose |
+|:-----|:--------|
+| **[claude-bug-bounty](https://github.com/shuvonsec/claude-bug-bounty)** | Full hunting pipeline -- recon, scanning, validation, reporting |
+| **[web3-bug-bounty-hunting-ai-skills](https://github.com/shuvonsec/web3-bug-bounty-hunting-ai-skills)** | Smart contract security -- 10 bug classes, Foundry PoCs, Immunefi case studies |
+| **[public-skills-builder](https://github.com/shuvonsec/public-skills-builder)** | Ingest 500+ public writeups and generate Claude skill files |
+
+`public-skills-builder` generates knowledge &rarr; `web3-bounty-ai-skills` holds it &rarr; `claude-bug-bounty` runs the hunt.
 
 ---
 
 ## Quick Start
 
-> **Recommended:** Use with [Claude Code](https://claude.ai/claude-code) for the full AI co-pilot experience.
-
-**Step 1 — Clone and install tools**
+**1. Clone and install**
 
 ```bash
 git clone https://github.com/shuvonsec/claude-bug-bounty.git
@@ -67,45 +58,52 @@ cd claude-bug-bounty
 chmod +x install_tools.sh && ./install_tools.sh
 ```
 
-**Step 2 — Install the Claude Code skill**
+**2. Install the Claude Code skill**
 
 ```bash
 mkdir -p ~/.claude/skills/bug-bounty
 cp SKILL.md ~/.claude/skills/bug-bounty/SKILL.md
 ```
 
-**Step 3 — Start hunting**
+**3. Hunt**
 
 ```bash
 claude
+# "Run recon on target.com and tell me what to hunt"
+# "I found a potential IDOR on /api/invoices — validate it"
+# "Write a HackerOne report for this SSRF finding"
 ```
 
-Then just talk to Claude:
+<details>
+<summary><strong>Or run the pipeline directly (no Claude Code)</strong></summary>
 
-```
-"Run recon on target.com and tell me what to hunt"
-"I found a potential IDOR on /api/invoices — validate it"
-"Write a HackerOne report for this SSRF finding"
-"What GraphQL bugs should I look for on this target?"
+```bash
+python3 hunt.py --target hackerone.com          # Full automated hunt
+./recon_engine.sh target.com                     # Step 1: Recon
+python3 learn.py --tech "nextjs,graphql,jwt"     # Step 2: Intel
+python3 hunt.py --target target.com --scan-only  # Step 3: Scan
+python3 validate.py                              # Step 4: Validate
+python3 report_generator.py findings/            # Step 5: Report
 ```
 
-Claude reads your recon files, reasons about the attack surface, and drives the tools.
+</details>
 
 ---
 
-**Or run the pipeline directly (no Claude Code):**
+## Architecture
 
-```bash
-# Full automated hunt
-python3 hunt.py --target hackerone.com
-
-# Step by step
-./recon_engine.sh target.com
-python3 learn.py --tech "nextjs,graphql,jwt" --target target.com
-python3 hunt.py --target target.com --scan-only
-python3 validate.py
-python3 report_generator.py findings/
 ```
+┌─────────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│   Target    │───▶│  Recon   │───▶│  Learn   │───▶│   Hunt   │───▶│  Report  │
+│  Selection  │    │  Engine  │    │  Intel   │    │ Scanner  │    │  Writer  │
+└─────────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘
+ target_selector    recon_engine    learn.py        hunt.py         report_gen
+ mindmap.py         subfinder       CVE hunter      IDOR/SSRF/XSS   validate.py
+                    httpx/katana    H1 Hacktivity   OAuth/Race/LLM   4 gates
+                    nuclei          Threat model    zero_day_fuzzer  CVSS 3.1
+```
+
+Each stage feeds the next. Claude orchestrates the entire flow, or you can run any stage independently.
 
 ---
 
@@ -113,143 +111,147 @@ python3 report_generator.py findings/
 
 ### Core Pipeline
 
-| Tool | What It Does |
-|------|-------------|
-| `hunt.py` | Master orchestrator — chains recon → scan → report |
+| Tool | Role |
+|:-----|:-----|
+| `hunt.py` | Master orchestrator -- chains recon, scan, and report stages |
 | `recon_engine.sh` | Subdomain enum, DNS resolution, live host detection, URL crawling |
-| `learn.py` | Pulls CVEs + disclosed reports for a tech stack from GitHub Advisory + NVD |
-| `mindmap.py` | Generates a Mermaid attack mindmap with a prioritized test checklist |
-| `validate.py` | Interactive 4-gate validator — scope, impact, duplicate check, CVSS score |
-| `report_generator.py` | Outputs a formatted HackerOne/Bugcrowd markdown report |
+| `learn.py` | Pulls CVEs and disclosed reports for detected tech stacks |
+| `mindmap.py` | Generates prioritized attack mindmap with test checklist |
+| `validate.py` | 4-gate validation -- scope, impact, duplicate check, CVSS scoring |
+| `report_generator.py` | Outputs formatted HackerOne/Bugcrowd/Intigriti reports |
 
 ### Vulnerability Scanners
 
-| Tool | Targets |
-|------|---------|
-| `h1_idor_scanner.py` | Object-level + field-level IDOR via parameter swapping |
-| `h1_mutation_idor.py` | GraphQL mutation IDOR — cross-account object access |
-| `h1_oauth_tester.py` | OAuth flows — PKCE enforcement, state bypass, redirect_uri abuse |
-| `h1_race.py` | Race conditions — parallel request timing, TOCTOU |
-| `zero_day_fuzzer.py` | Smart fuzzer for novel bugs scanners miss (logic, edge cases, access control) |
-| `cve_hunter.py` | Fingerprints tech stack and matches against known CVEs |
+| Tool | What it hunts |
+|:-----|:-------------|
+| `h1_idor_scanner.py` | Object-level and field-level IDOR via parameter swapping |
+| `h1_mutation_idor.py` | GraphQL mutation IDOR -- cross-account object access |
+| `h1_oauth_tester.py` | OAuth misconfigs -- PKCE, state bypass, redirect_uri abuse |
+| `h1_race.py` | Race conditions -- parallel timing, TOCTOU, limit overrun |
+| `zero_day_fuzzer.py` | Smart fuzzer for logic bugs, edge cases, and access control |
+| `cve_hunter.py` | Tech stack fingerprinting matched against known CVEs |
 | `vuln_scanner.sh` | Orchestrates nuclei + dalfox + sqlmap |
 
-### AI / LLM Testing
+### AI / LLM Security
 
-| Tool | Targets |
-|------|---------|
-| `hai_probe.py` | Probes AI chatbot features for IDOR, prompt injection, data exfil |
-| `hai_payload_builder.py` | Generates prompt injection payloads (direct, indirect, ASCII smuggling) |
+| Tool | What it hunts |
+|:-----|:-------------|
+| `hai_probe.py` | AI chatbot IDOR, prompt injection, data exfiltration |
+| `hai_payload_builder.py` | Prompt injection payloads -- direct, indirect, ASCII smuggling |
 | `hai_browser_recon.js` | Browser-side recon of AI feature endpoints |
 
 ### Utilities
 
-| Tool | What It Does |
-|------|-------------|
-| `sneaky_bits.py` | JS secret finder + endpoint extractor from JS bundles |
+| Tool | Role |
+|:-----|:-----|
+| `sneaky_bits.py` | JS secret finder and endpoint extractor from bundles |
 | `target_selector.py` | Scores and ranks bug bounty programs by ROI |
 | `scripts/dork_runner.py` | Google dork automation for passive recon |
-| `scripts/full_hunt.sh` | Shell wrapper for the full pipeline |
+| `scripts/full_hunt.sh` | Shell wrapper for the complete pipeline |
 
 ---
 
-## Full Hunt Pipeline
+## What's Inside SKILL.md
 
-```bash
-# 1. Recon — enumerate subdomains, resolve DNS, find live hosts, crawl URLs
-./recon_engine.sh target.com
-# → recon/target.com/{subs.txt, live-hosts.txt, urls.txt}
+The skill file is the brain -- **1,200+ lines** of structured hunting methodology that Claude loads on demand.
 
-# 2. Intel — pull CVEs and prior disclosures for the tech stack
-python3 learn.py --tech "nextjs,graphql,jwt" --target target.com
-# → recon/target.com/intel.md
-
-# 3. Attack map — generate prioritized hunting checklist
-python3 mindmap.py --target target.com --type api --tech "graphql,jwt"
-
-# 4. Hunt — run all scanners
-python3 hunt.py --target target.com --scan-only
-
-# 5. Validate — 4-gate check before writing anything
-python3 validate.py --output findings/target-finding.md
-
-# 6. Report — generate submission-ready markdown
-python3 report_generator.py findings/
-```
+| Section | Contents |
+|:--------|:---------|
+| A→B Bug Signal Method | Chain hunting -- when bug A confirms, systematically find B and C |
+| Recon Protocol | 30-minute recon playbook, subdomain enum, tech fingerprinting |
+| Bug Classes | 18+ vulnerability classes with detection patterns and bypass tables |
+| Bypass Tables | SSRF IP bypass (11), open redirect bypass (11), file upload bypass (10) |
+| Validation Gates | 7-Question Gate + 4-gate system, CVSS 3.1, always-rejected list |
+| Report Templates | HackerOne, Bugcrowd, Intigriti, Immunefi submission formats |
+| Grep Patterns | Language-specific dangerous patterns (JS, Python, PHP, Go, Ruby, Rust) |
+| AI/LLM Hunting | ASI01-ASI10 framework for agentic AI security testing |
+| Chain Table | 8 low findings that become valid bugs when chained correctly |
+| Web3 Auditing | 10 Solidity bug classes, Foundry PoC templates, DeFi attack patterns |
 
 ---
 
-## Vulnerability Classes Covered
+## Vulnerability Classes
 
 ### Web Application
 
 | Class | Techniques |
-|-------|-----------|
-| **IDOR** | Object-level, field-level, GraphQL mutation, UUID enumeration |
-| **SSRF** | Redirect chain bypass, DNS rebinding, cloud metadata (169.254.x), protocol abuse |
-| **XSS** | Reflected, stored, DOM, postMessage, CSP bypass, mXSS |
-| **SQLi** | Error-based, blind, time-based, ORM bypass, second-order |
-| **OAuth** | Missing PKCE, state parameter bypass, redirect_uri abuse, implicit flow downgrade |
-| **Race Conditions** | Parallel requests, TOCTOU, limit overrun, coupon reuse |
-| **Cache Poisoning** | Unkeyed headers, parameter cloaking, fat GET |
-| **Business Logic** | Price manipulation, workflow skip, negative quantity, role escalation |
-| **File Upload** | Extension bypass, MIME confusion, polyglots, path traversal in filename |
-| **XXE** | Classic entity injection, blind OOB via DNS/HTTP |
-| **HTTP Smuggling** | CL.TE, TE.CL, TE.TE, H2.CL request tunneling |
+|:------|:-----------|
+| IDOR | Object-level, field-level, GraphQL mutation, UUID enumeration |
+| SSRF | Redirect chain, DNS rebinding, cloud metadata, protocol abuse |
+| XSS | Reflected, stored, DOM, postMessage, CSP bypass, mXSS |
+| SQL Injection | Error-based, blind, time-based, ORM bypass, second-order |
+| OAuth | Missing PKCE, state bypass, redirect_uri abuse, implicit downgrade |
+| Race Conditions | Parallel requests, TOCTOU, limit overrun, coupon reuse |
+| Cache Poisoning | Unkeyed headers, parameter cloaking, fat GET |
+| Business Logic | Price manipulation, workflow skip, negative quantity, role escalation |
+| File Upload | Extension bypass, MIME confusion, polyglots, path traversal |
+| XXE | Classic entity injection, blind OOB via DNS/HTTP |
+| HTTP Smuggling | CL.TE, TE.CL, TE.TE, H2.CL request tunneling |
 
-### AI / LLM Features
+### AI / LLM
 
 | Class | Techniques |
-|-------|-----------|
-| **Prompt Injection** | Direct override, indirect via document/URL, jailbreak chains |
-| **Chatbot IDOR** | Cross-account history access, conversation ID enumeration |
-| **System Prompt Leak** | Extraction via roleplay, encoding bypass, token boundary probing |
-| **LLM RCE** | Code execution via AI tool use, sandboxed environment escape |
-| **ASCII Smuggling** | Invisible unicode characters as covert exfil channels |
+|:------|:-----------|
+| Prompt Injection | Direct override, indirect via document/URL, jailbreak chains |
+| Chatbot IDOR | Cross-account history access, conversation ID enumeration |
+| System Prompt Leak | Extraction via roleplay, encoding bypass, token boundary probing |
+| LLM RCE | Code execution via tool use, sandbox escape |
+| ASCII Smuggling | Invisible unicode as covert exfil channels |
 
 ### Web3 / DeFi
 
 | Class | Techniques |
-|-------|-----------|
-| **Reentrancy** | Single-function, cross-function, cross-contract, read-only |
-| **Flash Loan Attacks** | Price oracle manipulation, collateral inflation |
-| **Access Control** | Missing `onlyOwner`, misconfigured roles, function visibility |
-| **Integer Issues** | Overflow, underflow, precision loss, division before multiplication |
-| **Signature Replay** | Missing nonce, chain ID not included, front-running signatures |
+|:------|:-----------|
+| Reentrancy | Single-function, cross-function, cross-contract, read-only |
+| Flash Loan | Price oracle manipulation, collateral inflation |
+| Access Control | Missing modifiers, misconfigured roles, function visibility |
+| Integer Issues | Overflow, underflow, precision loss, division-before-multiply |
+| Signature Replay | Missing nonce, chain ID omission, front-running |
 
 ---
 
-## Claude Prompts
-
-Copy-paste these into Claude Code after running recon:
+## Directory Structure
 
 ```
-# Map the attack surface
-"I've run recon on [target]. Here's live-hosts.txt and urls.txt.
-What are the highest-priority endpoints to test for IDOR and why?"
-
-# Tech-stack guided hunting
-"Target uses NextJS + GraphQL + JWT auth. Rank the top 5 bug classes
-I should hunt, ordered by payout likelihood on HackerOne."
-
-# Validate a finding
-"I found [vuln]. Here's the request and response. Walk me through
-the 4 validation gates. What's the CVSS 3.1 score and business impact?"
-
-# Write the report
-"Write a HackerOne report for this [vuln type].
-PoC steps: [1, 2, 3]. Target: [URL]. Impact: [what attacker can do]."
-
-# Chain a low finding
-"I have an open redirect at [URL]. How can I chain this into
-an OAuth code theft or ATO? What conditions do I need?"
+claude-bug-bounty/
+├── SKILL.md                    # Claude Code skill (1,200+ lines of methodology)
+├── hunt.py                     # Master orchestrator
+├── recon_engine.sh             # Subdomain + URL discovery
+├── learn.py                    # CVE + disclosure intel
+├── mindmap.py                  # Attack surface mapper
+├── validate.py                 # 4-gate finding validator
+├── report_generator.py         # Report writer
+├── h1_idor_scanner.py          # IDOR scanner
+├── h1_mutation_idor.py         # GraphQL IDOR scanner
+├── h1_oauth_tester.py          # OAuth tester
+├── h1_race.py                  # Race condition tester
+├── zero_day_fuzzer.py          # Smart fuzzer
+├── cve_hunter.py               # CVE matcher
+├── vuln_scanner.sh             # Nuclei/Dalfox/SQLMap wrapper
+├── hai_probe.py                # AI chatbot tester
+├── hai_payload_builder.py      # Prompt injection generator
+├── hai_browser_recon.js        # Browser-side AI recon
+├── sneaky_bits.py              # JS secret finder
+├── target_selector.py          # Program ROI scorer
+├── docs/
+│   ├── payloads.md             # Complete payload arsenal
+│   ├── advanced-techniques.md  # A→B chaining, mobile, CI/CD, framework playbooks
+│   └── smart-contract-audit.md # Web3 audit guide
+├── web3/                       # Smart contract skill chain (10 files)
+├── scripts/
+│   ├── dork_runner.py          # Google dork automation
+│   └── full_hunt.sh            # Full pipeline wrapper
+├── wordlists/                  # 5 wordlists (common, params, API, dirs, sensitive)
+├── recon/                      # Recon output (per target)
+├── findings/                   # Validated findings
+└── reports/                    # Submission-ready reports
 ```
 
 ---
 
 ## Installation
 
-**Prerequisites**
+### Prerequisites
 
 ```bash
 # macOS
@@ -259,93 +261,60 @@ brew install go python3 node jq
 sudo apt install golang python3 nodejs jq
 ```
 
-**One-command install**
+### Install
 
 ```bash
+git clone https://github.com/shuvonsec/claude-bug-bounty.git
+cd claude-bug-bounty
 chmod +x install_tools.sh && ./install_tools.sh
+cp config.example.json config.json  # Add your API keys
 ```
 
-Installs: `subfinder` `httpx` `dnsx` `nuclei` `katana` `waybackurls` `gau` `dalfox` `ffuf` `anew` `qsreplace` `assetfinder` `gf` `interactsh-client` `sqlmap` `XSStrike` `SecretFinder` `LinkFinder` + nuclei-templates
-
-**Configuration**
-
-```bash
-cp config.example.json config.json
-# Add your ProjectDiscovery Chaos API key and HackerOne token
-```
-
----
-
-## Output Structure
-
-```
-claude-bug-bounty/
-├── recon/
-│   └── target.com/
-│       ├── subs.txt           # All subdomains
-│       ├── live-hosts.txt     # Live HTTP(S) hosts with status codes
-│       ├── urls.txt           # Crawled URLs
-│       └── intel.md           # CVE + disclosed report intel
-├── findings/
-│   └── target-vuln-type.md   # Validated finding notes
-└── reports/
-    └── h1-report-YYYYMMDD.md # Submission-ready report
-```
-
----
-
-## Resources
-
-- [HackerOne Hacktivity](https://hackerone.com/hacktivity) — Disclosed reports
-- [Bugcrowd Crowdstream](https://bugcrowd.com/crowdstream) — Public findings
-- [ProjectDiscovery Chaos](https://chaos.projectdiscovery.io) — Free subdomain datasets
-- [PayloadsAllTheThings](https://github.com/swisskyrepo/PayloadsAllTheThings) — Payload reference
-- [HackTricks](https://book.hacktricks.xyz) — Attack technique bible
-- [PortSwigger Web Academy](https://portswigger.net/web-security) — Free vuln labs
-
----
-
-## Legal
-
-**For authorized security testing only.**
-
-Only test targets within an approved bug bounty scope. Never test systems without explicit permission. Follow responsible disclosure — report to the vendor, not publicly. Read each program's rules of engagement before hunting.
+This installs 18+ tools: `subfinder`, `httpx`, `dnsx`, `nuclei`, `katana`, `waybackurls`, `gau`, `dalfox`, `ffuf`, `anew`, `qsreplace`, `assetfinder`, `gf`, `interactsh-client`, `sqlmap`, `XSStrike`, `SecretFinder`, `LinkFinder`, and nuclei-templates.
 
 ---
 
 ## Contributing
 
-PRs are welcome. If you've found a bug class that's missing, have a better Claude prompt, or want to add platform support (YesWeHack, Synack, HackenProof) — open a PR.
+PRs welcome. Good contributions:
 
-Good contributions:
-- New vulnerability scanners
-- Claude prompt templates for specific bug classes
+- New vulnerability scanners or detection modules
 - Payload additions to `docs/payloads.md`
-- Real-world hunting methodology improvements
+- Claude prompt templates for specific bug classes
+- Platform support (YesWeHack, Synack, HackenProof)
+- Real-world methodology improvements
 
 ```bash
-git checkout -b feature/my-contribution
-git commit -m "Add: description of what you added"
-git push origin feature/my-contribution
-# Open a PR with a short description
+git checkout -b feature/your-contribution
+git commit -m "Add: short description"
+git push origin feature/your-contribution
 ```
 
-Questions, ideas, or want to collaborate? Reach out:
+---
 
-| Platform | Link |
-|----------|------|
+## Contact
+
+| | |
+|:--|:--|
+| GitHub | [shuvonsec](https://github.com/shuvonsec) |
 | Email | [shuvonsec@gmail.com](mailto:shuvonsec@gmail.com) |
-| GitHub | [github.com/shuvonsec](https://github.com/shuvonsec) |
-| LinkedIn | [linkedin.com/in/shuvonsec](https://linkedin.com/in/shuvonsec) |
-| X / Twitter | [x.com/shuvonsec](https://x.com/shuvonsec) |
-| Instagram | [instagram.com/shuvonsec](https://instagram.com/shuvonsec) |
+| Twitter | [@shuvonsec](https://x.com/shuvonsec) |
+| LinkedIn | [shuvonsec](https://linkedin.com/in/shuvonsec) |
+
+---
+
+## Legal
+
+**For authorized security testing only.** Only test targets within an approved bug bounty scope. Never test systems without explicit permission. Follow responsible disclosure practices. Read each program's rules of engagement before hunting.
 
 ---
 
 <div align="center">
 
-MIT License · Built by bug hunters, for bug hunters
+MIT License
 
-**Star if this helped you find a bug**
+**Built by bug hunters, for bug hunters.**
+
+If this helped you find a bug, consider leaving a star.
 
 </div>

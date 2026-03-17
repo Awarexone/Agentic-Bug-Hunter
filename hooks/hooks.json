@@ -2,11 +2,15 @@
   "hooks": [
     {
       "event": "SessionStart",
-      "command": "echo '🎯 Bug Bounty Session Started. Run /recon <target> to begin or /hunt to continue an active target. Check scope FIRST.'"
+      "command": "echo 'Bug Bounty Session Started. Run /recon <target> to begin or /hunt to continue an active target. Check scope FIRST.'"
     },
     {
       "event": "SessionStop",
-      "command": "echo '📋 Session ended. Save your findings to findings/ before closing. Run /validate on any leads before next session.'"
+      "command": "echo 'Session ended. Save findings to findings/. Run /validate on any leads before next session.'"
+    },
+    {
+      "event": "Stop",
+      "command": "echo 'Hunt complete. Checklist: findings saved? scope verified? reports in reports/? run /validate on any unvalidated leads.'"
     }
   ]
 }

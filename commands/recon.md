@@ -38,7 +38,7 @@ mkdir -p recon/$TARGET
 
 # Chaos API (ProjectDiscovery — most comprehensive)
 curl -s "https://dns.projectdiscovery.io/dns/$TARGET/subdomains" \
-  -H "Authorization: 15e77cfb-2300-426a-b8c3-fbfbf0ab17d4" \
+  -H "Authorization: $CHAOS_API_KEY" \
   | jq -r '.[]' > recon/$TARGET/subdomains.txt
 
 # subfinder + assetfinder

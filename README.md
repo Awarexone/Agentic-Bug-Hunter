@@ -16,7 +16,7 @@
 
 ---
 
-**7 skill domains &nbsp;|&nbsp; 8 slash commands &nbsp;|&nbsp; 5 agents &nbsp;|&nbsp; 18 web2 vuln classes &nbsp;|&nbsp; 10 web3 bug classes &nbsp;|&nbsp; battle-tested across HackerOne, Bugcrowd, Intigriti, Immunefi**
+**7 skill domains &nbsp;|&nbsp; 8 slash commands &nbsp;|&nbsp; 5 agents &nbsp;|&nbsp; 20 web2 vuln classes &nbsp;|&nbsp; 10 web3 bug classes &nbsp;|&nbsp; battle-tested across HackerOne, Bugcrowd, Intigriti, Immunefi**
 
 </div>
 
@@ -31,7 +31,7 @@ This release restructures the entire repo from a monolithic skill file into a fu
 **Skills (7 focused domains)**
 - `skills/bug-bounty/` — Master workflow skill (1,200+ lines, recon → report, all vuln classes, LLM testing, bypass tables, A→B chains)
 - `skills/web2-recon/` — Full recon pipeline with exact commands: Chaos API, subfinder, dnsx, httpx, katana, gf, nuclei. Includes 5-minute rule + tech stack map
-- `skills/web2-vuln-classes/` — All 18 bug classes with bypass reference tables: SSRF (11 IP bypass techniques), open redirect (11 techniques for OAuth chaining), file upload (10 bypass techniques + magic bytes), Agentic AI ASI01–ASI10 framework
+- `skills/web2-vuln-classes/` — All 20 bug classes with bypass reference tables: SSRF (11 IP bypass techniques), open redirect (11 techniques for OAuth chaining), file upload (10 bypass techniques + magic bytes), Agentic AI ASI01–ASI10 framework, MFA bypass (7 patterns), SAML attacks (XSW/comment injection/signature stripping)
 - `skills/security-arsenal/` — XSS/SSRF/SQLi/XXE/path traversal payloads, gf pattern names, never-submit list, conditionally-valid-with-chain table
 - `skills/web3-audit/` — All 10 DeFi bug classes with code patterns, pre-dive kill signals (TVL formula), Foundry PoC template
 - `skills/report-writing/` — H1/Bugcrowd/Intigriti/Immunefi report templates, CVSS 3.1, title formula, escalation language, human-tone rules
@@ -263,6 +263,8 @@ Each stage feeds the next. Claude orchestrates the entire flow, or you can run a
 | **Cloud/Infra** | S3 listing, EC2 metadata, Firebase open rules, K8s API, Docker API, exposed panels | $500–$20K |
 | **HTTP Smuggling** | CL.TE, TE.CL, TE.TE, H2.CL — request tunneling | $5K–$30K |
 | **Cache Poisoning** | Unkeyed headers, parameter cloaking, web cache deception | $1K–$10K |
+| **MFA Bypass** | No rate limit, OTP reuse, response manipulation, workflow skip, race, backup codes | $1K–$10K |
+| **SAML/SSO** | XML signature wrapping (XSW), comment injection, signature stripping, XXE in assertion | $2K–$20K |
 
 ### Web3 — 10 Bug Classes
 
@@ -322,6 +324,30 @@ cd claude-bug-bounty
 chmod +x install.sh && ./install.sh
 cp config.example.json config.json  # Add your API keys
 ```
+
+### Set Up API Keys
+
+The recon pipeline uses the Chaos API from ProjectDiscovery for subdomain discovery. Get a free key:
+
+1. Sign up at [chaos.projectdiscovery.io](https://chaos.projectdiscovery.io)
+2. Copy your API key
+3. Export it before running any recon:
+
+```bash
+export CHAOS_API_KEY="your-key-here"
+
+# For persistence, add to your shell profile:
+echo 'export CHAOS_API_KEY="your-key-here"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+The recon commands use `$CHAOS_API_KEY` — the key is never stored in any file in this repo.
+
+**Optional API keys** for better subdomain coverage (configure in `~/.config/subfinder/config.yaml`):
+- [VirusTotal](https://www.virustotal.com) — free
+- [SecurityTrails](https://securitytrails.com) — free tier
+- [Censys](https://censys.io) — free tier
+- [Shodan](https://shodan.io) — paid but cheap
 
 This installs 18+ tools: `subfinder`, `httpx`, `dnsx`, `nuclei`, `katana`, `waybackurls`, `gau`, `dalfox`, `ffuf`, `anew`, `qsreplace`, `assetfinder`, `gf`, `interactsh-client`, `sqlmap`, `XSStrike`, `SecretFinder`, `LinkFinder`, and nuclei-templates.
 

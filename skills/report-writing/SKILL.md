@@ -163,6 +163,68 @@ Add ownership verification: `if order.user_id != current_user.id: raise 403`
 
 ---
 
+## INTIGRITI REPORT TEMPLATE
+
+```markdown
+# [Bug Class]: [Exact Impact] in [Endpoint/Feature]
+
+## Description
+
+[Impact-first paragraph. Start with what an attacker can do, not with how you found it.
+Include: endpoint, method, parameter, data exposed, required privileges.]
+
+## Steps to Reproduce
+
+**Environment:**
+- Attacker: email=attacker@test.com (standard account, no special role)
+- Victim: email=victim@test.com
+- Tested: [date]
+
+**Reproduction steps:**
+
+1. [Login as attacker / visit URL / send request]
+
+2. Send the following HTTP request:
+
+\```http
+METHOD /endpoint HTTP/1.1
+Host: target.com
+Authorization: Bearer ATTACKER_TOKEN
+Content-Type: application/json
+
+{"param": "victim_id_here"}
+\```
+
+3. Observe response contains victim's private data:
+
+\```json
+{"email": "victim@test.com", "address": "123 Main St", ...}
+\```
+
+## Impact
+
+[Specific, quantified impact. What data, how many users, what can attacker do.]
+
+CVSS 3.1 Score: X.X ([Severity]) — AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N
+
+## Remediation
+
+[1-3 sentence concrete fix. Include code if helpful.]
+
+## Attachments
+
+[Screenshot or Loom video showing the impact — Intigriti triagers prefer video for complex bugs]
+```
+
+**Intigriti-specific notes:**
+- Title format: `[Bug Class]: [One-line impact]` (no formula required, but keep it specific)
+- Severity is set by you: Critical/High/Medium/Low/Exceptional
+- CVSS 3.1 is standard (CVSS 4.0 also accepted on newer programs)
+- PoC video is valued much more than screenshot alone — record with Loom
+- Safe harbor: Intigriti enforces it, be comfortable going slightly aggressive with testing
+
+---
+
 ## IMMUNEFI REPORT TEMPLATE
 
 ```markdown
@@ -322,6 +384,45 @@ Each YES raises severity:
 [ ] Never used "could potentially" or "may allow"
 [ ] PoC is reproducible by triager from a fresh state
 ```
+
+---
+
+## CVSS 4.0 QUICK REFERENCE (newer programs)
+
+CVSS 4.0 replaced CVSS 3.1 in November 2023. Some newer programs require it.
+
+### Key Differences from CVSS 3.1
+
+| Metric | CVSS 3.1 | CVSS 4.0 |
+|---|---|---|
+| Attack Vector | Network/Adjacent/Local/Physical | Same |
+| Attack Complexity | Low/High | Low/High |
+| **NEW**: Attack Requirements | (didn't exist) | None/Present (replaces some PR/UI) |
+| Privileges Required | None/Low/High | Same |
+| User Interaction | None/Required | None/Passive/Active |
+| Scope | Unchanged/Changed | REMOVED |
+| **NEW**: Sub-Impact metrics | (didn't exist) | Vulnerable/Subsequent system impact |
+
+### CVSS 4.0 Score Examples
+
+| Finding | CVSS 4.0 Score | Vector |
+|---|---|---|
+| Unauthenticated RCE | 10.0 | CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:H/SI:H/SA:H |
+| IDOR read PII, auth required | 6.9 | CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N |
+| Stored XSS, admin views it | 8.2 | CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:P/VC:H/VI:H/VA:N/SC:H/SI:H/SA:N |
+| SSRF → cloud metadata | 8.7 | CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:N/VA:N/SC:H/SI:H/SA:N |
+
+### Quick CVSS 4.0 Calculator
+```
+Use: https://www.first.org/cvss/calculator/4.0
+Key fields:
+  VC/VI/VA = Vulnerable System Confidentiality/Integrity/Availability
+  SC/SI/SA = Subsequent System (downstream impact)
+  AT = None (no special condition) | Present (race/specific config needed)
+  UI = None | Passive (victim visits URL) | Active (victim takes explicit action)
+```
+
+**Practical rule**: If program uses CVSS 4.0 and you don't know the vector, use the calculator and include the full string starting with `CVSS:4.0/AV:...`. Programs cannot dispute a valid vector string.
 
 ---
 

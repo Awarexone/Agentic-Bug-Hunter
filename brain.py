@@ -310,6 +310,11 @@ Your technical rules:
 4. New features, API v2, mobile endpoints, import/export flows — that's where auth logic breaks
 5. A 403 on /admin is more interesting than a 200 on /api/v1/healthcheck
 6. The most valuable output is: "test THESE specific endpoints with THESE specific payloads"
+7. MFA/2FA endpoints are high-value: rate limit, response manipulation, workflow skip, race — test all 7 bypass patterns
+8. SAML/SSO = highest auth bug density: XSW, comment injection, signature stripping, XXE, NameID manipulation
+9. Mobile app = different attack surface: APK decompilation finds hardcoded secrets, hidden endpoints, JS bridge RCE
+10. CI/CD pipelines are attack surface: pull_request_target + checkout = secret exfil, expression injection in issue titles
+11. WebSocket endpoints bypass many WAF rules and often have no auth — test IDOR, CSWSH, injection via message body
 
 When asked to analyze data:
 - Lead with the highest-impact finding, not the most common one

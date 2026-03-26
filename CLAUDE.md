@@ -16,7 +16,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `skills/report-writing/` | H1/Bugcrowd/Intigriti/Immunefi report templates, CVSS 3.1, human tone |
 | `skills/triage-validation/` | 7-Question Gate, 4 gates, never-submit list, conditionally valid table |
 
-### Commands (8 slash commands)
+### Commands (13 slash commands)
 
 | Command | Usage |
 |---|---|
@@ -28,14 +28,21 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `/scope` | `/scope <asset>` — verify asset is in scope |
 | `/triage` | `/triage` — quick 7-Question Gate |
 | `/web3-audit` | `/web3-audit <contract.sol>` — smart contract audit |
+| `/autopilot` | `/autopilot target.com --normal` — autonomous hunt loop |
+| `/surface` | `/surface target.com` — ranked attack surface |
+| `/resume` | `/resume target.com` — pick up previous hunt |
+| `/remember` | `/remember` — log finding to hunt memory |
+| `/intel` | `/intel target.com` — fetch CVE + disclosure intel |
 
-### Agents (5 specialized agents)
+### Agents (7 specialized agents)
 
 - `recon-agent` — subdomain enum + live host discovery
 - `report-writer` — generates H1/Bugcrowd/Immunefi reports
 - `validator` — 4-gate checklist on a finding
 - `web3-auditor` — smart contract bug class analysis
 - `chain-builder` — builds A→B→C exploit chains
+- `autopilot` — autonomous hunt loop (scope→recon→rank→hunt→validate→report)
+- `recon-ranker` — attack surface ranking from recon output + memory
 
 ### Rules (always active)
 

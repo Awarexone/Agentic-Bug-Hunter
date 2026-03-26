@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "hackerone": {
+      "command": "python3",
+      "args": ["mcp/hackerone-mcp/server.py"],
+      "env": {}
+    }
+  },
+  "_comment": "Public endpoints only — no API key required. Copy into .claude/settings.json mcpServers section."
+}

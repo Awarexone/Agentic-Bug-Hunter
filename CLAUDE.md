@@ -49,14 +49,27 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 - `rules/hunting.md` — 17 critical hunting rules
 - `rules/reporting.md` — report quality rules
 
-### Tools (Python/shell — run directly)
+### Tools (Python/shell — in `tools/`)
 
-Located in repo root:
-- `hunt.py` — master orchestrator
-- `recon_engine.sh` — subdomain + URL discovery
-- `validate.py` — 4-gate finding validator
-- `report_generator.py` — report writer
-- `learn.py` — CVE + disclosure intel
+- `tools/hunt.py` — master orchestrator
+- `tools/recon_engine.sh` — subdomain + URL discovery
+- `tools/validate.py` — 4-gate finding validator
+- `tools/report_generator.py` — report writer
+- `tools/learn.py` — CVE + disclosure intel
+- `tools/intel_engine.py` — on-demand intel with memory context
+- `tools/scope_checker.py` — deterministic scope safety checker
+
+### MCP Integrations (in `mcp/`)
+
+- `mcp/burp-mcp-client/` — Burp Suite proxy integration
+- `mcp/hackerone-mcp/` — HackerOne public API (Hacktivity, program stats, policy)
+
+### Hunt Memory (in `memory/`)
+
+- `memory/hunt_journal.py` — append-only hunt log (JSONL)
+- `memory/pattern_db.py` — cross-target pattern learning
+- `memory/audit_log.py` — request audit log, rate limiter, circuit breaker
+- `memory/schemas.py` — schema validation for all data
 
 ## Start Here
 

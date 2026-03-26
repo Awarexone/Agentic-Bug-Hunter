@@ -16,7 +16,7 @@
 
 ---
 
-**7 skill domains &nbsp;|&nbsp; 8 slash commands &nbsp;|&nbsp; 5 agents &nbsp;|&nbsp; 20 web2 vuln classes &nbsp;|&nbsp; 10 web3 bug classes &nbsp;|&nbsp; battle-tested across HackerOne, Bugcrowd, Intigriti, Immunefi**
+**7 skill domains &nbsp;|&nbsp; 13 slash commands &nbsp;|&nbsp; 7 agents &nbsp;|&nbsp; 20 web2 vuln classes &nbsp;|&nbsp; 10 web3 bug classes &nbsp;|&nbsp; MCP integrations &nbsp;|&nbsp; persistent hunt memory &nbsp;|&nbsp; autonomous mode**
 
 </div>
 
@@ -24,42 +24,32 @@
 
 ## What's New
 
-### v2.0.0 — ECC-Style Plugin Architecture (Mar 2026)
+### v3.0.0 — Bionic Hunter: Autonomous Mode + MCP Integrations (Mar 2026)
 
-This release restructures the entire repo from a monolithic skill file into a full **Claude Code plugin** modeled after the `everything-claude-code` architecture — with modular skills, slash commands, specialized agents, hooks, and rules.
+The "brain in a jar" is now a **bionic hacker**. Claude can see your live traffic (via Burp MCP), remember past hunts, fetch real-time intel, and run autonomous hunt loops with human checkpoints.
 
-**Skills (7 focused domains)**
-- `skills/bug-bounty/` — Master workflow skill (1,200+ lines, recon → report, all vuln classes, LLM testing, bypass tables, A→B chains)
-- `skills/web2-recon/` — Full recon pipeline with exact commands: Chaos API, subfinder, dnsx, httpx, katana, gf, nuclei. Includes 5-minute rule + tech stack map
-- `skills/web2-vuln-classes/` — All 20 bug classes with bypass reference tables: SSRF (11 IP bypass techniques), open redirect (11 techniques for OAuth chaining), file upload (10 bypass techniques + magic bytes), Agentic AI ASI01–ASI10 framework, MFA bypass (7 patterns), SAML attacks (XSW/comment injection/signature stripping)
-- `skills/security-arsenal/` — XSS/SSRF/SQLi/XXE/path traversal payloads, gf pattern names, never-submit list, conditionally-valid-with-chain table
-- `skills/web3-audit/` — All 10 DeFi bug classes with code patterns, pre-dive kill signals (TVL formula), Foundry PoC template
-- `skills/report-writing/` — H1/Bugcrowd/Intigriti/Immunefi report templates, CVSS 3.1, title formula, escalation language, human-tone rules
-- `skills/triage-validation/` — 7-Question Gate (all 7 questions), 4 gates (Gate 0–3), never-submit list, conditionally-valid table
+**New in v3.0.0:**
 
-**Commands (8 slash commands)**
-- `/recon target.com` — full asset discovery pipeline
-- `/hunt target.com` — active vuln testing with scope load
-- `/validate` — 7-Question Gate + 4 gates, outputs PASS/KILL/DOWNGRADE/CHAIN REQUIRED
-- `/report` — submission-ready report in 60 seconds
-- `/chain` — A→B→C exploit chain builder
-- `/scope <asset>` — pre-hunt scope verification
-- `/triage` — 2-minute go/no-go before deep validation
-- `/web3-audit <contract.sol>` — 10-class smart contract checklist
+- **Autonomous Hunt Loop** (`/autopilot`) — 7-step loop (scope→recon→rank→hunt→validate→report→checkpoint) with 3 modes: `--paranoid` (stop per finding), `--normal` (batch), `--yolo` (minimal checkpoints, still requires approval for submissions)
+- **Persistent Hunt Memory** — JSONL-based journal, cross-target pattern learning, target profiles. What worked on target A informs hunting on target B
+- **Deterministic Scope Safety** — `scope_checker.py` with anchored suffix matching. Code check, not LLM judgment
+- **Burp Suite MCP Integration** — Read proxy history, replay requests, Collaborator payloads
+- **HackerOne MCP Server** — Public API: disclosed reports, program stats, scope/policy
+- **On-Demand Intel** (`/intel`) — Wraps learn.py + HackerOne MCP + memory context. Shows untested CVEs, new endpoints, cross-target patterns
+- **Attack Surface Ranking** (`/surface`) — AI-ranked attack surface from recon output + hunt memory
+- **Audit Logging** — Every outbound request logged. Per-host rate limiting. Circuit breaker pattern
+- **5 New Commands** — `/autopilot`, `/surface`, `/resume`, `/remember`, `/intel`
+- **2 New Agents** — `autopilot` (autonomous loop), `recon-ranker` (surface ranking)
+- **129 Tests** — Full test coverage for memory, schemas, scope checker, audit log, HackerOne MCP, intel engine
+- **Reorganized** — All tools in `tools/`, MCP servers in `mcp/`, memory system in `memory/`
 
-**Agents (5 specialized subagents)**
-- `recon-agent` (haiku — fast) — subfinder + Chaos API + dnsx + httpx + katana
-- `report-writer` (opus — quality) — professional H1/Bugcrowd/Immunefi reports, impact-first, human tone
-- `validator` (sonnet) — 7-Question Gate + 4-gate checklist
-- `web3-auditor` (sonnet) — 10-class contract audit + Foundry PoC stubs
-- `chain-builder` (sonnet) — systematic A→B→C exploit chaining
+### v2.1.0 — 20 Vuln Classes + Payload Expansion
 
-**Hooks & Rules**
-- `hooks/hooks.json` — SessionStart/SessionStop hooks for hunt context
-- `rules/hunting.md` — 17 critical hunting rules (always active)
-- `rules/reporting.md` — 12 report quality rules (always active)
+Added SAML/SSO attacks, MFA bypass, Agentic AI (ASI01-ASI10), expanded bypass tables.
 
-**Preserved**: all original Python/shell tools (`hunt.py`, `recon_engine.sh`, `validate.py`, `report_generator.py`, `learn.py`, all scanners) and the original monolithic `SKILL.md` are unchanged.
+### v2.0.0 — ECC-Style Plugin Architecture
+
+Restructured from monolithic skill file into full Claude Code plugin with modular skills, slash commands, specialized agents, hooks, and rules.
 
 ---
 
@@ -116,12 +106,13 @@ claude
 **3. Or run tools directly**
 
 ```bash
-python3 hunt.py --target hackerone.com          # Full automated hunt
-./recon_engine.sh target.com                     # Step 1: Recon
-python3 learn.py --tech "nextjs,graphql,jwt"     # Step 2: Intel
-python3 hunt.py --target target.com --scan-only  # Step 3: Scan
-python3 validate.py                              # Step 4: Validate
-python3 report_generator.py findings/            # Step 5: Report
+python3 tools/hunt.py --target hackerone.com              # Full automated hunt
+./tools/recon_engine.sh target.com                         # Step 1: Recon
+python3 tools/learn.py --tech "nextjs,graphql,jwt"         # Step 2: Intel
+python3 tools/intel_engine.py --target target.com --tech nextjs  # Step 2b: Memory-aware intel
+python3 tools/hunt.py --target target.com --scan-only      # Step 3: Scan
+python3 tools/validate.py                                  # Step 4: Validate
+python3 tools/report_generator.py findings/                # Step 5: Report
 ```
 
 ---
@@ -166,7 +157,7 @@ Each stage feeds the next. Claude orchestrates the entire flow, or you can run a
 
 ## Commands
 
-8 slash commands covering the full hunting workflow.
+13 slash commands covering the full hunting workflow.
 
 | Command | What It Does |
 |:---|:---|
@@ -178,12 +169,17 @@ Each stage feeds the next. Claude orchestrates the entire flow, or you can run a
 | `/scope <asset>` | Verify an asset is in scope, owned by target org, not third-party |
 | `/triage` | Quick 7-Question Gate — go/no-go in 2 minutes before spending time validating |
 | `/web3-audit <contract>` | Smart contract audit — 10-class checklist, grep patterns, Foundry PoC template |
+| `/autopilot target.com` | Autonomous hunt loop — scope, recon, rank, hunt, validate, report with checkpoints |
+| `/surface target.com` | Ranked attack surface from recon output + hunt memory |
+| `/resume target.com` | Pick up a previous hunt — shows untested endpoints, memory-informed suggestions |
+| `/remember` | Log current finding or pattern to persistent hunt memory |
+| `/intel target.com` | On-demand intel — CVEs, disclosed reports, cross-referenced with hunt memory |
 
 ---
 
 ## Agents
 
-5 specialized agents, each with a specific role and appropriate model.
+7 specialized agents, each with a specific role and appropriate model.
 
 | Agent | Role | Model |
 |:---|:---|:---|
@@ -192,48 +188,70 @@ Each stage feeds the next. Claude orchestrates the entire flow, or you can run a
 | `validator` | Applies 7-Question Gate + 4 gates — outputs PASS/KILL/DOWNGRADE/CHAIN REQUIRED | claude-sonnet-4-6 |
 | `web3-auditor` | Checks 10 bug class checklist on Solidity contracts, generates Foundry PoC stubs | claude-sonnet-4-6 |
 | `chain-builder` | Given bug A, finds B/C — knows all major chain patterns, applies 20-min time-box | claude-sonnet-4-6 |
+| `autopilot` | Autonomous 7-step hunt loop with scope safety, rate limiting, circuit breaker | claude-sonnet-4-6 |
+| `recon-ranker` | Attack surface ranking from recon output + hunt memory + pattern DB | claude-haiku-4-5 (fast) |
 
 ---
 
 ## Tool Reference
 
+All tools are in the `tools/` directory.
+
 ### Core Pipeline
 
 | Tool | Role |
 |:---|:---|
-| `hunt.py` | Master orchestrator — chains recon, scan, and report stages |
-| `recon_engine.sh` | Subdomain enum, DNS resolution, live host detection, URL crawling |
-| `learn.py` | Pulls CVEs and disclosed reports for detected tech stacks |
-| `mindmap.py` | Generates prioritized attack mindmap with test checklist |
-| `validate.py` | 4-gate validation — scope, impact, duplicate check, CVSS scoring |
-| `report_generator.py` | Outputs formatted HackerOne/Bugcrowd/Intigriti reports |
+| `tools/hunt.py` | Master orchestrator — chains recon, scan, and report stages |
+| `tools/recon_engine.sh` | Subdomain enum, DNS resolution, live host detection, URL crawling |
+| `tools/learn.py` | Pulls CVEs and disclosed reports for detected tech stacks |
+| `tools/intel_engine.py` | On-demand intel with memory context — wraps learn.py + HackerOne MCP |
+| `tools/mindmap.py` | Generates prioritized attack mindmap with test checklist |
+| `tools/validate.py` | 4-gate validation — scope, impact, duplicate check, CVSS scoring |
+| `tools/report_generator.py` | Outputs formatted HackerOne/Bugcrowd/Intigriti reports |
+| `tools/scope_checker.py` | Deterministic scope safety — anchored suffix matching, not LLM judgment |
 
 ### Vulnerability Scanners
 
 | Tool | What It Hunts |
 |:---|:---|
-| `h1_idor_scanner.py` | Object-level and field-level IDOR via parameter swapping |
-| `h1_mutation_idor.py` | GraphQL mutation IDOR — cross-account object access |
-| `h1_oauth_tester.py` | OAuth misconfigs — PKCE, state bypass, redirect_uri abuse |
-| `h1_race.py` | Race conditions — parallel timing, TOCTOU, limit overrun |
-| `zero_day_fuzzer.py` | Smart fuzzer for logic bugs, edge cases, access control |
-| `cve_hunter.py` | Tech stack fingerprinting matched against known CVEs |
-| `vuln_scanner.sh` | Orchestrates nuclei + dalfox + sqlmap |
+| `tools/h1_idor_scanner.py` | Object-level and field-level IDOR via parameter swapping |
+| `tools/h1_mutation_idor.py` | GraphQL mutation IDOR — cross-account object access |
+| `tools/h1_oauth_tester.py` | OAuth misconfigs — PKCE, state bypass, redirect_uri abuse |
+| `tools/h1_race.py` | Race conditions — parallel timing, TOCTOU, limit overrun |
+| `tools/zero_day_fuzzer.py` | Smart fuzzer for logic bugs, edge cases, access control |
+| `tools/cve_hunter.py` | Tech stack fingerprinting matched against known CVEs |
+| `tools/vuln_scanner.sh` | Orchestrates nuclei + dalfox + sqlmap |
 
 ### AI / LLM Security
 
 | Tool | What It Hunts |
 |:---|:---|
-| `hai_probe.py` | AI chatbot IDOR, prompt injection, data exfiltration |
-| `hai_payload_builder.py` | Prompt injection payloads — direct, indirect, ASCII smuggling |
-| `hai_browser_recon.js` | Browser-side recon of AI feature endpoints |
+| `tools/hai_probe.py` | AI chatbot IDOR, prompt injection, data exfiltration |
+| `tools/hai_payload_builder.py` | Prompt injection payloads — direct, indirect, ASCII smuggling |
+| `tools/hai_browser_recon.js` | Browser-side recon of AI feature endpoints |
+
+### MCP Integrations
+
+| Server | What It Provides |
+|:---|:---|
+| `mcp/burp-mcp-client/` | Burp Suite proxy integration — read traffic, replay requests, Collaborator |
+| `mcp/hackerone-mcp/` | HackerOne public API — disclosed reports, program stats, scope/policy |
+
+### Hunt Memory System
+
+| Module | Role |
+|:---|:---|
+| `memory/hunt_journal.py` | Append-only hunt log (JSONL) with concurrent-safe writes |
+| `memory/pattern_db.py` | Cross-target pattern learning — what worked on A informs B |
+| `memory/audit_log.py` | Request audit log, per-host rate limiter, circuit breaker |
+| `memory/schemas.py` | Schema validation for all JSONL entry types |
 
 ### Utilities
 
 | Tool | Role |
 |:---|:---|
-| `sneaky_bits.py` | JS secret finder and endpoint extractor from bundles |
-| `target_selector.py` | Scores and ranks bug bounty programs by ROI |
+| `tools/sneaky_bits.py` | JS secret finder and endpoint extractor from bundles |
+| `tools/target_selector.py` | Scores and ranks bug bounty programs by ROI |
 | `scripts/dork_runner.py` | Google dork automation for passive recon |
 | `scripts/full_hunt.sh` | Shell wrapper for the complete pipeline |
 
@@ -357,74 +375,104 @@ This installs 18+ tools: `subfinder`, `httpx`, `dnsx`, `nuclei`, `katana`, `wayb
 
 ```
 claude-bug-bounty/
-├── CLAUDE.md                   # Plugin guide — quick-start, commands, structure
-├── README.md                   # This file
-├── CHANGELOG.md                # Version history
-├── install.sh                  # One-command skill installer
+├── CLAUDE.md                        # Plugin guide
+├── README.md                        # This file
+├── CHANGELOG.md                     # Version history
+├── TODOS.md                         # Deferred work items
+├── install.sh                       # One-command skill installer
 │
-├── skills/                     # 7 skill domains
-│   ├── bug-bounty/SKILL.md     # Master workflow (1,200+ lines)
-│   ├── web2-recon/SKILL.md     # Recon pipeline
-│   ├── web2-vuln-classes/SKILL.md  # 18 bug classes + bypass tables
-│   ├── security-arsenal/SKILL.md   # Payloads + submission rules
-│   ├── web3-audit/SKILL.md     # 10 DeFi bug classes + Foundry
-│   ├── report-writing/SKILL.md # Report templates + CVSS
-│   └── triage-validation/SKILL.md  # 7-Question Gate + 4 gates
+├── skills/                          # 7 skill domains
+│   ├── bug-bounty/SKILL.md          # Master workflow (1,200+ lines)
+│   ├── web2-recon/SKILL.md          # Recon pipeline
+│   ├── web2-vuln-classes/SKILL.md   # 20 bug classes + bypass tables
+│   ├── security-arsenal/SKILL.md    # Payloads + submission rules
+│   ├── web3-audit/SKILL.md          # 10 DeFi bug classes + Foundry
+│   ├── report-writing/SKILL.md      # Report templates + CVSS
+│   └── triage-validation/SKILL.md   # 7-Question Gate + 4 gates
 │
-├── commands/                   # 8 slash commands
-│   ├── recon.md                # /recon target.com
-│   ├── hunt.md                 # /hunt target.com
-│   ├── validate.md             # /validate
-│   ├── report.md               # /report
-│   ├── chain.md                # /chain
-│   ├── scope.md                # /scope <asset>
-│   ├── triage.md               # /triage
-│   └── web3-audit.md           # /web3-audit <contract>
+├── commands/                        # 13 slash commands
+│   ├── recon.md                     # /recon target.com
+│   ├── hunt.md                      # /hunt target.com
+│   ├── validate.md                  # /validate
+│   ├── report.md                    # /report
+│   ├── chain.md                     # /chain
+│   ├── scope.md                     # /scope <asset>
+│   ├── triage.md                    # /triage
+│   ├── web3-audit.md                # /web3-audit <contract>
+│   ├── autopilot.md                 # /autopilot target.com
+│   ├── surface.md                   # /surface target.com
+│   ├── resume.md                    # /resume target.com
+│   ├── remember.md                  # /remember
+│   └── intel.md                     # /intel target.com
 │
-├── agents/                     # 5 specialized agents
-│   ├── recon-agent.md          # Runs recon pipeline (haiku)
-│   ├── report-writer.md        # Generates reports (opus)
-│   ├── validator.md            # Validates findings (sonnet)
-│   ├── web3-auditor.md         # Audits contracts (sonnet)
-│   └── chain-builder.md        # Builds exploit chains (sonnet)
+├── agents/                          # 7 specialized agents
+│   ├── recon-agent.md               # Recon pipeline (haiku)
+│   ├── report-writer.md             # Report generation (opus)
+│   ├── validator.md                 # Finding validation (sonnet)
+│   ├── web3-auditor.md              # Contract audit (sonnet)
+│   ├── chain-builder.md             # Exploit chains (sonnet)
+│   ├── autopilot.md                 # Autonomous hunt loop (sonnet)
+│   └── recon-ranker.md              # Surface ranking (haiku)
 │
-├── hooks/hooks.json            # Session start/stop hooks
+├── tools/                           # All Python/shell tools
+│   ├── hunt.py                      # Master orchestrator
+│   ├── recon_engine.sh              # Subdomain + URL discovery
+│   ├── learn.py                     # CVE + disclosure intel
+│   ├── intel_engine.py              # Memory-aware intel wrapper
+│   ├── mindmap.py                   # Attack surface mapper
+│   ├── validate.py                  # 4-gate validator
+│   ├── report_generator.py          # Report writer
+│   ├── scope_checker.py             # Deterministic scope checker
+│   ├── h1_idor_scanner.py           # IDOR scanner
+│   ├── h1_mutation_idor.py          # GraphQL IDOR
+│   ├── h1_oauth_tester.py           # OAuth tester
+│   ├── h1_race.py                   # Race condition tester
+│   ├── zero_day_fuzzer.py           # Smart fuzzer
+│   ├── cve_hunter.py                # CVE matcher
+│   ├── vuln_scanner.sh              # Nuclei/Dalfox/SQLMap
+│   ├── hai_probe.py                 # AI chatbot tester
+│   ├── hai_payload_builder.py       # Prompt injection generator
+│   ├── hai_browser_recon.js         # Browser AI recon
+│   ├── sneaky_bits.py               # JS secret finder
+│   └── target_selector.py           # Program ROI scorer
 │
-├── rules/                      # Always-active rules
-│   ├── hunting.md              # 17 hunting rules
-│   └── reporting.md            # 12 report quality rules
+├── memory/                          # Persistent hunt memory system
+│   ├── __init__.py                  # Package exports
+│   ├── schemas.py                   # Schema validation
+│   ├── hunt_journal.py              # Append-only hunt log
+│   ├── pattern_db.py                # Cross-target patterns
+│   └── audit_log.py                 # Audit log + rate limiter + circuit breaker
 │
-├── SKILL.md                    # Original monolithic skill (preserved)
-├── hunt.py                     # Master orchestrator
-├── recon_engine.sh             # Subdomain + URL discovery
-├── learn.py                    # CVE + disclosure intel
-├── mindmap.py                  # Attack surface mapper
-├── validate.py                 # 4-gate validator
-├── report_generator.py         # Report writer
-├── h1_idor_scanner.py          # IDOR scanner
-├── h1_mutation_idor.py         # GraphQL IDOR
-├── h1_oauth_tester.py          # OAuth tester
-├── h1_race.py                  # Race condition tester
-├── zero_day_fuzzer.py          # Smart fuzzer
-├── cve_hunter.py               # CVE matcher
-├── vuln_scanner.sh             # Nuclei/Dalfox/SQLMap wrapper
-├── hai_probe.py                # AI chatbot tester
-├── hai_payload_builder.py      # Prompt injection generator
-├── hai_browser_recon.js        # Browser AI recon
-├── sneaky_bits.py              # JS secret finder
-├── target_selector.py          # Program ROI scorer
-├── docs/
-│   ├── payloads.md             # Complete payload arsenal
-│   ├── advanced-techniques.md  # A→B chaining, mobile, CI/CD
-│   └── smart-contract-audit.md # Web3 audit guide
-├── web3/                       # Smart contract skill chain (10 files)
-├── scripts/
-│   ├── dork_runner.py          # Google dork automation
-│   └── full_hunt.sh            # Full pipeline wrapper
-├── wordlists/                  # 5 wordlists
-├── recon/                      # Recon output (per target)
-├── findings/                   # Validated findings
-└── reports/                    # Submission-ready reports
+├── mcp/                             # MCP server integrations
+│   ├── burp-mcp-client/             # Burp Suite proxy
+│   │   ├── config.json              # Connection config template
+│   │   └── README.md                # Setup guide
+│   └── hackerone-mcp/               # HackerOne public API
+│       ├── server.py                # MCP server (3 tools)
+│       └── config.json              # Connection config
+│
+├── tests/                           # 129 tests
+│   ├── conftest.py                  # Shared fixtures
+│   ├── test_schemas.py              # Schema validation (22 tests)
+│   ├── test_hunt_journal.py         # Journal + concurrency (18 tests)
+│   ├── test_pattern_db.py           # Pattern matching (13 tests)
+│   ├── test_scope_checker.py        # Scope safety (22 tests)
+│   ├── test_audit_log.py            # Audit + rate + circuit (22 tests)
+│   ├── test_hackerone_mcp.py        # API contract (5 tests)
+│   ├── test_hackerone_server.py     # MCP server (13 tests)
+│   └── test_intel_engine.py         # Intel prioritization (14 tests)
+│
+├── hooks/hooks.json                 # Session start/stop hooks
+├── rules/                           # Always-active rules
+│   ├── hunting.md                   # 17 hunting rules
+│   └── reporting.md                 # 12 report quality rules
+├── docs/                            # Documentation
+├── web3/                            # Smart contract skill chain
+├── scripts/                         # Shell wrappers
+├── wordlists/                       # 5 wordlists
+├── recon/                           # Recon output (per target)
+├── findings/                        # Validated findings
+└── reports/                         # Submission-ready reports
 ```
 
 ---

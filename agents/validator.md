@@ -101,6 +101,20 @@ Kill immediately if:
 - More than 2 preconditions simultaneously required → KILL Q1
 - "API returns extra fields" → if not sensitive = not a bug → KILL Q2
 
+## Burp MCP Integration (optional — only if Burp MCP is connected)
+
+If the `burp` MCP server is available:
+
+1. At Gate 0, call `burp.get_proxy_history` filtered by the finding's endpoint
+2. Pull the exact request/response from proxy history — no need to ask the researcher to paste it
+3. Replay the request through Burp to confirm it's still reproducible right now
+4. If the finding involves OOB (SSRF, blind injection), check Collaborator for callbacks
+5. Cross-reference the endpoint's response headers/cookies with known vulnerable patterns
+
+If Burp MCP is NOT available:
+- Ask the researcher to paste the HTTP request/response manually
+- Skip Collaborator checks — suggest webhook.site or Interactsh instead
+
 ## Output Format
 
 ```

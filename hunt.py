@@ -22,7 +22,7 @@ import subprocess
 import sys
 from datetime import datetime
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TOOLS_DIR = os.path.join(BASE_DIR, "tools")
 TARGETS_DIR = os.path.join(BASE_DIR, "targets")
 RECON_DIR = os.path.join(BASE_DIR, "recon")

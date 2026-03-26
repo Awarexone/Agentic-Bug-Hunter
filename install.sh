@@ -31,6 +31,30 @@ echo ""
 echo "Done! Skills installed to ${INSTALL_DIR}"
 echo "Commands installed to ${COMMANDS_DIR}"
 echo ""
+
+# Offer Burp MCP setup
+echo "─────────────────────────────────────────────"
+echo "Optional: Burp Suite MCP Integration"
+echo "─────────────────────────────────────────────"
+echo ""
+echo "Connect to PortSwigger's Burp MCP server for live HTTP traffic visibility."
+echo "See mcp/burp-mcp-client/README.md for setup instructions."
+echo ""
+read -p "Set up Burp MCP now? (y/N): " setup_burp
+if [[ "$setup_burp" =~ ^[Yy]$ ]]; then
+    echo ""
+    echo "To connect Burp MCP, add this to your Claude Code settings:"
+    echo ""
+    echo "  claude config edit"
+    echo ""
+    echo "Then add to the mcpServers section:"
+    cat mcp/burp-mcp-client/config.json | grep -A 10 '"burp"'
+    echo ""
+    echo "And set your Burp API key:"
+    echo "  export BURP_API_KEY=\"your-api-key-here\""
+    echo ""
+fi
+
 echo "Start hunting:"
 echo "  claude"
 echo "  /recon target.com"

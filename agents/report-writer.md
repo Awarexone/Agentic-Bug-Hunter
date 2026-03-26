@@ -153,6 +153,20 @@ Attack is [repeatable / one-time]. Fix cost: [simple one-line change].
 [Specific code change with before/after]
 ```
 
+## Burp MCP Integration (optional — only if Burp MCP is connected)
+
+If the `burp` MCP server is available:
+
+1. Pull the exact HTTP request/response from `burp.get_proxy_history` for the finding
+2. Auto-populate the "Steps to Reproduce" with real requests from proxy history
+3. Extract response headers, cookies, and body for the PoC section
+4. If multiple related requests exist, include the full attack flow sequence
+5. Use Burp's Scanner findings to add context about other issues on the same endpoint
+
+If Burp MCP is NOT available:
+- Ask the researcher to paste the exact HTTP request and response
+- Note in the report template: "[PASTE ACTUAL REQUEST HERE]"
+
 ## Escalation Language
 
 If payout is being downgraded, include:

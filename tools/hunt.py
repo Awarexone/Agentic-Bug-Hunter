@@ -22,13 +22,13 @@ import subprocess
 import sys
 from datetime import datetime
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TOOLS_DIR = os.path.join(BASE_DIR, "tools")
+TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(TOOLS_DIR)
 TARGETS_DIR = os.path.join(BASE_DIR, "targets")
 RECON_DIR = os.path.join(BASE_DIR, "recon")
 FINDINGS_DIR = os.path.join(BASE_DIR, "findings")
 REPORTS_DIR = os.path.join(BASE_DIR, "reports")
-WORDLIST_DIR = os.path.join(TOOLS_DIR, "wordlists")
+WORDLIST_DIR = os.path.join(BASE_DIR, "wordlists")
 
 # Colors
 GREEN = "\033[0;32m"

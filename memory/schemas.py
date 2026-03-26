@@ -25,9 +25,15 @@ TARGET_OPTIONAL = {
 }
 TARGET_ALL = TARGET_REQUIRED | TARGET_OPTIONAL
 
+AUDIT_REQUIRED = {"ts", "url", "method", "scope_check", "schema_version"}
+AUDIT_OPTIONAL = {"response_status", "finding_id", "session_id", "error"}
+AUDIT_ALL = AUDIT_REQUIRED | AUDIT_OPTIONAL
+
 VALID_RESULTS = {"confirmed", "rejected", "partial", "informational"}
 VALID_SEVERITIES = {"critical", "high", "medium", "low", "informational", "none"}
 VALID_ACTIONS = {"hunt", "recon", "validate", "report", "remember", "resume", "intel"}
+VALID_METHODS = {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"}
+VALID_SCOPE_CHECKS = {"pass", "fail", "skip"}
 
 
 class SchemaError(Exception):
@@ -212,3 +218,62 @@ def make_pattern_entry(
         entry["tags"] = tags
 
     return validate_pattern_entry(entry)
+
+
+def validate_audit_entry(entry: dict) -> dict:
+    """Validate an audit log entry. Returns the entry if valid, raises SchemaError if not."""
+    if not isinstance(entry, dict):
+        raise SchemaError(f"Audit entry must be a dict, got {type(entry).__name__}")
+
+    _check_required(entry, AUDIT_REQUIRED, "Audit entry")
+    _check_unknown_fields(entry, AUDIT_ALL, "Audit entry")
+    _check_schema_version(entry)
+    _check_timestamp(entry["ts"], "ts")
+
+    if not isinstance(entry["url"], str) or not entry["url"].strip():
+        raise SchemaError("Audit entry: 'url' must be a non-empty string")
+
+    if entry["method"] not in VALID_METHODS:
+        raise SchemaError(
+            f"Audit entry: 'method' must be one of {sorted(VALID_METHODS)}, got {entry['method']!r}"
+        )
+
+    if entry["scope_check"] not in VALID_SCOPE_CHECKS:
+        raise SchemaError(
+            f"Audit entry: 'scope_check' must be one of {sorted(VALID_SCOPE_CHECKS)}, got {entry['scope_check']!r}"
+        )
+
+    if "response_status" in entry:
+        if not isinstance(entry["response_status"], int):
+            raise SchemaError("Audit entry: 'response_status' must be an integer")
+
+    return entry
+
+
+def make_audit_entry(
+    url: str,
+    method: str,
+    scope_check: str,
+    response_status: int | None = None,
+    finding_id: str | None = None,
+    session_id: str | None = None,
+    error: str | None = None,
+) -> dict:
+    """Create and validate a new audit log entry with current timestamp."""
+    entry = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "url": url,
+        "method": method,
+        "scope_check": scope_check,
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+    if response_status is not None:
+        entry["response_status"] = response_status
+    if finding_id is not None:
+        entry["finding_id"] = finding_id
+    if session_id is not None:
+        entry["session_id"] = session_id
+    if error is not None:
+        entry["error"] = error
+
+    return validate_audit_entry(entry)

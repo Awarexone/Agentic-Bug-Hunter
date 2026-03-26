@@ -16,7 +16,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `skills/report-writing/` | H1/Bugcrowd/Intigriti/Immunefi report templates, CVSS 3.1, human tone |
 | `skills/triage-validation/` | 7-Question Gate, 4 gates, never-submit list, conditionally valid table |
 
-### Commands (8 slash commands)
+### Commands (13 slash commands)
 
 | Command | Usage |
 |---|---|
@@ -28,28 +28,48 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `/scope` | `/scope <asset>` — verify asset is in scope |
 | `/triage` | `/triage` — quick 7-Question Gate |
 | `/web3-audit` | `/web3-audit <contract.sol>` — smart contract audit |
+| `/autopilot` | `/autopilot target.com --normal` — autonomous hunt loop |
+| `/surface` | `/surface target.com` — ranked attack surface |
+| `/resume` | `/resume target.com` — pick up previous hunt |
+| `/remember` | `/remember` — log finding to hunt memory |
+| `/intel` | `/intel target.com` — fetch CVE + disclosure intel |
 
-### Agents (5 specialized agents)
+### Agents (7 specialized agents)
 
 - `recon-agent` — subdomain enum + live host discovery
 - `report-writer` — generates H1/Bugcrowd/Immunefi reports
 - `validator` — 4-gate checklist on a finding
 - `web3-auditor` — smart contract bug class analysis
 - `chain-builder` — builds A→B→C exploit chains
+- `autopilot` — autonomous hunt loop (scope→recon→rank→hunt→validate→report)
+- `recon-ranker` — attack surface ranking from recon output + memory
 
 ### Rules (always active)
 
 - `rules/hunting.md` — 17 critical hunting rules
 - `rules/reporting.md` — report quality rules
 
-### Tools (Python/shell — run directly)
+### Tools (Python/shell — in `tools/`)
 
-Located in repo root:
-- `hunt.py` — master orchestrator
-- `recon_engine.sh` — subdomain + URL discovery
-- `validate.py` — 4-gate finding validator
-- `report_generator.py` — report writer
-- `learn.py` — CVE + disclosure intel
+- `tools/hunt.py` — master orchestrator
+- `tools/recon_engine.sh` — subdomain + URL discovery
+- `tools/validate.py` — 4-gate finding validator
+- `tools/report_generator.py` — report writer
+- `tools/learn.py` — CVE + disclosure intel
+- `tools/intel_engine.py` — on-demand intel with memory context
+- `tools/scope_checker.py` — deterministic scope safety checker
+
+### MCP Integrations (in `mcp/`)
+
+- `mcp/burp-mcp-client/` — Burp Suite proxy integration
+- `mcp/hackerone-mcp/` — HackerOne public API (Hacktivity, program stats, policy)
+
+### Hunt Memory (in `memory/`)
+
+- `memory/hunt_journal.py` — append-only hunt log (JSONL)
+- `memory/pattern_db.py` — cross-target pattern learning
+- `memory/audit_log.py` — request audit log, rate limiter, circuit breaker
+- `memory/schemas.py` — schema validation for all data
 
 ## Start Here
 

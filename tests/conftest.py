@@ -2,7 +2,11 @@
 
 import json
 import os
+import sys
 import pytest
+
+# Add tools/ to path so tests can import scope_checker, intel_engine, etc.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 
 from memory.schemas import CURRENT_SCHEMA_VERSION
 

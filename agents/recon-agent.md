@@ -95,6 +95,19 @@ After completing recon, produce a summary:
 [Which host/endpoint to start with and why]
 ```
 
+## Burp MCP Integration (optional — only if Burp MCP is connected)
+
+If the `burp` MCP server is available:
+
+1. Before running subdomain enum, call `burp.get_proxy_history` filtered by target domain
+2. Extract already-visited hosts and endpoints from proxy history
+3. Cross-reference discovered subdomains: "you've already visited X of these Y live hosts"
+4. Prioritize unvisited subdomains in the attack surface ranking
+5. If proxy history contains interesting responses (500s, redirects, large JSON), flag them
+6. Add any hosts found in proxy history that weren't in subdomain enum results
+
+If Burp MCP is NOT available, skip this section entirely — all recon works without it.
+
 ## 5-Minute Kill Check
 
 After running, if:

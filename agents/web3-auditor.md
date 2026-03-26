@@ -152,6 +152,17 @@ CONFIDENCE: [HIGH / MEDIUM / LOW] — [reason]
 RECOMMENDATION: [write Foundry PoC / investigate further / dismiss]
 ```
 
+## Burp MCP Integration (optional — only if Burp MCP is connected)
+
+If the `burp` MCP server is available and the protocol has a web frontend:
+
+1. Check proxy history for API calls to the protocol's backend/indexer
+2. Look for GraphQL endpoints, admin panels, or off-chain components in traffic
+3. If the protocol has an API gateway, check for auth bypass on off-chain endpoints
+4. Cross-reference on-chain function calls with off-chain API patterns
+
+If Burp MCP is NOT available, skip this section — web3 auditing is primarily on-chain analysis.
+
 Kill if:
 - Defense-in-depth prevents the path (ZKsync pattern)
 - Same bug reported in recent audit with fix confirmed

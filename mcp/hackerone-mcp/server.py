@@ -116,7 +116,7 @@ def search_disclosed_reports(
     where = ", ".join(where_clauses)
 
     query = f"""{{
-      hacktivity_items(
+      hacktivity(
         first: {limit},
         order_by: {{ field: popular, direction: DESC }},
         where: {{ {where} }}
@@ -140,7 +140,7 @@ def search_disclosed_reports(
     }}"""
 
     data = _graphql_request(query)
-    nodes = (data.get("data") or {}).get("hacktivity_items", {}).get("nodes", [])
+    nodes = (data.get("data") or {}).get("hacktivity", {}).get("nodes", [])
 
     results = []
     for node in nodes:
@@ -179,11 +179,10 @@ def get_program_stats(program: str) -> dict:
         handle
         url
         offers_bounties
-        default_currency
         base_bounty
+        average_bounty_lower_amount
+        average_bounty_upper_amount
         resolved_report_count
-        average_time_to_bounty_awarded
-        average_time_to_first_program_response
         launched_at
         state
       }}
@@ -199,11 +198,10 @@ def get_program_stats(program: str) -> dict:
         "name": team.get("name", ""),
         "url": team.get("url", ""),
         "offers_bounties": team.get("offers_bounties", False),
-        "currency": team.get("default_currency", "USD"),
         "base_bounty": team.get("base_bounty"),
+        "avg_bounty_lower": team.get("average_bounty_lower_amount"),
+        "avg_bounty_upper": team.get("average_bounty_upper_amount"),
         "resolved_reports": team.get("resolved_report_count"),
-        "avg_days_to_bounty": team.get("average_time_to_bounty_awarded"),
-        "avg_days_to_first_response": team.get("average_time_to_first_program_response"),
         "launched_at": (team.get("launched_at") or "")[:10],
         "state": team.get("state", ""),
     }

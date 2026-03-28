@@ -19,6 +19,8 @@ MCP integration:
     Add to .claude/settings.json mcpServers — see config.json.
 """
 
+from __future__ import annotations
+
 import json
 import ssl
 import sys
@@ -262,15 +264,129 @@ def get_program_policy(program: str) -> dict:
     }
 
 
+# ─── MCP Server (JSON-RPC 2.0 over stdio) ────────────────────────────────────
+
+_MCP_TOOLS = [
+    {
+        "name": "search_disclosed_reports",
+        "description": "Search HackerOne Hacktivity for publicly disclosed bug bounty reports by keyword and/or program.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "keyword": {"type": "string",  "description": "Search term (vuln type, tech, CVE, etc.)"},
+                "program": {"type": "string",  "description": "HackerOne program handle (e.g. 'shopify')"},
+                "limit":   {"type": "integer", "description": "Max results (1-25, default 10)"},
+            },
+        },
+    },
+    {
+        "name": "get_program_stats",
+        "description": "Get public statistics for a HackerOne program: bounty ranges, response times, resolved report count.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["program"],
+            "properties": {
+                "program": {"type": "string", "description": "HackerOne program handle (e.g. 'shopify')"},
+            },
+        },
+    },
+    {
+        "name": "get_program_policy",
+        "description": "Get the public policy for a HackerOne program: safe harbor, scope, excluded vuln classes.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["program"],
+            "properties": {
+                "program": {"type": "string", "description": "HackerOne program handle (e.g. 'shopify')"},
+            },
+        },
+    },
+]
+
+
+def _dispatch(name: str, args: dict):
+    if name == "search_disclosed_reports":
+        return search_disclosed_reports(
+            keyword=args.get("keyword", ""),
+            program=args.get("program", ""),
+            limit=args.get("limit", 10),
+        )
+    elif name == "get_program_stats":
+        return get_program_stats(args["program"])
+    elif name == "get_program_policy":
+        return get_program_policy(args["program"])
+    else:
+        raise ValueError(f"Unknown tool: {name}")
+
+
+def mcp_server():
+    for raw in sys.stdin:
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            msg = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+
+        msg_id = msg.get("id")
+        method = msg.get("method", "")
+
+        if method.startswith("notifications/"):
+            continue
+
+        if method == "initialize":
+            response = {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "hackerone-mcp", "version": "1.0.0"},
+                },
+            }
+        elif method == "tools/list":
+            response = {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {"tools": _MCP_TOOLS},
+            }
+        elif method == "tools/call":
+            params = msg.get("params", {})
+            tool_name = params.get("name", "")
+            tool_args = params.get("arguments", {})
+            try:
+                result = _dispatch(tool_name, tool_args)
+                response = {
+                    "jsonrpc": "2.0",
+                    "id": msg_id,
+                    "result": {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]},
+                }
+            except Exception as e:
+                response = {
+                    "jsonrpc": "2.0",
+                    "id": msg_id,
+                    "result": {
+                        "content": [{"type": "text", "text": f"Error: {e}"}],
+                        "isError": True,
+                    },
+                }
+        else:
+            response = {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "error": {"code": -32601, "message": f"Method not found: {method}"},
+            }
+
+        print(json.dumps(response), flush=True)
+
+
 # ─── CLI interface ───────────────────────────────────────────────────────────
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage:")
-        print("  python3 server.py search <keyword> [--program <handle>] [--limit N]")
-        print("  python3 server.py stats <program>")
-        print("  python3 server.py policy <program>")
-        sys.exit(1)
+        mcp_server()
+        return
 
     cmd = sys.argv[1]
 

@@ -6,6 +6,9 @@ config.json
 *.burp
 *.json.bak
 
+# Claude local settings (contains API keys)
+.claude/settings.local.json
+
 # API keys and tokens
 .env
 secrets.txt

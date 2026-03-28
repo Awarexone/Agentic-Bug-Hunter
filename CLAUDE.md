@@ -61,6 +61,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 
 ### MCP Integrations (in `mcp/`)
 
+- `mcp/caido-mcp/` — Caido proxy integration (history, search, PoC export)
 - `mcp/burp-mcp-client/` — Burp Suite proxy integration
 - `mcp/hackerone-mcp/` — HackerOne public API (Hacktivity, program stats, policy)
 

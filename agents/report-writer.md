@@ -165,7 +165,11 @@ Attack is [repeatable / one-time]. Fix cost: [simple one-line change].
 [Specific code change with before/after]
 ```
 
-## Burp MCP Integration (optional — only if Burp MCP is connected)
+## Proxy MCP Integration (optional — use whichever proxy you run)
+
+Check which MCP server is connected and use the matching tool. Both provide equivalent coverage.
+
+### Burp MCP
 
 If the `burp` MCP server is available:
 
@@ -175,7 +179,22 @@ If the `burp` MCP server is available:
 4. If multiple related requests exist, include the full attack flow sequence
 5. Use Burp's Scanner findings to add context about other issues on the same endpoint
 
-If Burp MCP is NOT available:
+### Caido MCP
+
+If the `caido` MCP server is available:
+
+1. Use `caido.get_proxy_history` filtered by the target host to find the relevant request
+2. Call `caido.export_for_report` with the request ID — it returns a formatted HTTP block ready to paste
+3. If multiple requests form an attack chain, export each step separately and sequence them
+4. Use `caido.search_requests` to find related traffic (e.g. all POSTs to `/api/v1/user`)
+
+```
+caido.get_proxy_history(host="example.com", method="POST", limit=20)
+caido.export_for_report(id="<id from above>")
+```
+
+### No proxy MCP
+
 - Ask the researcher to paste the exact HTTP request and response
 - Note in the report template: "[PASTE ACTUAL REQUEST HERE]"
 

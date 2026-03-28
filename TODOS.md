@@ -22,6 +22,13 @@ Items deferred from the MCP-First Bionic Hunter design review (2026-03-24).
 
 ---
 
+## ~~TODO-2: Safe HTTP method policy for autopilot --yolo mode~~ ✅ RESOLVED
+
+**Resolved in:** `agents/autopilot.md` Safety Rails section
+> PUT/DELETE/PATCH require human approval in --yolo mode (safe_methods_only enforced).
+
+---
+
 ## TODO-2: Safe HTTP method policy for autopilot --yolo mode
 
 **What:** `/autopilot --yolo` could send PUT/DELETE/PATCH to production endpoints. Even if the target is in-scope, destructive HTTP methods on production data create legal liability and could harm the target.
@@ -37,6 +44,13 @@ Items deferred from the MCP-First Bionic Hunter design review (2026-03-24).
 **Depends on:** Phase 3 (autopilot) implementation.
 
 **Source:** Outside voice (eng review, 2026-03-24)
+
+---
+
+## ~~TODO-3: Circuit breaker for autopilot loop~~ ✅ RESOLVED
+
+**Resolved in:** `agents/autopilot.md` Circuit Breaker section
+> 5 consecutive 403/429/timeout → paranoid/normal modes ask human; yolo auto-backs off 60s then skips host.
 
 ---
 
@@ -58,6 +72,13 @@ Items deferred from the MCP-First Bionic Hunter design review (2026-03-24).
 
 ---
 
+## ~~TODO-4: Fix hunt.py BASE_DIR path resolution~~ ✅ RESOLVED
+
+**Resolved in:** `tools/hunt.py` lines 25-26
+> `hunt.py` lives in `tools/`, so `TOOLS_DIR = dirname(abspath(__file__))` and `BASE_DIR = dirname(TOOLS_DIR)` correctly resolves to the repo root. The TODO description assumed the file was at repo root — it is not.
+
+---
+
 ## TODO-4: Fix hunt.py BASE_DIR path resolution
 
 **What:** `hunt.py` line 1 uses `BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))` which goes 2 levels up. But `hunt.py` is at repo root, so `BASE_DIR` points to the parent of the repo — all derived paths (TOOLS_DIR, RECON_DIR, FINDINGS_DIR) resolve to wrong locations.
@@ -73,6 +94,13 @@ Items deferred from the MCP-First Bionic Hunter design review (2026-03-24).
 **Depends on:** Nothing — standalone fix.
 
 **Source:** Outside voice (eng review, 2026-03-24)
+
+---
+
+## ~~TODO-5: Define canonical recon output format + legacy adapter~~ ✅ RESOLVED
+
+**Resolved in:** `tools/recon_adapter.py`
+> `load_recon()` auto-detects nested vs flat format and returns a unified `ReconData` object. `normalize_to_nested()` migrates legacy data. All consumers (recon-ranker, memory) should import from `recon_adapter`, never read files directly.
 
 ---
 

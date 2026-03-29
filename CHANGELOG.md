@@ -1,5 +1,18 @@
 # Changelog
 
+## v3.1.0 — Hunting Methodology Skill (Mar 2026)
+
+### Added — New Skill Domain
+- `skills/bb-methodology/SKILL.md`: **Hunting mindset + 5-phase non-linear workflow** — the "HOW to think" layer that was missing from the toolkit
+  - **Part 1: Mindset** — Define/Select/Execute discipline, 4 thinking domains (critical, multi-perspective, tactical, strategic), developer psychology reverse-engineering, Amateur vs Pro 7-phase comparison, Feature-based vs Vuln-based route selection, anti-patterns
+  - **Part 2: Workflow** — 5-phase non-linear flow (Recon → Map → Find → Prove → Report) with decision trees per phase, input-type → vuln-class routing, Error vs Blind detection cascade, escalation decision trees per vuln class
+  - **Part 3: Navigation & Timing** — "I'm stuck because..." quick reference table, 20-minute rotation clock, tool routing by phase with rationale, session start/end checklists
+
+### Changed
+- `CLAUDE.md`: Skills count 7 → 8, added `bb-methodology` to skill table
+- `README.md`: Updated skill domain count to 8
+- `SKILL.md`: Added cross-reference to `bb-methodology` after CRITICAL RULES section
+
 ## v2.1.0 — 20 Vuln Classes + Payload Expansion (Mar 2026)
 
 ### Config

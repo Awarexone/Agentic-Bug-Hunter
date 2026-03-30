@@ -91,28 +91,41 @@ done
 # sisakulint — GitHub Actions SAST (binary download)
 echo ""
 echo "[*] Installing sisakulint..."
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+case "$ARCH" in
+    x86_64)  ARCH="amd64" ;;
+    aarch64) ARCH="arm64" ;;
+    armv6l)  ARCH="armv6" ;;
+esac
+SISAKULINT_LATEST=$(curl -sI https://github.com/sisaku-security/sisakulint/releases/latest | grep -i '^location:' | grep -oP 'v[\d.]+' || true)
+SISAKULINT_LATEST="${SISAKULINT_LATEST#v}"
+SISAKULINT_CURRENT=""
 if command -v sisakulint &>/dev/null; then
-    log_ok "sisakulint already installed ($(command -v sisakulint))"
-else
-    SISAKULINT_VERSION="0.2.11"
-    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-    ARCH=$(uname -m)
-    case "$ARCH" in
-        x86_64)  ARCH="amd64" ;;
-        aarch64) ARCH="arm64" ;;
-        armv6l)  ARCH="armv6" ;;
-    esac
-    SISAKULINT_URL="https://github.com/sisaku-security/sisakulint/releases/download/v${SISAKULINT_VERSION}/sisakulint_${SISAKULINT_VERSION}_${OS}_${ARCH}.tar.gz"
-    echo "    Downloading sisakulint v${SISAKULINT_VERSION} (${OS}/${ARCH})..."
+    SISAKULINT_CURRENT=$(sisakulint -version 2>&1 | grep -oP '[\d]+\.[\d]+\.[\d]+' || true)
+fi
+if [ -n "$SISAKULINT_CURRENT" ] && [ "$SISAKULINT_CURRENT" = "$SISAKULINT_LATEST" ]; then
+    log_ok "sisakulint v${SISAKULINT_CURRENT} already up to date ($(command -v sisakulint))"
+elif [ -n "$SISAKULINT_LATEST" ]; then
+    [ -n "$SISAKULINT_CURRENT" ] && echo "    Upgrading sisakulint v${SISAKULINT_CURRENT} → v${SISAKULINT_LATEST}..."
+    SISAKULINT_URL="https://github.com/sisaku-security/sisakulint/releases/download/v${SISAKULINT_LATEST}/sisakulint_${SISAKULINT_LATEST}_${OS}_${ARCH}.tar.gz"
+    echo "    Downloading sisakulint v${SISAKULINT_LATEST} (${OS}/${ARCH})..."
     if curl -sL "$SISAKULINT_URL" -o /tmp/sisakulint.tar.gz && \
        tar -xzf /tmp/sisakulint.tar.gz -C /tmp/ && \
        { mv /tmp/sisakulint /usr/local/bin/sisakulint 2>/dev/null || \
          sudo mv /tmp/sisakulint /usr/local/bin/sisakulint; }; then
         rm -f /tmp/sisakulint.tar.gz
-        log_ok "sisakulint v${SISAKULINT_VERSION} installed"
+        log_ok "sisakulint v${SISAKULINT_LATEST} installed"
     else
         rm -f /tmp/sisakulint.tar.gz /tmp/sisakulint
         log_err "sisakulint failed to install. Download manually from:"
+        log_err "  https://github.com/sisaku-security/sisakulint/releases"
+    fi
+else
+    if command -v sisakulint &>/dev/null; then
+        log_warn "Could not fetch latest version — keeping sisakulint v${SISAKULINT_CURRENT}"
+    else
+        log_err "Could not fetch latest sisakulint version. Download manually from:"
         log_err "  https://github.com/sisaku-security/sisakulint/releases"
     fi
 fi

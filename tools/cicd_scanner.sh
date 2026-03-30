@@ -80,11 +80,10 @@ if ! command -v sisakulint &>/dev/null; then
     exit 1
 fi
 
-# Determine output directory
-BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# Determine output directory (default: ./findings/<target>/cicd/ relative to cwd)
 if [ -z "$OUTPUT_DIR" ]; then
     TARGET_SLUG=$(echo "$TARGET" | sed 's|[:/]|_|g')
-    OUTPUT_DIR="$BASE_DIR/findings/$TARGET_SLUG/cicd"
+    OUTPUT_DIR="$(pwd)/findings/$TARGET_SLUG/cicd"
 fi
 mkdir -p "$OUTPUT_DIR"
 
@@ -112,8 +111,10 @@ eval "$CMD" 2>&1 | tee "$SCAN_RESULTS" || true
 echo ""
 
 # Generate summary
-# Finding lines start with the target path (e.g., "owner/repo/.github/workflows/...")
-TOTAL=$(grep -cP '\.github/workflows/[^:]+:\d+:\d+:' "$SCAN_RESULTS" 2>/dev/null || echo "0")
+# Finding lines contain path:line:col: pattern
+TOTAL=$(grep -cP '\.github/workflows/[^:]+:\d+:\d+:' "$SCAN_RESULTS" 2>/dev/null | tail -1 || echo "0")
+TOTAL="${TOTAL##*:}"  # strip filename prefix if grep adds one
+[ -z "$TOTAL" ] && TOTAL=0
 {
     echo "============================================="
     echo "  CI/CD Scan Summary"

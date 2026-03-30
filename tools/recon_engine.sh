@@ -357,7 +357,7 @@ fi
 # ============================================================
 # Phase 8: CI/CD Workflow Scan (auto-detect GitHub org)
 # ============================================================
-log_info "Phase 8: CI/CD ワークフロースキャン"
+log_info "Phase 8: CI/CD Workflow Scan"
 
 GITHUB_ORGS=""
 CICD_SCANNER="$(dirname "$0")/cicd_scanner.sh"

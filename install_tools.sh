@@ -88,6 +88,35 @@ for i in "${!GO_TOOLS[@]}"; do
     fi
 done
 
+# sisakulint — GitHub Actions SAST (binary download)
+echo ""
+echo "[*] Installing sisakulint..."
+if command -v sisakulint &>/dev/null; then
+    log_ok "sisakulint already installed ($(command -v sisakulint))"
+else
+    SISAKULINT_VERSION="0.2.11"
+    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+    ARCH=$(uname -m)
+    case "$ARCH" in
+        x86_64)  ARCH="amd64" ;;
+        aarch64) ARCH="arm64" ;;
+        armv6l)  ARCH="armv6" ;;
+    esac
+    SISAKULINT_URL="https://github.com/sisaku-security/sisakulint/releases/download/v${SISAKULINT_VERSION}/sisakulint_${SISAKULINT_VERSION}_${OS}_${ARCH}.tar.gz"
+    echo "    Downloading sisakulint v${SISAKULINT_VERSION} (${OS}/${ARCH})..."
+    if curl -sL "$SISAKULINT_URL" -o /tmp/sisakulint.tar.gz && \
+       tar -xzf /tmp/sisakulint.tar.gz -C /tmp/ && \
+       { mv /tmp/sisakulint /usr/local/bin/sisakulint 2>/dev/null || \
+         sudo mv /tmp/sisakulint /usr/local/bin/sisakulint; }; then
+        rm -f /tmp/sisakulint.tar.gz
+        log_ok "sisakulint v${SISAKULINT_VERSION} installed"
+    else
+        rm -f /tmp/sisakulint.tar.gz /tmp/sisakulint
+        log_err "sisakulint failed to install. Download manually from:"
+        log_err "  https://github.com/sisaku-security/sisakulint/releases"
+    fi
+fi
+
 # Update nuclei templates
 echo ""
 echo "[*] Updating nuclei templates..."
@@ -110,7 +139,7 @@ echo "============================================="
 echo "[*] Installation Verification"
 echo "============================================="
 
-ALL_TOOLS=(subfinder httpx nuclei ffuf nmap amass gau dalfox subjack)
+ALL_TOOLS=(subfinder httpx nuclei ffuf nmap amass gau dalfox subjack sisakulint)
 INSTALLED=0
 MISSING=0
 

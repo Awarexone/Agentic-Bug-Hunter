@@ -59,6 +59,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 - `tools/learn.py` — CVE + disclosure intel
 - `tools/intel_engine.py` — on-demand intel with memory context
 - `tools/scope_checker.py` — deterministic scope safety checker
+- `tools/cicd_scanner.sh` — GitHub Actions workflow scanner (sisakulint wrapper, remote scan)
 
 ### MCP Integrations (in `mcp/`)
 

@@ -1,6 +1,6 @@
 <div align="center">
 
-by shuvonsec
+<sub>by <a href="https://shuvonsec.me">shuvonsec</a></sub>
 
 <img src="https://img.shields.io/badge/v3.0.0-Bionic_Hunter-blueviolet?style=for-the-badge" alt="v3.0.0">
 

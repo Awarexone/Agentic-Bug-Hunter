@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="logo.png" alt="Claude Bug Bounty Logo" width="160"/>
+
 <img src="https://img.shields.io/badge/v3.0.0-Bionic_Hunter-blueviolet?style=for-the-badge" alt="v3.0.0">
 
 # Claude Bug Bounty

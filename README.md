@@ -1,7 +1,5 @@
 <div align="center">
 
-<sub>by <a href="https://shuvonsec.me">shuvonsec</a></sub>
-
 <img src="https://img.shields.io/badge/v3.0.0-Bionic_Hunter-blueviolet?style=for-the-badge" alt="v3.0.0">
 
 # Claude Bug Bounty
@@ -9,6 +7,8 @@
 ### The AI-Powered Agent Harness for Professional Bug Bounty Hunting
 
 *Your AI copilot that sees live traffic, remembers past hunts, and hunts autonomously.*
+
+<sub>by <a href="https://shuvonsec.me">shuvonsec</a></sub>
 
 <br>
 

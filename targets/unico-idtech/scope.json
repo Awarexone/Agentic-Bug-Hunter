@@ -1,0 +1,114 @@
+{
+  "program": "Unico IDTech",
+  "platform": "HackerOne",
+  "program_url": "https://hackerone.com/unico",
+  "safe_harbor": "Gold Standard",
+
+  "domains": [
+    "sdk-h1.unico.io"
+  ],
+  "excluded_domains": [],
+
+  "scopes": {
+    "primary": "Liveness SDK (biometric capture and processing engine)",
+    "secondary": "Web vulnerabilities on sdk-h1.unico.io"
+  },
+
+  "in_scope_web_classes": [
+    "xss",
+    "rce",
+    "sqli",
+    "ssrf",
+    "jwt",
+    "idor",
+    "file-upload",
+    "auth-bypass",
+    "business-logic",
+    "race-condition",
+    "graphql",
+    "oauth",
+    "ssti",
+    "xxe",
+    "nosqli"
+  ],
+
+  "excluded_classes": [
+    "clickjacking",
+    "csrf",
+    "dos",
+    "self-xss",
+    "dom-xss-no-impact",
+    "subdomain-takeover",
+    "open-redirect",
+    "missing-headers",
+    "ssl-tls-config",
+    "csp-best-practices",
+    "missing-httponly",
+    "missing-secure-flag",
+    "spf-dkim-dmarc",
+    "rate-limiting-no-auth",
+    "version-disclosure",
+    "banner-grabbing",
+    "expired-credentials",
+    "content-spoofing",
+    "csv-injection"
+  ],
+
+  "rewards": {
+    "web": {
+      "critical": {"min": 3000, "max": 5000},
+      "high": {"min": 1250, "max": 1750},
+      "medium": {"avg": 500},
+      "low": {"avg": 150}
+    },
+    "liveness_bypass": {
+      "critical": {"fixed": 10000},
+      "high": {"fixed": 5000},
+      "medium": {"fixed": 2000},
+      "low": {"fixed": 300}
+    }
+  },
+
+  "reporting_requirements": {
+    "liveness": {
+      "required_fields": ["transaction_id", "process_id"],
+      "note": "Backend team validates full bypass chain including backend verification"
+    },
+    "web": {
+      "required_headers_in_requests": {
+        "X-HackerOne-Research": "[YOUR_H1_USERNAME]",
+        "User-Agent": "[YOUR_H1_USERNAME]"
+      }
+    }
+  },
+
+  "test_environment": {
+    "web": "https://sdk-h1.unico.io/",
+    "mobile_sdks": "https://sdk-h1.unico.io/mobile-sdks",
+    "docs": "https://sdk-h1.unico.io/docs",
+    "android": {
+      "min_version": "Android 6.0 (API 23)",
+      "notes": "Physical device required — emulators NOT supported. App TTL: 30 days."
+    },
+    "ios": {
+      "min_version": "iOS 14.0",
+      "notes": "Physical device required — simulators NOT supported. App TTL: 30 days."
+    }
+  },
+
+  "out_of_scope_notes": [
+    "Wrapper applications (test apps) are out of scope — only the SDK/engine is in scope",
+    "Social engineering prohibited",
+    "MITM and physical access attacks excluded",
+    "Known vulnerable libraries without functional PoC excluded",
+    "Issues affecting only outdated browsers excluded",
+    "Ask program team before submitting on unscoped subdomains"
+  ],
+
+  "response_sla": {
+    "first_response": "11 hours avg",
+    "triage": "1 day avg",
+    "bounty": "1 week 1 day avg",
+    "resolution": "1 week 4 days avg"
+  }
+}

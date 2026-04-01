@@ -4,10 +4,36 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 
 ## What's Here
 
-### Skills (8 domains — load with `/bug-bounty`, `/web2-recon`, etc.)
+## Unico IDTech Program
+
+Active target: **Unico IDTech** (HackerOne) — biometric liveness detection SDK.
+
+| Scope | Focus | Top Reward |
+|---|---|---|
+| **Liveness SDK** (primary) | Biometric bypass attacks | $10,000 critical |
+| **Web** (secondary) | XSS, IDOR, SSRF, SQLi, JWT, file upload | $5,000 critical |
+
+**Quick start for Unico:**
+```bash
+claude
+# /unico-liveness       → liveness bypass testing (all 3 attack matrices)
+# /unico-hunt           → web vuln hunting on sdk-h1.unico.io
+```
+
+**Unico-specific files:**
+- `skills/unico-liveness/SKILL.md` — liveness attack methodology + 3 matrices
+- `commands/unico-liveness.md` — `/unico-liveness` command
+- `commands/unico-hunt.md` — `/unico-hunt` command
+- `rules/unico-rules.md` — program-specific rules (Transaction ID, headers, thresholds)
+- `targets/unico-idtech/scope.json` — scope config for the scope checker
+
+---
+
+### Skills (9 domains — load with `/bug-bounty`, `/web2-recon`, etc.)
 
 | Skill | Domain |
 |---|---|
+| `skills/unico-liveness/` | **Unico IDTech — liveness bypass (3 attack matrices, Transaction ID, report template)** |
 | `skills/bug-bounty/` | Master workflow — recon to report, all vuln classes, LLM testing, chains |
 | `skills/bb-methodology/` | **Hunting mindset + 5-phase non-linear workflow + tool routing + session discipline** |
 | `skills/web2-recon/` | Subdomain enum, live host discovery, URL crawling, nuclei |
@@ -17,10 +43,12 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `skills/report-writing/` | H1/Bugcrowd/Intigriti/Immunefi report templates, CVSS 3.1, human tone |
 | `skills/triage-validation/` | 7-Question Gate, 4 gates, never-submit list, conditionally valid table |
 
-### Commands (13 slash commands)
+### Commands (15 slash commands)
 
 | Command | Usage |
 |---|---|
+| `/unico-liveness` | `/unico-liveness [photo\|video\|deepfake\|memory\|relay\|all]` — liveness bypass testing |
+| `/unico-hunt` | `/unico-hunt [--vuln-class idor\|ssrf\|jwt\|xss\|upload]` — Unico web hunting |
 | `/recon` | `/recon target.com` — full recon pipeline |
 | `/hunt` | `/hunt target.com` — start hunting |
 | `/validate` | `/validate` — run 7-Question Gate on current finding |
@@ -49,6 +77,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 
 - `rules/hunting.md` — 17 critical hunting rules
 - `rules/reporting.md` — report quality rules
+- `rules/unico-rules.md` — Unico IDTech program-specific rules (load when hunting Unico)
 
 ### Tools (Python/shell — in `tools/`)
 

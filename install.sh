@@ -55,6 +55,50 @@ if [[ "$setup_burp" =~ ^[Yy]$ ]]; then
     echo ""
 fi
 
+echo ""
+echo "─────────────────────────────────────────────"
+echo "Optional: Unico IDTech Program Profile"
+echo "─────────────────────────────────────────────"
+echo ""
+echo "Install Unico-specific skill, commands, rules, and scope config."
+echo ""
+read -p "Install Unico IDTech profile? (y/N): " setup_unico
+if [[ "$setup_unico" =~ ^[Yy]$ ]]; then
+    # Unico liveness skill
+    mkdir -p "${INSTALL_DIR}/unico-liveness"
+    cp "skills/unico-liveness/SKILL.md" "${INSTALL_DIR}/unico-liveness/SKILL.md"
+    echo "✓ Installed skill: unico-liveness"
+
+    # Unico commands
+    cp "commands/unico-hunt.md" "${COMMANDS_DIR}/unico-hunt.md"
+    echo "✓ Installed command: unico-hunt"
+    cp "commands/unico-liveness.md" "${COMMANDS_DIR}/unico-liveness.md"
+    echo "✓ Installed command: unico-liveness"
+
+    # Unico rules
+    RULES_DIR="${HOME}/.claude/rules"
+    mkdir -p "${RULES_DIR}"
+    cp "rules/unico-rules.md" "${RULES_DIR}/unico-rules.md"
+    echo "✓ Installed rules: unico-rules"
+
+    # Unico scope config
+    TARGETS_DIR="${HOME}/.claude/targets/unico-idtech"
+    mkdir -p "${TARGETS_DIR}"
+    cp "targets/unico-idtech/scope.json" "${TARGETS_DIR}/scope.json"
+    echo "✓ Installed scope: unico-idtech"
+
+    echo ""
+    echo "Unico IDTech profile installed!"
+    echo "  /unico-liveness  → liveness bypass testing (up to \$10,000)"
+    echo "  /unico-hunt      → web vulnerability hunting (\$150–\$5,000)"
+    echo ""
+    echo "Remember:"
+    echo "  1. Set X-HackerOne-Research and User-Agent headers to your H1 username"
+    echo "  2. Always capture Transaction ID + Process ID for liveness reports"
+    echo "  3. Use physical devices for mobile testing — emulators won't work"
+fi
+
+echo ""
 echo "Start hunting:"
 echo "  claude"
 echo "  /recon target.com"

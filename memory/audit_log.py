@@ -179,3 +179,133 @@ class CircuitBreaker:
             "tripped": self.is_tripped(host),
             "threshold": self.threshold,
         }
+
+
+class SafeMethodPolicy:
+    """Enforce safe HTTP methods in autopilot mode.
+
+    Default safe methods: GET, HEAD, OPTIONS.
+    All other methods (POST, PUT, DELETE, PATCH) require explicit human approval.
+    """
+
+    DEFAULT_SAFE = {"GET", "HEAD", "OPTIONS"}
+
+    def __init__(
+        self,
+        safe_methods: set[str] | None = None,
+        enabled: bool = True,
+    ):
+        self._safe = {m.upper() for m in (safe_methods if safe_methods is not None else self.DEFAULT_SAFE)}
+        self._enabled = enabled
+
+    def is_safe(self, method: str) -> bool:
+        """Return True if the method is safe to send without approval."""
+        if not self._enabled:
+            return True
+        return method.upper() in self._safe
+
+    def check(self, method: str, url: str) -> dict:
+        """Return a structured decision for the given method + URL."""
+        method_upper = method.upper()
+        if self.is_safe(method_upper):
+            return {"decision": "allow", "method": method_upper, "url": url}
+        return {
+            "decision": "require_approval",
+            "method": method_upper,
+            "url": url,
+            "reason": f"Unsafe method {method_upper} requires human approval",
+        }
+
+
+class AutopilotGuard:
+    """Unified pre-request guard for autopilot mode.
+
+    Integrates CircuitBreaker + RateLimiter + SafeMethodPolicy into a single
+    check_request() call that returns allow / block / require_approval.
+
+    Check order:
+      1. Circuit breaker (host blocked? → block)
+      2. Safe method policy (unsafe method? → require_approval)
+      3. Allow
+    """
+
+    def __init__(
+        self,
+        circuit_threshold: int = 5,
+        circuit_cooldown: float = 60.0,
+        recon_rps: float = 10.0,
+        test_rps: float = 1.0,
+        safe_methods_only: bool = True,
+        safe_methods: set[str] | None = None,
+    ):
+        self._breaker = CircuitBreaker(
+            threshold=circuit_threshold,
+            cooldown=circuit_cooldown,
+        )
+        self._limiter = RateLimiter(recon_rps=recon_rps, test_rps=test_rps)
+        self._method_policy = SafeMethodPolicy(
+            safe_methods=safe_methods,
+            enabled=safe_methods_only,
+        )
+
+    @staticmethod
+    def _extract_host(url: str) -> str:
+        """Extract host (with port) from a URL."""
+        # Strip scheme
+        if "://" in url:
+            url = url.split("://", 1)[1]
+        # Strip path
+        host = url.split("/", 1)[0]
+        # Strip userinfo
+        if "@" in host:
+            host = host.rsplit("@", 1)[1]
+        return host
+
+    def check_request(self, method: str, url: str) -> dict:
+        """Check whether a request should proceed.
+
+        Returns:
+            dict with 'decision' key: 'allow', 'block', or 'require_approval'.
+        """
+        host = self._extract_host(url)
+
+        # 1. Circuit breaker
+        if self._breaker.is_tripped(host):
+            return {
+                "decision": "block",
+                "method": method.upper(),
+                "url": url,
+                "host": host,
+                "reason": f"Circuit breaker tripped for {host}",
+            }
+
+        # 2. Safe method policy
+        method_check = self._method_policy.check(method, url)
+        if method_check["decision"] != "allow":
+            return method_check
+
+        # 3. Allow
+        return {
+            "decision": "allow",
+            "method": method.upper(),
+            "url": url,
+            "host": host,
+        }
+
+    def record_failure(self, host: str) -> bool:
+        """Record a failure for circuit breaker. Returns True if breaker just tripped."""
+        return self._breaker.record_failure(host)
+
+    def record_success(self, host: str) -> None:
+        """Record a success — resets circuit breaker for the host."""
+        self._breaker.record_success(host)
+
+    def get_host_status(self, host: str) -> dict:
+        """Get circuit breaker status for a host."""
+        cb_status = self._breaker.get_status(host)
+        return {
+            "host": host,
+            "failures": cb_status["failures"],
+            "circuit_tripped": cb_status["tripped"],
+            "circuit_threshold": cb_status["threshold"],
+        }

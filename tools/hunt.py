@@ -16,6 +16,7 @@ Usage:
 """
 
 import argparse
+import itertools
 import ipaddress
 import json
 import os
@@ -26,6 +27,8 @@ from datetime import datetime
 
 # ── Target type detection (FQDN / single IP / CIDR) ──────────────────────────
 
+MAX_CIDR_HOSTS = 254
+
 def detect_target_type(target: str) -> str:
     """Return 'cidr', 'ip', or 'domain'."""
     try:
@@ -35,14 +38,20 @@ def detect_target_type(target: str) -> str:
         return "domain"
 
 
-def expand_cidr(cidr: str, max_hosts: int = 254) -> list:
-    """Expand CIDR to list of host IPs (up to max_hosts)."""
-    try:
-        net = ipaddress.ip_network(cidr, strict=False)
-        hosts = [str(h) for h in net.hosts()]
-        return hosts[:max_hosts]
-    except ValueError:
-        return [cidr]
+def expand_cidr(cidr: str, max_hosts: int = MAX_CIDR_HOSTS) -> list[str]:
+    """Expand CIDR to host IPs, rejecting ranges larger than max_hosts."""
+    net = ipaddress.ip_network(cidr, strict=False)
+    hosts = [str(host) for host in itertools.islice(net.hosts(), max_hosts + 1)]
+
+    if len(hosts) > max_hosts:
+        raise ValueError(
+            f"CIDR {cidr} expands beyond the supported limit of {max_hosts} hosts; "
+            "use /24 or smaller ranges"
+        )
+
+    if not hosts:
+        return [str(net.network_address)]
+    return hosts
 
 TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(TOOLS_DIR)
@@ -161,7 +170,11 @@ def run_recon(domain, quick=False, scope_lock=False):
         scope_lock = True  # IPs/CIDRs never need subdomain enum
         log("info", f"Target type: {target_type.upper()} — subdomain enum skipped")
         if target_type == "cidr":
-            hosts = expand_cidr(domain)
+            try:
+                hosts = expand_cidr(domain)
+            except ValueError as exc:
+                log("err", str(exc))
+                return False
             log("info", f"CIDR {domain} → {len(hosts)} host(s) to scan")
 
     scope_env  = "SCOPE_LOCK=1 " if scope_lock else ""

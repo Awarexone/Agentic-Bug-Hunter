@@ -5,8 +5,12 @@ import os
 import sys
 import pytest
 
-# Add tools/ to path so tests can import scope_checker, intel_engine, etc.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
+# Add both repo root and tools/ so tests can import either `tools.foo` or `foo`.
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+TOOLS_ROOT = os.path.join(REPO_ROOT, "tools")
+for path in (REPO_ROOT, TOOLS_ROOT):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 from memory.schemas import CURRENT_SCHEMA_VERSION
 

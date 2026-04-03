@@ -59,3 +59,11 @@ def test_run_recon_rejects_large_cidr_before_spawning(monkeypatch):
 
     assert hunt.run_recon("192.0.2.0/23") is False
     assert popen_called is False
+
+
+def test_recon_engine_expands_cidr_when_nmap_is_unavailable():
+    recon_engine = (Path(__file__).resolve().parents[1] / "tools" / "recon_engine.sh").read_text()
+
+    assert "_expand_cidr_hosts" in recon_engine
+    assert 'log_warn "nmap not installed — expanding the CIDR locally for downstream probing"' in recon_engine
+    assert 'log_warn "nmap did not identify live hosts — expanding the CIDR locally for downstream probing"' in recon_engine

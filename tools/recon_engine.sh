@@ -35,6 +35,21 @@ _detect_target_type() {
     elif [[ "$t" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]];        then echo "ip"
     else echo "domain"; fi
 }
+
+_expand_cidr_hosts() {
+    local target="$1"
+    python3 - "$target" <<'PY'
+import ipaddress
+import itertools
+import sys
+
+network = ipaddress.ip_network(sys.argv[1], strict=False)
+hosts = [str(host) for host in itertools.islice(network.hosts(), 254)]
+if not hosts:
+    hosts = [str(network.network_address)]
+print("\n".join(hosts))
+PY
+}
 TARGET_TYPE="${TARGET_TYPE:-$(_detect_target_type "$TARGET")}"
 
 # For IP/CIDR: always scope-lock — no subdomain enum needed
@@ -65,11 +80,14 @@ if [ "$TARGET_TYPE" = "cidr" ]; then
             | awk '/Up$/{print $2}' \
             > "$RECON_DIR/subdomains/all.txt" || true
         LIVE_COUNT=$(wc -l < "$RECON_DIR/subdomains/all.txt" 2>/dev/null || echo 0)
-        [ "$LIVE_COUNT" -eq 0 ] && echo "$TARGET" > "$RECON_DIR/subdomains/all.txt"
+        if [ "$LIVE_COUNT" -eq 0 ]; then
+            log_warn "nmap did not identify live hosts — expanding the CIDR locally for downstream probing"
+            _expand_cidr_hosts "$TARGET" > "$RECON_DIR/subdomains/all.txt"
+        fi
         log_ok "CIDR sweep: $(wc -l < "$RECON_DIR/subdomains/all.txt") live host(s) discovered"
     else
-        log_warn "nmap not installed — writing CIDR as single target"
-        echo "$TARGET" > "$RECON_DIR/subdomains/all.txt"
+        log_warn "nmap not installed — expanding the CIDR locally for downstream probing"
+        _expand_cidr_hosts "$TARGET" > "$RECON_DIR/subdomains/all.txt"
     fi
     # Skip all subdomain enum tools — jump straight to live host probing
 elif [ "${SCOPE_LOCK:-0}" = "1" ] && [ "$TARGET_TYPE" = "ip" ]; then

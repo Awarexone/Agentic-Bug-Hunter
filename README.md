@@ -351,6 +351,7 @@ Wraps `learn.py` + HackerOne MCP + hunt memory:
 | `validate.py` | 4-gate validation — scope, impact, dedup, CVSS |
 | `report_generator.py` | H1/Bugcrowd/Intigriti report output |
 | `scope_checker.py` | Deterministic scope safety with anchored suffix matching |
+| `cicd_scanner.sh` | GitHub Actions SAST — wraps [sisakulint](https://github.com/sisaku-security/sisakulint) remote scan (52 rules, 81.6% GHSA coverage) |
 | `mindmap.py` | Prioritized attack mindmap generator |
 
 </details>
@@ -445,7 +446,8 @@ sudo apt install golang python3 nodejs jq
 ```bash
 git clone https://github.com/shuvonsec/claude-bug-bounty.git
 cd claude-bug-bounty
-chmod +x install.sh && ./install.sh
+chmod +x install.sh && ./install.sh     # Install skills + commands into ~/.claude/
+bash install_tools.sh                    # Install recon/scan tools + sisakulint
 ```
 
 ### API Keys

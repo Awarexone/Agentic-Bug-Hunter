@@ -147,6 +147,21 @@ def run_recon(domain, quick=False):
         return False
 
 
+def check_cicd_results(domain):
+    """Check and surface CI/CD scan results from recon Phase 8."""
+    cicd_dir = os.path.join(RECON_DIR, domain, "cicd")
+    if not os.path.isdir(cicd_dir):
+        return
+    for root, dirs, files in os.walk(cicd_dir):
+        for f in files:
+            if f == "summary.txt":
+                summary_path = os.path.join(root, f)
+                with open(summary_path) as sf:
+                    content = sf.read()
+                if "Total findings: 0" not in content:
+                    log("warn", f"CI/CD findings detected — review: {summary_path}")
+
+
 def run_vuln_scan(domain, quick=False):
     """Run vulnerability scanner on recon results."""
     recon_dir = os.path.join(RECON_DIR, domain)
@@ -334,6 +349,7 @@ def hunt_target(domain, quick=False, recon_only=False, scan_only=False, cve_hunt
     if recon_only:
         return result
 
+    check_cicd_results(domain)
     result["scan"] = run_vuln_scan(domain, quick=quick)
 
     # CVE hunting (only when explicitly requested)

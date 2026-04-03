@@ -2,10 +2,17 @@
 # =============================================================================
 # Bug Bounty Tool Installer
 # Installs all required tools via Homebrew and Go
-# Usage: ./install_tools.sh
+# Usage: ./install_tools.sh [--with-cicd-scanner]
 # =============================================================================
 
 set -euo pipefail
+
+INSTALL_CICD_SCANNER=false
+for arg in "$@"; do
+    case "$arg" in
+        --with-cicd-scanner) INSTALL_CICD_SCANNER=true ;;
+    esac
+done
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -130,25 +137,28 @@ else
     fi
 fi
 
-# cicd_scanner — sisakulint wrapper script
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CICD_SCANNER_SRC="$SCRIPT_DIR/tools/cicd_scanner.sh"
-if [ -f "$CICD_SCANNER_SRC" ]; then
-    INSTALL_DIR="/usr/local/bin"
-    if cp "$CICD_SCANNER_SRC" "$INSTALL_DIR/cicd_scanner" 2>/dev/null || \
-       sudo cp "$CICD_SCANNER_SRC" "$INSTALL_DIR/cicd_scanner"; then
-        chmod +x "$INSTALL_DIR/cicd_scanner" 2>/dev/null || sudo chmod +x "$INSTALL_DIR/cicd_scanner"
-        log_ok "cicd_scanner installed to $INSTALL_DIR/cicd_scanner"
-    else
-        # Fallback to ~/bin
-        mkdir -p "$HOME/bin"
-        cp "$CICD_SCANNER_SRC" "$HOME/bin/cicd_scanner"
-        chmod +x "$HOME/bin/cicd_scanner"
-        log_ok "cicd_scanner installed to ~/bin/cicd_scanner"
-        if [[ ":$PATH:" != *":$HOME/bin:"* ]]; then
-            log_warn "Add ~/bin to your PATH: export PATH=\$HOME/bin:\$PATH"
+# cicd_scanner — sisakulint wrapper script (optional: --with-cicd-scanner)
+if [ "$INSTALL_CICD_SCANNER" = true ]; then
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+    CICD_SCANNER_SRC="$SCRIPT_DIR/tools/cicd_scanner.sh"
+    if [ -f "$CICD_SCANNER_SRC" ]; then
+        INSTALL_DIR="/usr/local/bin"
+        if cp "$CICD_SCANNER_SRC" "$INSTALL_DIR/cicd_scanner" 2>/dev/null || \
+           sudo cp "$CICD_SCANNER_SRC" "$INSTALL_DIR/cicd_scanner"; then
+            chmod +x "$INSTALL_DIR/cicd_scanner" 2>/dev/null || sudo chmod +x "$INSTALL_DIR/cicd_scanner"
+            log_ok "cicd_scanner installed to $INSTALL_DIR/cicd_scanner"
+        else
+            mkdir -p "$HOME/bin"
+            cp "$CICD_SCANNER_SRC" "$HOME/bin/cicd_scanner"
+            chmod +x "$HOME/bin/cicd_scanner"
+            log_ok "cicd_scanner installed to ~/bin/cicd_scanner"
+            if [[ ":$PATH:" != *":$HOME/bin:"* ]]; then
+                log_warn "Add ~/bin to your PATH: export PATH=\$HOME/bin:\$PATH"
+            fi
         fi
     fi
+else
+    log_warn "cicd_scanner skipped (use --with-cicd-scanner to install)"
 fi
 
 # Update nuclei templates

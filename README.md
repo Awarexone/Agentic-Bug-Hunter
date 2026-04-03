@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.png" alt="Claude Bug Bounty Logo" width="320"/>
+</p>
+
 <div align="center">
 
 <img src="https://img.shields.io/badge/v3.0.0-Bionic_Hunter-blueviolet?style=for-the-badge" alt="v3.0.0">
@@ -7,6 +11,8 @@
 ### The AI-Powered Agent Harness for Professional Bug Bounty Hunting
 
 *Your AI copilot that sees live traffic, remembers past hunts, and hunts autonomously.*
+
+<sub>by <a href="https://shuvonsec.me">shuvonsec</a></sub>
 
 <br>
 

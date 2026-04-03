@@ -16,7 +16,7 @@ import re
 import sys
 from datetime import datetime
 
-BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPORTS_DIR = os.path.join(BASE_DIR, "reports")
 
 # ── Vulnerability templates ────────────────────────────────────────────────────
@@ -177,7 +177,66 @@ VULN_TEMPLATES = {
             ("OWASP Security Misconfiguration", "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"),
         ],
     },
+    "redirect": {
+        "title": "Open Redirect on {host}",
+        "severity": "low", "cvss": "3.1", "cwe": "CWE-601",
+        "impact": (
+            "An attacker can craft a trusted-looking URL that redirects victims to a malicious site, "
+            "supporting phishing, token theft, or chained attacks."
+        ),
+        "remediation": (
+            "Avoid user-controlled redirect destinations. If redirects are required, allowlist approved "
+            "targets and prefer relative paths for internal navigation."
+        ),
+        "references": [
+            ("OWASP Redirects Cheat Sheet", "https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html"),
+            ("PortSwigger Open Redirect", "https://portswigger.net/kb/issues/00500100_open-redirection-reflected"),
+        ],
+    },
+    "auth_bypass": {
+        "title": "Authentication/Authorization Bypass on {host}",
+        "severity": "critical", "cvss": "9.1", "cwe": "CWE-287",
+        "impact": (
+            "An attacker can reach protected functionality or sensitive data without completing the "
+            "required authentication or authorisation checks."
+        ),
+        "remediation": (
+            "Enforce authentication and server-side authorisation checks on every protected endpoint, "
+            "and deny access by default across all supported HTTP methods."
+        ),
+        "references": [
+            ("OWASP Identification and Authentication Failures", "https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/"),
+            ("OWASP Broken Access Control", "https://owasp.org/Top10/A01_2021-Broken_Access_Control/"),
+        ],
+    },
+    "info_disclosure": {
+        "title": "Information Disclosure on {host}",
+        "severity": "high", "cvss": "7.1", "cwe": "CWE-200",
+        "impact": (
+            "Sensitive internal details such as configuration values, service metadata, credentials, or "
+            "infrastructure hints are exposed to unauthenticated users."
+        ),
+        "remediation": (
+            "Remove exposed configuration and debug artifacts, keep secrets server-side, and rotate any "
+            "credentials that may already have been disclosed."
+        ),
+        "references": [
+            ("OWASP Information Gathering", "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/01-Information_Gathering/"),
+            ("MITRE CWE-200", "https://cwe.mitre.org/data/definitions/200.html"),
+        ],
+    },
+    "cve": {
+        "title": "Known CVE Vulnerability on {host}",
+        "severity": "critical", "cvss": "9.0", "cwe": "CWE-1035",
+        "impact": "A publicly known vulnerability with an available exploit was identified. May lead to RCE, data breach, or service disruption.",
+        "remediation": "Apply the vendor patch or upgrade to a non-vulnerable version immediately. Apply compensating controls if patching is delayed.",
+        "references": [
+            ("NVD", "https://nvd.nist.gov/"),
+        ],
+    },
 }
+
+VULN_TEMPLATES["cves"] = VULN_TEMPLATES["cve"]
 
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 SEVERITY_COLOR = {
@@ -192,15 +251,17 @@ SUBDIR_VTYPE = {
     "sqli": "sqli", "xss": "xss", "ssti": "ssti", "upload": "upload",
     "rce": "rce", "lfi": "lfi", "idor": "idor", "ssrf": "ssrf",
     "cors": "cors", "takeover": "takeover", "exposure": "exposure",
-    "cves": "cves", "cloud": "misconfig", "metasploit": "rce",
-    "misconfig": "misconfig",
+    "cves": "cve", "redirects": "redirect", "auth_bypass": "auth_bypass",
+    "cloud": "misconfig", "metasploit": "rce", "misconfig": "misconfig",
 }
 
 
 # ── Parsing ────────────────────────────────────────────────────────────────────
 
 def parse_custom_line(line: str, default_vtype: str = "misconfig") -> dict:
-    sev = "medium"
+    tags = [tag.lower() for tag in re.findall(r'\[([^\]]+)\]', line)]
+    vtype = next((tag for tag in tags if tag in VULN_TEMPLATES), default_vtype)
+    sev = VULN_TEMPLATES.get(vtype, VULN_TEMPLATES["misconfig"]).get("severity", "medium")
     if any(k in line for k in ("SQLI-POC-VERIFIED", "RCE-POC", "CRITICAL", "CONFIRMED")):
         sev = "critical"
     elif "HIGH" in line:
@@ -211,10 +272,9 @@ def parse_custom_line(line: str, default_vtype: str = "misconfig") -> dict:
     m = re.search(r'https?://\S+', line)
     if m:
         url = m.group(0).rstrip(".,;)")
-    tags = re.findall(r'\[([^\]]+)\]', line)
     return {"raw": line, "url": url, "severity": sev,
             "template_id": tags[0] if tags else default_vtype,
-            "vtype": default_vtype}
+            "vtype": vtype}
 
 
 def load_findings(findings_dir: str) -> list:

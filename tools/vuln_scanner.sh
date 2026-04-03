@@ -355,16 +355,18 @@ if ! skip_has mfa; then
             BASE=$(echo "$url" | cut -d'?' -f1)
 
             # --- Test 1: Rate limit on OTP endpoint ---
-            log_step "Rate limit probe: $BASE"
-            STATUS_CODES=$(for i in $(seq 1 15); do
-                curl -sk -o /dev/null -w "%{http_code}\n" --max-time 5 \
-                    -X POST "$BASE" \
-                    -H "Content-Type: application/json" \
-                    -d '{"otp":"000000"}' 2>/dev/null || echo "ERR"
-            done | sort | uniq -c | sort -rn | head -5)
-            if echo "$STATUS_CODES" | grep -qv "429\|ERR"; then
-                log_vuln "[MFA] No rate limit detected on OTP endpoint: $BASE"
-                echo "[MFA-NO-RATE-LIMIT] $BASE | codes: $STATUS_CODES" >> "$FINDINGS_DIR/mfa/findings.txt"
+            if unsafe_method_guard "POST" "$BASE" "MFA rate-limit probe"; then
+                log_step "Rate limit probe: $BASE"
+                STATUS_CODES=$(for i in $(seq 1 15); do
+                    curl -sk -o /dev/null -w "%{http_code}\n" --max-time 5 \
+                        -X POST "$BASE" \
+                        -H "Content-Type: application/json" \
+                        -d '{"otp":"000000"}' 2>/dev/null || echo "ERR"
+                done | sort | uniq -c | sort -rn | head -5)
+                if echo "$STATUS_CODES" | grep -qv "429\|ERR"; then
+                    log_vuln "[MFA] No rate limit detected on OTP endpoint: $BASE"
+                    echo "[MFA-NO-RATE-LIMIT] $BASE | codes: $STATUS_CODES" >> "$FINDINGS_DIR/mfa/findings.txt"
+                fi
             fi
 
             # --- Test 2: MFA workflow skip (pre-MFA session to protected page) ---
@@ -382,12 +384,14 @@ if ! skip_has mfa; then
 
             # --- Test 3: Response manipulation canary ---
             # Check if server returns JSON with a success/failure flag (indicator only)
-            RESP=$(curl -sk --max-time 5 -X POST "$BASE" \
-                -H "Content-Type: application/json" \
-                -d '{"otp":"999999"}' 2>/dev/null || true)
-            if echo "$RESP" | grep -qi '"success"\s*:\s*false\|"verified"\s*:\s*false\|"status"\s*:\s*"fail"'; then
-                log_vuln "[MFA] Response manipulation candidate (server sends JSON success flag): $BASE"
-                echo "[MFA-RESPONSE-MANIP] $BASE | change false->true in response" >> "$FINDINGS_DIR/mfa/findings.txt"
+            if unsafe_method_guard "POST" "$BASE" "MFA response-manipulation canary"; then
+                RESP=$(curl -sk --max-time 5 -X POST "$BASE" \
+                    -H "Content-Type: application/json" \
+                    -d '{"otp":"999999"}' 2>/dev/null || true)
+                if echo "$RESP" | grep -qi '"success"\s*:\s*false\|"verified"\s*:\s*false\|"status"\s*:\s*"fail"'; then
+                    log_vuln "[MFA] Response manipulation candidate (server sends JSON success flag): $BASE"
+                    echo "[MFA-RESPONSE-MANIP] $BASE | change false->true in response" >> "$FINDINGS_DIR/mfa/findings.txt"
+                fi
             fi
 
         done <<< "$MFA_ENDPOINTS"

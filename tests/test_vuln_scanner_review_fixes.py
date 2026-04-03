@@ -11,6 +11,8 @@ def test_saml_signature_stripping_is_opt_in_and_policy_gated():
 
     assert "SafeMethodPolicy" in scanner
     assert "ALLOW_UNSAFE_HTTP_TESTS" in scanner
+    assert 'unsafe_method_guard "POST" "$BASE" "MFA rate-limit probe"' in scanner
+    assert 'unsafe_method_guard "POST" "$BASE" "MFA response-manipulation canary"' in scanner
     assert 'unsafe_method_guard "POST" "$ACS_URL" "SAML signature-stripping probe"' in scanner
 
 

@@ -65,3 +65,28 @@ def test_process_findings_dir_renders_legacy_finding_types(tmp_path, monkeypatch
     assert "Known CVE Vulnerability on acme.example" in html
     assert "Information Disclosure on acme.example" in md
     assert report_dir == str(tmp_path / "reports")
+
+
+def test_manual_report_workflow_is_preserved(tmp_path, monkeypatch):
+    report_generator = load_report_generator()
+    monkeypatch.setattr(report_generator, "REPORTS_DIR", str(tmp_path / "reports"))
+
+    report_dir, md_path, html_path = report_generator.create_manual_report(
+        "xss",
+        "https://acme.example/search?q=test",
+        param="q",
+        evidence="Confirmed reflected payload",
+    )
+
+    assert Path(report_dir).exists()
+    assert Path(md_path).exists()
+    assert Path(html_path).exists()
+    assert "Confirmed reflected payload" in Path(md_path).read_text()
+
+    poc_image = tmp_path / "poc.png"
+    poc_image.write_bytes(b"fake-png")
+    report_generator.attach_poc_images(md_path, [str(poc_image)])
+
+    md = Path(md_path).read_text()
+    assert "PoC Screenshots" in md
+    assert "poc_screenshots/poc.png" in md

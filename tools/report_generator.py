@@ -8,11 +8,13 @@ Usage:
     python3 report_generator.py <findings_dir>
     python3 report_generator.py <findings_dir> --client "Target Corp" --consultant "J. Smith"
     python3 report_generator.py <findings_dir> --title "Web Application Security Assessment"
+    python3 report_generator.py --manual --type xss --url https://example.com/search?q=test
 """
 
 import argparse
 import os
 import re
+import shutil
 import sys
 from datetime import datetime
 
@@ -560,14 +562,110 @@ def process_findings_dir(findings_dir: str, client: str = "",
     return len(findings), findings, report_dir, html, md
 
 
+def extract_target_from_url(url: str) -> str:
+    match = re.search(r"https?://([^/]+)", url)
+    return match.group(1) if match else url
+
+
+def create_manual_report(vuln_type: str, url: str, param: str | None = None,
+                         evidence: str | None = None, client: str = "",
+                         consultant: str = "", title: str = "") -> tuple[str, str, str]:
+    normalized_type = vuln_type.lower()
+    if normalized_type == "cves":
+        normalized_type = "cve"
+
+    target = extract_target_from_url(url)
+    safe_target = re.sub(r"[^A-Za-z0-9._-]+", "_", target)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    report_dir = os.path.join(REPORTS_DIR, safe_target, "manual", timestamp)
+    os.makedirs(report_dir, exist_ok=True)
+
+    raw = evidence or f"Manual finding: {normalized_type} on {url}"
+    if param:
+        raw += f"\nParameter: {param}"
+
+    finding = {
+        "raw": raw,
+        "url": url,
+        "severity": VULN_TEMPLATES.get(normalized_type, VULN_TEMPLATES["misconfig"]).get("severity", "medium"),
+        "template_id": "manual",
+        "vtype": normalized_type,
+    }
+
+    report_title = title or "Manual Vulnerability Report"
+    html = render_html_report([finding], target, report_dir, client, consultant, report_title)
+    md = render_markdown_report([finding], target, report_dir, client, consultant, report_title)
+
+    html_path = os.path.join(report_dir, "manual_report.html")
+    md_path = os.path.join(report_dir, "manual_report.md")
+    with open(html_path, "w", encoding="utf-8") as fh:
+        fh.write(html)
+    with open(md_path, "w", encoding="utf-8") as fh:
+        fh.write(md)
+
+    return report_dir, md_path, html_path
+
+
+def attach_poc_images(report_file: str, image_paths: list[str]) -> None:
+    poc_dir = os.path.join(os.path.dirname(report_file), "poc_screenshots")
+    os.makedirs(poc_dir, exist_ok=True)
+
+    image_section = "\n\n## PoC Screenshots\n\n"
+    for i, img_path in enumerate(image_paths, 1):
+        if os.path.exists(img_path):
+            filename = os.path.basename(img_path)
+            dest = os.path.join(poc_dir, filename)
+            if os.path.abspath(img_path) != os.path.abspath(dest):
+                shutil.copy2(img_path, dest)
+            image_section += f"### Screenshot {i}: {filename}\n"
+            image_section += f"![PoC {i}](poc_screenshots/{filename})\n\n"
+        else:
+            print(f"[!] Image not found: {img_path}")
+
+    with open(report_file, "a", encoding="utf-8") as fh:
+        fh.write(image_section)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="claude-bug-bounty Report Generator — Burp Suite-style HTML reports")
-    parser.add_argument("findings_dir")
+    parser.add_argument("findings_dir", nargs="?")
+    parser.add_argument("--manual", action="store_true", help="Create a manual report")
+    parser.add_argument("--type", default="", help="Vulnerability type for manual mode")
+    parser.add_argument("--url", default="", help="Affected URL for manual mode")
+    parser.add_argument("--param", default="", help="Affected parameter for manual mode")
+    parser.add_argument("--evidence", default="", help="Evidence text for manual mode")
+    parser.add_argument("--poc-images", nargs="+", default=None, help="Optional PoC image paths for manual mode")
     parser.add_argument("--client",     default="")
     parser.add_argument("--consultant", default="")
     parser.add_argument("--title",      default="Vulnerability Assessment & Penetration Test Report")
     args = parser.parse_args()
+
+    if args.manual:
+        if not args.type or not args.url:
+            print("[!] Manual mode requires --type and --url", file=sys.stderr)
+            sys.exit(1)
+
+        report_dir, md_path, html_path = create_manual_report(
+            args.type,
+            args.url,
+            args.param or None,
+            args.evidence or None,
+            args.client,
+            args.consultant,
+            args.title,
+        )
+        if args.poc_images:
+            attach_poc_images(md_path, args.poc_images)
+
+        print(f"[+] Manual report directory: {report_dir}")
+        print(f"[+] HTML : {html_path}")
+        print(f"[+] MD   : {md_path}")
+        return
+
+    if not args.findings_dir:
+        print("[!] Please provide a findings directory or use --manual mode", file=sys.stderr)
+        sys.exit(1)
 
     if not os.path.isdir(args.findings_dir):
         print(f"[!] Not a directory: {args.findings_dir}", file=sys.stderr)

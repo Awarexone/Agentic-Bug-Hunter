@@ -22,6 +22,7 @@ import argparse
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -34,12 +35,29 @@ FINDINGS_DIR = os.path.join(BASE_DIR, "findings")
 
 
 def run_cmd(cmd, timeout=15):
+    proc = None
     try:
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
-        return result.returncode == 0, result.stdout, result.stderr
+        proc = subprocess.Popen(
+            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, preexec_fn=os.setsid,
+        )
+        stdout, stderr = proc.communicate(timeout=timeout)
+        return proc.returncode == 0, stdout, stderr
     except subprocess.TimeoutExpired:
+        if proc is not None:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except Exception:
+                proc.kill()
+            proc.wait()
         return False, "", "timeout"
     except Exception as e:
+        if proc is not None:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except Exception:
+                proc.kill()
+            proc.wait()
         return False, "", str(e)
 
 

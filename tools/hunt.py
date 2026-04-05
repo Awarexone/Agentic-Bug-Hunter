@@ -18,6 +18,7 @@ Usage:
 import argparse
 import json
 import os
+import signal
 import subprocess
 import sys
 from datetime import datetime
@@ -46,16 +47,35 @@ def log(level, msg):
 
 
 def run_cmd(cmd, cwd=None, timeout=600):
-    """Run a shell command and return (success, output)."""
+    """Run a shell command and return (success, output).
+
+    Uses process groups (os.setsid) so that on timeout the entire child tree
+    is killed via os.killpg, preventing orphan processes from accumulating
+    during long-running hunts.
+    """
+    proc = None
     try:
-        result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True,
-            cwd=cwd, timeout=timeout
+        proc = subprocess.Popen(
+            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, cwd=cwd, preexec_fn=os.setsid,
         )
-        return result.returncode == 0, result.stdout + result.stderr
+        stdout, _ = proc.communicate(timeout=timeout)
+        return proc.returncode == 0, stdout or ""
     except subprocess.TimeoutExpired:
+        if proc is not None:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except Exception:
+                proc.kill()
+            proc.wait()
         return False, "Command timed out"
     except Exception as e:
+        if proc is not None:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except Exception:
+                proc.kill()
+            proc.wait()
         return False, str(e)
 
 

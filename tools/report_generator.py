@@ -273,7 +273,7 @@ def parse_nuclei_line(line):
     if len(brackets) >= 3:
         result["template_id"] = brackets[0]
         result["severity"] = brackets[2].lower()
-    if len(brackets) >= 1:
+    elif len(brackets) >= 1:
         result["template_id"] = brackets[0]
 
     # Extract URL
@@ -432,6 +432,14 @@ def process_findings_dir(findings_dir):
 
                 if not finding or not finding.get("url"):
                     continue
+
+                # Inherit template severity if the finding has no explicit severity
+                # (parse_nuclei_line defaults to "medium" when no brackets specify it)
+                tmpl = VULN_TEMPLATES.get(vuln_type, {})
+                tmpl_sev = tmpl.get("severity", "medium")
+                sev_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+                if sev_rank.get(tmpl_sev, 2) < sev_rank.get(finding.get("severity", "medium"), 2):
+                    finding["severity"] = tmpl_sev
 
                 # Generate report
                 report_content, title = generate_report(finding, vuln_type, target_name)

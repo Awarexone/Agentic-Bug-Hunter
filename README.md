@@ -11,7 +11,7 @@
 ### The AI-Powered Agent Harness for Professional Bug Bounty Hunting
 
 *Your AI copilot that sees live traffic, remembers past hunts, and hunts autonomously.*
-
+*The community made a meme coin to support the project CA: J6VzBAGnyyNEyzyHhauwg3ofRctFxnTLzQCcjUdGpump*
 <sub>by <a href="https://shuvonsec.me">shuvonsec</a></sub>
 
 <br>

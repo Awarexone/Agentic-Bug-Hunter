@@ -4,7 +4,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 
 ## What's Here
 
-### Skills (8 domains — load with `/bug-bounty`, `/web2-recon`, etc.)
+### Skills (9 domains — load with `/bug-bounty`, `/web2-recon`, `/token-scan`, etc.)
 
 | Skill | Domain |
 |---|---|
@@ -14,10 +14,11 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `skills/web2-vuln-classes/` | 18 bug classes with bypass tables (SSRF, open redirect, file upload, Agentic AI) |
 | `skills/security-arsenal/` | Payloads, bypass tables, gf patterns, always-rejected list |
 | `skills/web3-audit/` | 10 smart contract bug classes, Foundry PoC template, pre-dive kill signals |
+| `skills/meme-coin-audit/` | Meme coin rug pull detection, token authority checks, bonding curve exploits, LP attacks |
 | `skills/report-writing/` | H1/Bugcrowd/Intigriti/Immunefi report templates, CVSS 3.1, human tone |
 | `skills/triage-validation/` | 7-Question Gate, 4 gates, never-submit list, conditionally valid table |
 
-### Commands (13 slash commands)
+### Commands (14 slash commands)
 
 | Command | Usage |
 |---|---|
@@ -34,8 +35,9 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `/resume` | `/resume target.com` — pick up previous hunt |
 | `/remember` | `/remember` — log finding to hunt memory |
 | `/intel` | `/intel target.com` — fetch CVE + disclosure intel |
+| `/token-scan` | `/token-scan <contract>` — meme coin/token rug pull scanner |
 
-### Agents (7 specialized agents)
+### Agents (8 specialized agents)
 
 - `recon-agent` — subdomain enum + live host discovery
 - `report-writer` — generates H1/Bugcrowd/Immunefi reports
@@ -44,6 +46,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 - `chain-builder` — builds A→B→C exploit chains
 - `autopilot` — autonomous hunt loop (scope→recon→rank→hunt→validate→report)
 - `recon-ranker` — attack surface ranking from recon output + memory
+- `token-auditor` — fast meme coin/token rug pull and security analysis
 
 ### Rules (always active)
 
@@ -60,6 +63,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 - `tools/intel_engine.py` — on-demand intel with memory context
 - `tools/scope_checker.py` — deterministic scope safety checker
 - `tools/cicd_scanner.sh` — GitHub Actions workflow scanner (sisakulint wrapper, remote scan)
+- `tools/token_scanner.py` — automated token red flag scanner (EVM + Solana)
 
 ### MCP Integrations (in `mcp/`)
 

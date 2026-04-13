@@ -313,4 +313,80 @@ grep -rn "totalDeposited\|totalPrincipal\|_balance\b" src/ --include="*.sol"
 
 ---
 
+## MEME COIN / TOKEN PATTERNS
+
+### Block 11 — Token Rug Pull Detection (EVM)
+
+```bash
+echo "=== TOKEN RUG PULL — EVM ===" && \
+grep -rn "function mint\|_mint(" src/ --include="*.sol" | grep -v "test\|lib\|node_modules\|ERC20\|openzeppelin" && \
+grep -rn "_balances\[.*\] +=\|_totalSupply +=" src/ --include="*.sol" | grep -v "test\|_mint" && \
+grep -rn "blacklist\|isBlacklisted\|_bots\|isBot\|_blocked" src/ --include="*.sol" && \
+grep -rn "maxTxAmount\|_maxWalletSize\|maxTransactionAmount" src/ --include="*.sol" && \
+grep -rn "_taxFee\|_sellFee\|_buyFee\|_liquidityFee" src/ --include="*.sol" && \
+grep -rn "function set.*Fee\|function set.*Tax" src/ --include="*.sol" && \
+grep -rn "renounceOwnership.*override\|_shadowAdmin\|_backupOwner" src/ --include="*.sol" && \
+grep -rn "migrateLP\|emergencyWithdraw\|\.sync()\|setPair\|setRouter" src/ --include="*.sol" && \
+grep -rn "function approve.*override" src/ --include="*.sol" && \
+grep -rn "tradingEnabled\|tradingActive\|enableTrading\|openTrading" src/ --include="*.sol"
+```
+
+**Red flags:**
+- `_mint()` callable by owner without MAX_SUPPLY cap → Tier 1 (infinite mint rug)
+- `_balances[x] +=` outside of _mint → Tier 1 (hidden balance inflation)
+- `blacklist` mapping with owner setter → Tier 1 (honeypot: block sells)
+- `_sellFee` with `setFee()` and no `require(fee <= MAX)` → Tier 1 (fee set to 99% = rug)
+- `maxTxAmount` with setter to 0 → Tier 1 (honeypot: block all transfers)
+- `renounceOwnership` override that doesn't call `_transferOwnership(address(0))` → Tier 1 (fake renounce)
+- `migrateLP` or `setPair` → Tier 1 (LP drain / pair swap rug)
+- `approve` override that doesn't call `_approve` → Tier 1 (silent honeypot)
+
+### Block 12 — Solana Token Authorities
+
+```bash
+echo "=== SOLANA TOKEN AUTHORITIES ===" && \
+grep -rn "mint_authority\|MintAuthority" src/ --include="*.rs" && \
+grep -rn "freeze_authority\|FreezeAuthority\|FreezeAccount" src/ --include="*.rs" && \
+grep -rn "update_authority\|UpdateAuthority\|is_mutable" src/ --include="*.rs" && \
+grep -rn "close_authority\|CloseAuthority" src/ --include="*.rs" && \
+grep -rn "set_authority.*None\|AuthorityType::MintTokens" src/ --include="*.rs" && \
+grep -rn "transfer_hook\|TransferHook\|spl_transfer_hook" src/ --include="*.rs" && \
+grep -rn "permanent_delegate\|PermanentDelegate" src/ --include="*.rs" && \
+grep -rn "TransferFee\|transfer_fee\|TransferFeeConfig" src/ --include="*.rs" && \
+grep -rn "DefaultAccountState\|AccountState::Frozen" src/ --include="*.rs" && \
+grep -rn "upgrade_authority\|UpgradeAuthority" src/ --include="*.rs"
+```
+
+**Red flags:**
+- `mint_authority` still Some(pubkey) after launch → Tier 1 (infinite mint)
+- `freeze_authority` still Some(pubkey) on meme coin → Tier 1 (honeypot)
+- `transfer_hook` with mutable hook program → Tier 1 (honeypot)
+- `permanent_delegate` extension present → Tier 1 (can steal all tokens)
+- `DefaultAccountState::Frozen` → Tier 1 (new accounts frozen = honeypot setup)
+- No `set_authority(..., None)` anywhere → Tier 2 (authorities never revoked)
+- `upgrade_authority` set → Tier 2 (program can change logic)
+
+### Block 13 — DEX / LP Manipulation
+
+```bash
+echo "=== DEX / LP MANIPULATION ===" && \
+grep -rn "addLiquidityETH\|addLiquidity" -A5 src/ --include="*.sol" | grep "owner\|msg.sender" && \
+grep -rn "removeLiquidity\|removeLiquidityETH" src/ --include="*.sol" && \
+grep -rn "swapExactTokensForETH" -A5 src/ --include="*.sol" | grep "0," && \
+grep -rn "swapThreshold\|numTokensSellToAddToLiquidity\|swapTokensAtAmount" src/ --include="*.sol" && \
+grep -rn "\.sync()" src/ --include="*.sol" && \
+grep -rn "_rebase\|rebase()\|_reflect\|reflect()" src/ --include="*.sol" && \
+grep -rn "automatedMarketMakerPairs\|setAutomatedMarketMakerPair" src/ --include="*.sol" && \
+grep -rn "virtualReserve\|bonding_curve\|graduate" src/ --include="*.sol" --include="*.rs"
+```
+
+**Red flags:**
+- Auto-LP tokens sent to `owner` (not `address(0xdead)`) → Tier 1 (LP drain)
+- `swapExactTokensForETH(..., 0, ...)` → Tier 1 (zero slippage = guaranteed sandwich)
+- `.sync()` after direct pair transfer → Tier 1 (price manipulation)
+- `_rebase()` inside `_transfer()` → Tier 2 (MEV amplification)
+- `virtualReserve` with setter → Tier 2 (bonding curve manipulation)
+
+---
+
 → NEXT: [04-poc-and-foundry.md](04-poc-and-foundry.md)

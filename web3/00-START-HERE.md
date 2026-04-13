@@ -22,6 +22,9 @@ description: Master index for the web3 smart contract security knowledge base. U
 07-live-hunt-ern.md           ← Completed hunt: Ern protocol (2 findings)
 09-live-hunt-zksync.md        ← Completed hunt: ZKsync Era (0 findings — defense study)
 08-ai-tools.md                ← Shannon, LuaN1ao, SmartGuard, CAI Framework, AI code hunting
+10-meme-coin-bugs.md          ← Meme coin & token vulnerability classes (8 bug classes)
+11-solana-token-audit.md      ← Solana SPL token security audit (authorities, Token-2022, pump.fun)
+12-dex-lp-attacks.md          ← DEX & LP manipulation attack patterns (sandwich, pool sniping, CL)
 36-solidity-audit-mcp.md      ← MCP server: Slither+Aderyn+SWC in Claude Code
 ```
 

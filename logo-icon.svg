@@ -1,0 +1,99 @@
+<svg width="400" height="400" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="glow-sm">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow-md">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow-lg">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#1a0a2e"/>
+      <stop offset="100%" stop-color="#0D1117"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <circle cx="200" cy="200" r="196" fill="url(#bgGrad)"/>
+
+  <!-- Outer ring -->
+  <circle cx="200" cy="200" r="192" fill="none" stroke="#7C3AED" stroke-width="2.5" opacity="0.9" filter="url(#glow-sm)"/>
+  <!-- Inner ring tick marks -->
+  <circle cx="200" cy="200" r="182" fill="none" stroke="#7C3AED" stroke-width="1" opacity="0.25" stroke-dasharray="4 14"/>
+
+  <!-- ── BUG BODY (ellipse) ── -->
+  <ellipse cx="200" cy="242" rx="68" ry="88" fill="#0D1117" stroke="#F97316" stroke-width="2.5" filter="url(#glow-sm)"/>
+
+  <!-- Body wing-split line -->
+  <line x1="200" y1="158" x2="200" y2="326" stroke="#F97316" stroke-width="1.5" opacity="0.5"/>
+
+  <!-- Circuit traces inside body -->
+  <line x1="148" y1="215" x2="252" y2="215" stroke="#8B5CF6" stroke-width="1.5" opacity="0.7"/>
+  <line x1="148" y1="242" x2="252" y2="242" stroke="#8B5CF6" stroke-width="1.5" opacity="0.7"/>
+  <line x1="148" y1="269" x2="252" y2="269" stroke="#8B5CF6" stroke-width="1.5" opacity="0.7"/>
+
+  <!-- L-bends left -->
+  <polyline points="165,215 148,215 148,200" fill="none" stroke="#8B5CF6" stroke-width="1.5" opacity="0.6"/>
+  <polyline points="165,242 148,242 148,227" fill="none" stroke="#8B5CF6" stroke-width="1.5" opacity="0.6"/>
+  <polyline points="165,269 148,269 148,254" fill="none" stroke="#8B5CF6" stroke-width="1.5" opacity="0.6"/>
+
+  <!-- L-bends right -->
+  <polyline points="235,215 252,215 252,200" fill="none" stroke="#8B5CF6" stroke-width="1.5" opacity="0.6"/>
+  <polyline points="235,242 252,242 252,227" fill="none" stroke="#8B5CF6" stroke-width="1.5" opacity="0.6"/>
+  <polyline points="235,269 252,269 252,254" fill="none" stroke="#8B5CF6" stroke-width="1.5" opacity="0.6"/>
+
+  <!-- Circuit nodes -->
+  <circle cx="200" cy="215" r="4.5" fill="#F97316" filter="url(#glow-md)"/>
+  <circle cx="200" cy="242" r="4.5" fill="#F97316" filter="url(#glow-md)"/>
+  <circle cx="200" cy="269" r="4.5" fill="#F97316" filter="url(#glow-md)"/>
+  <circle cx="165" cy="215" r="3" fill="#8B5CF6" filter="url(#glow-sm)"/>
+  <circle cx="235" cy="215" r="3" fill="#8B5CF6" filter="url(#glow-sm)"/>
+  <circle cx="165" cy="242" r="3" fill="#8B5CF6" filter="url(#glow-sm)"/>
+  <circle cx="235" cy="242" r="3" fill="#8B5CF6" filter="url(#glow-sm)"/>
+  <circle cx="165" cy="269" r="3" fill="#8B5CF6" filter="url(#glow-sm)"/>
+  <circle cx="235" cy="269" r="3" fill="#8B5CF6" filter="url(#glow-sm)"/>
+
+  <!-- ── BUG HEAD ── -->
+  <!-- Neck connector -->
+  <rect x="186" y="152" width="28" height="12" rx="2" fill="#0D1117"/>
+  <!-- Head circle -->
+  <circle cx="200" cy="130" r="28" fill="#0D1117" stroke="#F97316" stroke-width="2.5" filter="url(#glow-sm)"/>
+  <!-- Terminal prompt text inside head -->
+  <text x="195" y="135" fill="#F97316" font-family="'Courier New', Courier, monospace" font-size="17" font-weight="bold" filter="url(#glow-md)">&gt;_</text>
+
+  <!-- ── ANTENNAE ── -->
+  <line x1="188" y1="104" x2="163" y2="72" stroke="#F97316" stroke-width="2" stroke-linecap="round" filter="url(#glow-sm)"/>
+  <line x1="212" y1="104" x2="237" y2="72" stroke="#F97316" stroke-width="2" stroke-linecap="round" filter="url(#glow-sm)"/>
+  <!-- Antenna orbs -->
+  <circle cx="163" cy="72" r="5.5" fill="#F97316" filter="url(#glow-lg)"/>
+  <circle cx="237" cy="72" r="5.5" fill="#F97316" filter="url(#glow-lg)"/>
+
+  <!-- ── LEGS ── -->
+  <!-- Left legs (3) — from ellipse edge at y=210, 242, 274 -->
+  <!-- y=210: ellipse edge x = 200 - 68*sqrt(1-(210-242)²/88²) = 200 - 68*sqrt(1-1024/7744) ≈ 200-68*0.933≈136.6 -->
+  <line x1="137" y1="210" x2="92" y2="192" stroke="#F97316" stroke-width="2" stroke-linecap="round" filter="url(#glow-sm)"/>
+  <line x1="132" y1="242" x2="84" y2="242" stroke="#F97316" stroke-width="2" stroke-linecap="round" filter="url(#glow-sm)"/>
+  <line x1="137" y1="274" x2="92" y2="292" stroke="#F97316" stroke-width="2" stroke-linecap="round" filter="url(#glow-sm)"/>
+
+  <!-- Right legs (3) -->
+  <line x1="263" y1="210" x2="308" y2="192" stroke="#F97316" stroke-width="2" stroke-linecap="round" filter="url(#glow-sm)"/>
+  <line x1="268" y1="242" x2="316" y2="242" stroke="#F97316" stroke-width="2" stroke-linecap="round" filter="url(#glow-sm)"/>
+  <line x1="263" y1="274" x2="308" y2="292" stroke="#F97316" stroke-width="2" stroke-linecap="round" filter="url(#glow-sm)"/>
+
+  <!-- Leg end dots -->
+  <circle cx="92" cy="192" r="3" fill="#8B5CF6" filter="url(#glow-sm)"/>
+  <circle cx="84" cy="242" r="3" fill="#8B5CF6" filter="url(#glow-sm)"/>
+  <circle cx="92" cy="292" r="3" fill="#8B5CF6" filter="url(#glow-sm)"/>
+  <circle cx="308" cy="192" r="3" fill="#8B5CF6" filter="url(#glow-sm)"/>
+  <circle cx="316" cy="242" r="3" fill="#8B5CF6" filter="url(#glow-sm)"/>
+  <circle cx="308" cy="292" r="3" fill="#8B5CF6" filter="url(#glow-sm)"/>
+
+  <!-- Bottom stinger -->
+  <line x1="200" y1="328" x2="200" y2="348" stroke="#F97316" stroke-width="2" stroke-linecap="round" filter="url(#glow-sm)"/>
+  <circle cx="200" cy="352" r="4" fill="#F97316" filter="url(#glow-md)"/>
+</svg>

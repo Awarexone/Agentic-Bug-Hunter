@@ -1,0 +1,101 @@
+<svg width="1200" height="300" viewBox="0 0 1200 300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="glow-sm">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow-md">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow-lg">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <radialGradient id="bgGrad" cx="20%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#1a0a2e"/>
+      <stop offset="100%" stop-color="#0D1117"/>
+    </radialGradient>
+    <linearGradient id="titleGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#F97316"/>
+      <stop offset="60%" stop-color="#C084FC"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="300" rx="16" fill="url(#bgGrad)"/>
+  <!-- Subtle grid lines -->
+  <line x1="0" y1="150" x2="1200" y2="150" stroke="#7C3AED" stroke-width="0.5" opacity="0.12"/>
+  <line x1="600" y1="0" x2="600" y2="300" stroke="#7C3AED" stroke-width="0.5" opacity="0.08"/>
+  <!-- Border -->
+  <rect width="1200" height="300" rx="16" fill="none" stroke="#7C3AED" stroke-width="1.5" opacity="0.6"/>
+
+  <!-- ══════════════ ICON (left side) ══════════════ -->
+  <!-- Outer circle -->
+  <circle cx="150" cy="150" r="122" fill="#0D1117" opacity="0.6"/>
+  <circle cx="150" cy="150" r="122" fill="none" stroke="#7C3AED" stroke-width="2" opacity="0.8" filter="url(#glow-sm)"/>
+
+  <!-- Bug body -->
+  <ellipse cx="150" cy="168" rx="42" ry="54" fill="#0D1117" stroke="#F97316" stroke-width="2" filter="url(#glow-sm)"/>
+  <!-- Wing split -->
+  <line x1="150" y1="117" x2="150" y2="220" stroke="#F97316" stroke-width="1" opacity="0.45"/>
+
+  <!-- Circuit traces inside body -->
+  <line x1="116" y1="152" x2="184" y2="152" stroke="#8B5CF6" stroke-width="1.2" opacity="0.7"/>
+  <line x1="116" y1="168" x2="184" y2="168" stroke="#8B5CF6" stroke-width="1.2" opacity="0.7"/>
+  <line x1="116" y1="184" x2="184" y2="184" stroke="#8B5CF6" stroke-width="1.2" opacity="0.7"/>
+  <!-- L-bends -->
+  <polyline points="128,152 116,152 116,143" fill="none" stroke="#8B5CF6" stroke-width="1.2" opacity="0.55"/>
+  <polyline points="172,152 184,152 184,143" fill="none" stroke="#8B5CF6" stroke-width="1.2" opacity="0.55"/>
+  <polyline points="128,168 116,168 116,159" fill="none" stroke="#8B5CF6" stroke-width="1.2" opacity="0.55"/>
+  <polyline points="172,168 184,168 184,159" fill="none" stroke="#8B5CF6" stroke-width="1.2" opacity="0.55"/>
+  <!-- Nodes -->
+  <circle cx="150" cy="152" r="3.5" fill="#F97316" filter="url(#glow-md)"/>
+  <circle cx="150" cy="168" r="3.5" fill="#F97316" filter="url(#glow-md)"/>
+  <circle cx="150" cy="184" r="3.5" fill="#F97316" filter="url(#glow-md)"/>
+  <circle cx="128" cy="152" r="2.5" fill="#8B5CF6"/>
+  <circle cx="172" cy="152" r="2.5" fill="#8B5CF6"/>
+  <circle cx="128" cy="168" r="2.5" fill="#8B5CF6"/>
+  <circle cx="172" cy="168" r="2.5" fill="#8B5CF6"/>
+
+  <!-- Head -->
+  <circle cx="150" cy="100" r="19" fill="#0D1117" stroke="#F97316" stroke-width="2" filter="url(#glow-sm)"/>
+  <text x="146" y="106" fill="#F97316" font-family="'Courier New', Courier, monospace" font-size="12" font-weight="bold" filter="url(#glow-md)">&gt;_</text>
+
+  <!-- Antennae -->
+  <line x1="142" y1="83" x2="126" y2="63" stroke="#F97316" stroke-width="1.8" stroke-linecap="round" filter="url(#glow-sm)"/>
+  <line x1="158" y1="83" x2="174" y2="63" stroke="#F97316" stroke-width="1.8" stroke-linecap="round" filter="url(#glow-sm)"/>
+  <circle cx="126" cy="63" r="4" fill="#F97316" filter="url(#glow-lg)"/>
+  <circle cx="174" cy="63" r="4" fill="#F97316" filter="url(#glow-lg)"/>
+
+  <!-- Legs left -->
+  <line x1="109" y1="156" x2="76" y2="143" stroke="#F97316" stroke-width="1.6" stroke-linecap="round" filter="url(#glow-sm)"/>
+  <line x1="108" y1="168" x2="73" y2="168" stroke="#F97316" stroke-width="1.6" stroke-linecap="round" filter="url(#glow-sm)"/>
+  <line x1="109" y1="180" x2="76" y2="193" stroke="#F97316" stroke-width="1.6" stroke-linecap="round" filter="url(#glow-sm)"/>
+  <!-- Legs right -->
+  <line x1="191" y1="156" x2="224" y2="143" stroke="#F97316" stroke-width="1.6" stroke-linecap="round" filter="url(#glow-sm)"/>
+  <line x1="192" y1="168" x2="227" y2="168" stroke="#F97316" stroke-width="1.6" stroke-linecap="round" filter="url(#glow-sm)"/>
+  <line x1="191" y1="180" x2="224" y2="193" stroke="#F97316" stroke-width="1.6" stroke-linecap="round" filter="url(#glow-sm)"/>
+  <!-- Leg dots -->
+  <circle cx="76" cy="143" r="2.5" fill="#8B5CF6"/>
+  <circle cx="73" cy="168" r="2.5" fill="#8B5CF6"/>
+  <circle cx="76" cy="193" r="2.5" fill="#8B5CF6"/>
+  <circle cx="224" cy="143" r="2.5" fill="#8B5CF6"/>
+  <circle cx="227" cy="168" r="2.5" fill="#8B5CF6"/>
+  <circle cx="224" cy="193" r="2.5" fill="#8B5CF6"/>
+
+  <!-- ══════════════ TEXT (right side) ══════════════ -->
+  <!-- Main title -->
+  <text x="308" y="118" fill="url(#titleGrad)" font-family="'Segoe UI', 'SF Pro Display', Arial, sans-serif" font-size="72" font-weight="800" letter-spacing="-2" filter="url(#glow-sm)">Claude</text>
+  <text x="308" y="195" fill="#FFFFFF" font-family="'Segoe UI', 'SF Pro Display', Arial, sans-serif" font-size="66" font-weight="700" letter-spacing="-1.5" opacity="0.92">Bug Bounty</text>
+
+  <!-- Tagline -->
+  <text x="310" y="234" fill="#8B5CF6" font-family="'Courier New', Courier, monospace" font-size="18" opacity="0.85" filter="url(#glow-sm)">AI-Powered Terminal Hunting Agent · v3.0.0 Bionic Hunter</text>
+
+  <!-- Decorative separator line between icon and text -->
+  <line x1="284" y1="48" x2="284" y2="252" stroke="#7C3AED" stroke-width="1" opacity="0.4"/>
+
+  <!-- Small accent dots -->
+  <circle cx="296" cy="150" r="3" fill="#F97316" filter="url(#glow-md)"/>
+</svg>

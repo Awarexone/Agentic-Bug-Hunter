@@ -8,9 +8,9 @@
 
 # Claude Bug Bounty
 
-### The AI-Powered Agent Harness for Professional Bug Bounty Hunting
+### Find security vulnerabilities, get paid — with AI doing the heavy lifting
 
-*Your AI copilot that sees live traffic, remembers past hunts, and hunts autonomously.*
+*Your AI hunting partner that remembers past targets, spots vulnerabilities, and writes reports for you.*
 <br>
 *The community made a meme coin to support the project CA: J6VzBAGnyyNEyzyHhauwg3ofRctFxnTLzQCcjUdGpump*
 <sub>by <a href="https://shuvonsec.me">shuvonsec</a></sub>
@@ -24,7 +24,7 @@
 
 <br>
 
-<a href="#-quick-start">Quick Start</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="#-how-it-works">How It Works</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="#-commands">Commands</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="#-whats-new-in-v300">What's New</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="#-installation">Install</a>
+<a href="#-what-is-this">What Is This?</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="#-quick-start">Quick Start</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="#-commands">Commands</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="#-whats-new">What's New</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="#-installation">Install</a>
 
 <br>
 
@@ -42,32 +42,53 @@
 
 <br>
 
-## The Problem
+## What Is This?
 
-Most bug bounty toolkits give you a bag of scripts. You still have to:
-- Figure out **what** to test and **in what order**
-- Waste hours on **false positives** that get rejected
-- Write **reports from scratch** every time
-- **Forget** what worked on previous targets
-- **Context-switch** between 15 different terminal windows
+**Bug bounty hunting** is when companies pay you real money to find security vulnerabilities in their websites and apps before bad actors do. Platforms like HackerOne and Bugcrowd connect hunters with companies. Payouts range from $100 to $1,000,000+ depending on severity.
+
+**This tool** is a plugin for [Claude Code](https://claude.ai/claude-code) (Anthropic's AI coding assistant) that turns it into a professional bug bounty hunting partner. Instead of juggling 15 different tools and writing reports from scratch, you just type a command and the AI handles the rest.
+
+**In plain terms:**
+- You give it a target website
+- It automatically scans the site, finds vulnerabilities, validates they're real, and writes a professional report
+- It remembers what you found on past targets and applies that knowledge to new ones
+- You can even put it on autopilot and let it hunt on its own while you sleep
+
+**Who is it for?**
+- Security researchers who want to move faster
+- Bug bounty hunters who are tired of the manual grind
+- People learning security who want AI guidance at every step
 
 <br>
 
-## The Solution
-
-Claude Bug Bounty is an **agent harness** — not just scripts. It reasons about what to test, validates findings before you waste time writing them up, remembers what worked across targets, and generates reports that actually get paid.
+---
 
 <br>
+
+## The Problem (Before This Tool)
+
+Most hunters waste hours on things that shouldn't take that long:
+
+- Manually running 10+ tools in the right order just to map a target
+- Writing the same report structure from scratch every single time (45 min each)
+- Forgetting that a technique worked on a similar target 3 months ago
+- Submitting bugs that get rejected because they weren't properly validated first
+- Jumping between terminal windows, browser, notes, and report drafts
+
+<br>
+
+## The Solution (After This Tool)
 
 <div align="center">
 
 | Before | After |
 |:---|:---|
-| Run scripts manually, hope for the best | AI orchestrates 25+ tools in the right order |
+| Run 10+ tools manually, hope for the best | AI orchestrates everything in the right order |
 | Write reports from scratch (45 min each) | Report-writer agent generates submission-ready reports in 60s |
-| Forget what worked last month | Persistent memory — patterns from target A inform target B |
-| Can't see live traffic from Claude | Burp MCP integration — Claude reads your proxy history |
-| Hunt one endpoint at a time | `/autopilot` runs full hunt loops with safety checkpoints |
+| Forget what worked last month | **Memory system** — patterns from target A inform target B |
+| Submit bugs without proper validation | **7-Question Gate** kills weak findings before you waste time reporting |
+| Can't see live browser traffic | **Burp MCP** — AI reads your proxy history in real time |
+| Hunt one endpoint at a time | **`/autopilot`** runs the full hunt loop while you watch |
 
 </div>
 
@@ -79,41 +100,44 @@ Claude Bug Bounty is an **agent harness** — not just scripts. It reasons about
 
 ## Quick Start
 
+> **Prerequisite:** You need [Claude Code](https://claude.ai/claude-code) installed. It's Anthropic's free AI coding tool that runs in your terminal.
+
 **Step 1 — Install tools + skills**
 
 ```bash
 git clone https://github.com/shuvonsec/claude-bug-bounty.git
 cd claude-bug-bounty
-chmod +x install_tools.sh && ./install_tools.sh   # subfinder, httpx, nuclei, etc.
-chmod +x install.sh && ./install.sh               # skills + commands into Claude Code
+chmod +x install_tools.sh && ./install_tools.sh   # installs scanning tools (subfinder, httpx, nuclei...)
+chmod +x install.sh && ./install.sh               # installs AI skills + commands into Claude Code
 ```
 
-**Step 2 — Hunt**
+**Step 2 — Start hunting**
 
 ```bash
-claude                          # Start Claude Code
+claude                          # open Claude Code in your terminal
 
-/recon target.com               # Discover attack surface
-/hunt target.com                # Test for vulnerabilities
-/validate                       # Check finding before writing
-/report                         # Generate submission-ready report
+/recon target.com               # step 1: map the target (subdomains, live pages, URLs)
+/hunt target.com                # step 2: test for vulnerabilities
+/validate                       # step 3: make sure the finding is real before writing it up
+/report                         # step 4: generate a professional submission report
 ```
 
-**Step 3 — Go Autonomous** *(new in v3)*
+**That's the core loop.** Four commands, full workflow.
+
+**Step 3 — Go autonomous**
 
 ```bash
-/autopilot target.com --normal  # Full autonomous hunt loop
-/intel target.com               # Fetch CVE + disclosure intel
-/resume target.com              # Pick up where you left off
+/autopilot target.com --normal  # AI does the whole thing, pauses for your review at the end
+/resume target.com              # continue where you left off on a previous target
+/intel target.com               # get CVEs + disclosed reports relevant to this target
 ```
 
 <br>
 
-> **Or run tools directly** — no Claude needed:
+> **Don't use Claude Code?** Run the Python tools directly:
 > ```bash
 > python3 tools/hunt.py --target target.com
 > ./tools/recon_engine.sh target.com
-> python3 tools/intel_engine.py --target target.com --tech nextjs
 > ```
 
 <br>
@@ -124,33 +148,35 @@ claude                          # Start Claude Code
 
 ## How It Works
 
+Think of it like a team of specialists, each doing one job:
+
 ```
-                         YOU
-                          |
-                    ┌─────▼─────┐
-                    │   Claude   │ ◄── Burp MCP (sees your traffic)
-                    │   Code     │ ◄── HackerOne MCP (program intel)
-                    └─────┬─────┘
-                          |
-          ┌───────────────┼───────────────┐
-          |               |               |
-    ┌─────▼─────┐  ┌──────▼──────┐  ┌────▼────┐
-    │   Recon    │  │    Hunt     │  │ Report  │
-    │   Agent    │  │   Engine    │  │ Writer  │
-    └─────┬─────┘  └──────┬──────┘  └────┬────┘
-          |               |               |
-    subfinder        scope check      H1/Bugcrowd
-    httpx            vuln test        Intigriti
-    katana           validate         Immunefi
-    nuclei           chain A→B→C      CVSS 3.1
-          |               |               |
-    ┌─────▼───────────────▼───────────────▼─────┐
-    │              Hunt Memory                   │
-    │  journal · patterns · audit · rate limit   │
-    └───────────────────────────────────────────-─┘
+                        YOU
+                         |
+                   ┌─────▼─────┐
+                   │   Claude   │ ◄── Burp MCP (sees your browser traffic)
+                   │   Code     │ ◄── HackerOne MCP (program intel)
+                   └─────┬─────┘
+                         |
+         ┌───────────────┼───────────────┐
+         |               |               |
+   ┌─────▼─────┐  ┌──────▼──────┐  ┌────▼────┐
+   │   Recon    │  │    Hunt     │  │ Report  │
+   │  (map it)  │  │  (test it)  │  │(write it│
+   └─────┬─────┘  └──────┬──────┘  └────┬────┘
+         |               |               |
+   finds all         checks for      formats for
+   subdomains,       vulnerabilities  HackerOne /
+   URLs, APIs        & validates      Bugcrowd /
+                     findings         Immunefi
+         |               |               |
+   ┌─────▼───────────────▼───────────────▼─────┐
+   │              Hunt Memory                   │
+   │   remembers everything across sessions     │
+   └────────────────────────────────────────────┘
 ```
 
-Each stage feeds the next. Claude orchestrates everything, or you run any stage independently.
+Each step feeds the next. Claude orchestrates all of it, or you run any step on its own.
 
 <br>
 
@@ -160,28 +186,29 @@ Each stage feeds the next. Claude orchestrates everything, or you run any stage 
 
 ## Commands
 
-### Core Workflow
+### The Core 4 (start here)
+
+| Command | What It Does | When To Use |
+|:---|:---|:---|
+| `/recon target.com` | Maps the target — finds all subdomains, live pages, APIs, and runs basic scans | Always first |
+| `/hunt target.com` | Actively tests for vulnerabilities using the right technique for the tech stack | After recon |
+| `/validate` | Runs a 7-question check to confirm a finding is real before you write it up | Before every report |
+| `/report` | Generates a professional submission report for H1/Bugcrowd/Intigriti/Immunefi | After validation |
+
+### Power Commands
 
 | Command | What It Does |
 |:---|:---|
-| `/recon target.com` | Full recon — subdomains, live hosts, URLs, nuclei scan |
-| `/hunt target.com` | Active testing — scope check, tech detect, test highest-ROI bugs |
-| `/validate` | 7-Question Gate + 4 gates — PASS / KILL / DOWNGRADE / CHAIN REQUIRED |
-| `/report` | Submission-ready report for H1/Bugcrowd/Intigriti/Immunefi |
-| `/chain` | Find B and C from bug A — systematic exploit chaining |
-| `/scope <asset>` | Verify asset is in scope before testing |
-| `/triage` | Quick 2-minute go/no-go before deep validation |
-| `/web3-audit <contract>` | 10-class smart contract checklist + Foundry PoC |
-
-### Autonomous & Memory *(new in v3)*
-
-| Command | What It Does |
-|:---|:---|
-| `/autopilot target.com` | Full autonomous hunt loop with safety checkpoints |
-| `/surface target.com` | AI-ranked attack surface from recon + memory |
-| `/resume target.com` | Resume previous hunt — shows what's untested |
-| `/remember` | Save finding or pattern to persistent memory |
-| `/intel target.com` | CVEs + disclosures cross-referenced with your hunt history |
+| `/autopilot target.com` | AI runs the full loop automatically — recon → hunt → validate → report |
+| `/surface target.com` | Shows a ranked list of the best places to test (based on your past findings) |
+| `/resume target.com` | Shows untested endpoints from last session and picks up where you left off |
+| `/remember` | Saves the current finding or technique to memory for future use |
+| `/intel target.com` | Pulls CVEs and past disclosed reports relevant to this target |
+| `/chain` | When you find bug A, this finds bugs B and C that usually come with it |
+| `/scope <asset>` | Checks if a domain or URL is in scope before you test it |
+| `/triage` | Quick 2-minute go/no-go check — should you keep investigating or move on? |
+| `/web3-audit <contract>` | Full smart contract security audit with 10 bug class checklist |
+| `/token-scan <contract>` | Scans a meme coin or token for rug pull signals (EVM + Solana) |
 
 <br>
 
@@ -191,17 +218,18 @@ Each stage feeds the next. Claude orchestrates everything, or you run any stage 
 
 ## AI Agents
 
-7 specialized agents, each tuned for its role:
+8 specialized agents, each built for one job:
 
-| Agent | What It Does | Model |
-|:---|:---|:---|
-| **recon-agent** | Subdomain enum, live hosts, URL crawl, nuclei | Haiku *(fast)* |
-| **report-writer** | Professional reports, impact-first, human tone | Opus *(quality)* |
-| **validator** | 7-Question Gate + 4-gate finding validation | Sonnet |
-| **web3-auditor** | 10-class contract audit + Foundry PoC stubs | Sonnet |
-| **chain-builder** | Systematic A-B-C exploit chaining | Sonnet |
-| **autopilot** | Autonomous hunt loop with circuit breaker | Sonnet |
-| **recon-ranker** | Attack surface ranking from recon + memory | Haiku *(fast)* |
+| Agent | What It Does |
+|:---|:---|
+| **recon-agent** | Finds all subdomains, live hosts, and URLs for a target |
+| **report-writer** | Writes professional, impact-first reports that get paid |
+| **validator** | Runs the 7-Question Gate — kills weak findings before you waste time |
+| **web3-auditor** | Audits smart contracts for 10 common vulnerability classes |
+| **chain-builder** | When you find one bug, finds the chain of related bugs |
+| **autopilot** | Runs the whole hunt loop autonomously with safety checkpoints |
+| **recon-ranker** | Ranks the attack surface so you test the highest-value targets first |
+| **token-auditor** | Fast meme coin / token rug pull and security analysis |
 
 <br>
 
@@ -209,70 +237,43 @@ Each stage feeds the next. Claude orchestrates everything, or you run any stage 
 
 <br>
 
-## What's New in v3.0.0
+## What's New
 
-> **The "brain in a jar" is now a bionic hacker.**
+### v4.1.0 — Auto-Memory + README (Apr 2026)
 
-<details>
-<summary><b>Autonomous Hunt Loop</b> — <code>/autopilot</code></summary>
-<br>
+- **Auto-memory at session end** — the AI now automatically logs what it tested and found after every hunt session. Memory used to stay empty until you manually ran `/remember`. Now the flywheel starts on day 1.
+- README badge and stats updated, `install_tools.sh` added to Quick Start (was missing)
+- `hunt-memory/` added to `.gitignore` (contains full URL history, shouldn't be committed)
 
-7-step loop that runs continuously: **scope - recon - rank - hunt - validate - report - checkpoint**
+### v4.0.0 — Meme Coin Security Module (Apr 2026)
 
-Three checkpoint modes:
-- `--paranoid` — stops after every finding for your review
-- `--normal` — batches findings, checkpoints every few minutes
-- `--yolo` — minimal stops (still requires approval for report submissions)
+- **`/token-scan <contract>`** — automated rug pull scanner for EVM and Solana tokens
+- **`skills/meme-coin-audit/`** — 8 token bug classes: mint authority, freeze authority, LP locks, honeypot detection, bonding curve exploits, Solana SPL checks
+- **New agent:** `token-auditor`
 
-Built-in safety: circuit breaker stops hammering hosts after consecutive failures, per-host rate limiting, every request logged to `audit.jsonl`.
+### v3.1.1 — CI/CD Scanner (Mar 2026)
 
-</details>
-
-<details>
-<summary><b>Persistent Hunt Memory</b> — remember everything</summary>
-<br>
-
-- **Journal** — append-only JSONL log of every hunt action (concurrent-safe writes)
-- **Pattern DB** — what technique worked on which tech stack, sorted by payout
-- **Target profiles** — tested/untested endpoints, tech stack, findings
-- **Cross-target learning** — patterns from target A suggested when hunting target B
-
-</details>
+- **GitHub Actions security scanning** built into the recon pipeline
+- Auto-detects GitHub orgs from recon data and scans their workflow files
+- 52 rules, 81.6% GHSA coverage — catches expression injection, secret leaks, supply chain attacks
 
 <details>
-<summary><b>MCP Integrations</b> — Burp + HackerOne</summary>
+<summary><b>Older releases (v3.1.0, v3.0.0, v2.x)</b></summary>
 <br>
 
-**Burp Suite MCP** — Claude can read your proxy history, replay requests through Burp, use Collaborator payloads. Your AI copilot now sees the same traffic you do.
+**v3.1.0 — Hunting Methodology Skill**
+- `skills/bb-methodology/` — mindset + 5-phase non-linear workflow, decision trees per vuln class, 20-min rotation clock
 
-**HackerOne MCP** — Public API integration:
-- `search_disclosed_reports` — search Hacktivity by keyword or program
-- `get_program_stats` — bounty ranges, response times, resolved counts
-- `get_program_policy` — scope, safe harbor, excluded vuln classes
+**v3.0.0 — The Bionic Hunter**
+- `/autopilot` — full autonomous hunt loop with `--paranoid`, `--normal`, `--yolo` modes
+- Hunt memory — journal, pattern DB, target profiles, cross-target learning
+- Burp MCP — AI reads your proxy history in real time
+- HackerOne MCP — search disclosed reports, get program stats and policy
+- `/intel`, `/resume`, `/remember`, `/surface` commands
 
-</details>
-
-<details>
-<summary><b>On-Demand Intel</b> — <code>/intel</code></summary>
-<br>
-
-Wraps `learn.py` + HackerOne MCP + hunt memory:
-- Flags **untested CVEs** matching the target's tech stack
-- Shows **new endpoints** not in your tested list
-- Surfaces **cross-target patterns** from your own hunt history
-- Prioritizes: CRITICAL untested > HIGH untested > already tested
-
-</details>
-
-<details>
-<summary><b>Deterministic Scope Safety</b></summary>
-<br>
-
-`scope_checker.py` uses anchored suffix matching — code check, not LLM judgment:
-- `*.target.com` matches `api.target.com` but NOT `evil-target.com`
-- Excluded domains always win over wildcards
-- IP addresses rejected with warning (match by domain only)
-- Every test filtered through scope before execution
+**v2.1.0 — 20 Vuln Classes**
+- MFA/2FA bypass and SAML/SSO attacks added (classes 19 and 20)
+- NoSQL injection, command injection, SSTI, HTTP smuggling, WebSocket payloads added to arsenal
 
 </details>
 
@@ -282,146 +283,57 @@ Wraps `learn.py` + HackerOne MCP + hunt memory:
 
 <br>
 
-## Vulnerability Coverage
+## What It Can Find
 
 <details>
-<summary><b>20 Web2 Bug Classes</b> — click to expand</summary>
+<summary><b>20 Web2 Vulnerability Classes</b> — click to expand</summary>
 <br>
 
-| Class | Key Techniques | Typical Payout |
+These are the types of security bugs it looks for in regular websites and APIs:
+
+| Vulnerability | What It Means | Typical Payout |
 |:---|:---|:---|
-| **IDOR** | Object-level, field-level, GraphQL node(), UUID enum, method swap | $500 - $5K |
-| **Auth Bypass** | Missing middleware, client-side checks, BFLA | $1K - $10K |
-| **XSS** | Reflected, stored, DOM, postMessage, CSP bypass, mXSS | $500 - $5K |
-| **SSRF** | Redirect chain, DNS rebinding, cloud metadata, 11 IP bypasses | $1K - $15K |
-| **Business Logic** | Workflow bypass, negative quantity, price manipulation | $500 - $10K |
-| **Race Conditions** | TOCTOU, coupon reuse, limit overrun, double spend | $500 - $5K |
-| **SQLi** | Error-based, blind, time-based, ORM bypass, WAF bypass | $1K - $15K |
-| **OAuth/OIDC** | Missing PKCE, state bypass, 11 redirect_uri bypasses | $500 - $5K |
-| **File Upload** | Extension bypass, MIME confusion, polyglots, 10 bypasses | $500 - $5K |
-| **GraphQL** | Introspection, node() IDOR, batching bypass, mutation auth | $1K - $10K |
-| **LLM/AI** | Prompt injection, chatbot IDOR, ASI01-ASI10 framework | $500 - $10K |
-| **API Misconfig** | Mass assignment, JWT attacks, prototype pollution, CORS | $500 - $5K |
-| **ATO** | Password reset poisoning, token leaks, 9 takeover paths | $1K - $20K |
-| **SSTI** | Jinja2, Twig, Freemarker, ERB, Thymeleaf -> RCE | $2K - $10K |
-| **Subdomain Takeover** | GitHub Pages, S3, Heroku, Netlify, Azure | $200 - $5K |
-| **Cloud/Infra** | S3 listing, EC2 metadata, Firebase, K8s, Docker API | $500 - $20K |
-| **HTTP Smuggling** | CL.TE, TE.CL, TE.TE, H2.CL request tunneling | $5K - $30K |
-| **Cache Poisoning** | Unkeyed headers, parameter cloaking, web cache deception | $1K - $10K |
-| **MFA Bypass** | No rate limit, OTP reuse, response manipulation, race | $1K - $10K |
-| **SAML/SSO** | XSW, comment injection, signature stripping, XXE | $2K - $20K |
+| **IDOR** | Accessing another user's data by changing a number in the URL | $500 - $5K |
+| **Auth Bypass** | Getting into accounts or admin panels without permission | $1K - $10K |
+| **XSS** | Injecting malicious scripts into web pages | $500 - $5K |
+| **SSRF** | Making the server fetch internal resources it shouldn't | $1K - $15K |
+| **Business Logic** | Exploiting flaws in how the app is supposed to work | $500 - $10K |
+| **Race Conditions** | Sending requests at the same time to get double rewards/credits | $500 - $5K |
+| **SQL Injection** | Manipulating the database through user inputs | $1K - $15K |
+| **OAuth/OIDC** | Breaking the "Login with Google/GitHub" flows | $500 - $5K |
+| **File Upload** | Uploading malicious files that get executed | $500 - $5K |
+| **GraphQL** | Auth bypass and data leaks through GraphQL APIs | $1K - $10K |
+| **LLM/AI** | Prompt injection and IDOR in AI-powered features | $500 - $10K |
+| **API Misconfig** | Mass assignment, JWT attacks, broken CORS | $500 - $5K |
+| **Account Takeover** | Taking over someone else's account | $1K - $20K |
+| **SSTI** | Template injection that leads to code execution | $2K - $10K |
+| **Subdomain Takeover** | Claiming expired subdomains (GitHub Pages, S3, Heroku) | $200 - $5K |
+| **Cloud/Infra** | Exposed S3 buckets, EC2 metadata, Firebase, Kubernetes | $500 - $20K |
+| **HTTP Smuggling** | Confusing front-end and back-end servers to bypass security | $5K - $30K |
+| **Cache Poisoning** | Poisoning CDN caches to serve malicious content to others | $1K - $10K |
+| **MFA Bypass** | Getting past two-factor authentication | $1K - $10K |
+| **SAML/SSO** | Breaking enterprise single sign-on implementations | $2K - $20K |
 
 </details>
 
 <details>
-<summary><b>10 Web3 Bug Classes</b> — click to expand</summary>
+<summary><b>10 Web3 / Smart Contract Bug Classes</b> — click to expand</summary>
 <br>
 
-| Class | Frequency | Typical Payout |
+These are bugs in blockchain smart contracts, common on Immunefi:
+
+| Vulnerability | What It Means | Typical Payout |
 |:---|:---|:---|
-| **Accounting Desync** | 28% of Criticals | $50K - $2M |
-| **Access Control** | 19% of Criticals | $50K - $2M |
-| **Incomplete Code Path** | 17% of Criticals | $50K - $2M |
-| **Off-By-One** | 22% of Highs | $10K - $100K |
-| **Oracle Manipulation** | 12% of reports | $100K - $2M |
-| **ERC4626 Attacks** | Moderate | $50K - $500K |
-| **Reentrancy** | Classic | $10K - $500K |
-| **Flash Loan** | Moderate | $100K - $2M |
-| **Signature Replay** | Moderate | $10K - $200K |
-| **Proxy/Upgrade** | Moderate | $50K - $2M |
-
-</details>
-
-<br>
-
----
-
-<br>
-
-## Tools & Architecture
-
-<details>
-<summary><b>Core Pipeline</b> — <code>tools/</code></summary>
-<br>
-
-| Tool | What It Does |
-|:---|:---|
-| `hunt.py` | Master orchestrator — chains recon, scan, report |
-| `recon_engine.sh` | Subdomain enum + DNS + live hosts + URL crawl |
-| `learn.py` | CVE + disclosure intel from NVD, GitHub Advisory, HackerOne |
-| `intel_engine.py` | Memory-aware intel wrapper (learn.py + HackerOne MCP + memory) |
-| `validate.py` | 4-gate validation — scope, impact, dedup, CVSS |
-| `report_generator.py` | H1/Bugcrowd/Intigriti report output |
-| `scope_checker.py` | Deterministic scope safety with anchored suffix matching |
-| `cicd_scanner.sh` | GitHub Actions SAST — wraps [sisakulint](https://github.com/sisaku-security/sisakulint) remote scan (52 rules, 81.6% GHSA coverage) |
-| `mindmap.py` | Prioritized attack mindmap generator |
-
-</details>
-
-<details>
-<summary><b>Vulnerability Scanners</b> — <code>tools/</code></summary>
-<br>
-
-| Tool | Target |
-|:---|:---|
-| `h1_idor_scanner.py` | Object-level and field-level IDOR |
-| `h1_mutation_idor.py` | GraphQL mutation IDOR |
-| `h1_oauth_tester.py` | OAuth misconfigs (PKCE, state, redirect_uri) |
-| `h1_race.py` | Race conditions (TOCTOU, limit overrun) |
-| `zero_day_fuzzer.py` | Logic bugs, edge cases, access control |
-| `cve_hunter.py` | Tech fingerprinting + known CVE matching |
-| `vuln_scanner.sh` | Orchestrates nuclei + dalfox + sqlmap |
-| `hai_probe.py` | AI chatbot IDOR, prompt injection |
-| `hai_payload_builder.py` | Prompt injection payload generator |
-
-</details>
-
-<details>
-<summary><b>MCP Integrations</b> — <code>mcp/</code></summary>
-<br>
-
-| Server | Tools Provided |
-|:---|:---|
-| **Burp Suite** (`burp-mcp-client/`) | Read proxy history, replay requests, Collaborator payloads |
-| **HackerOne** (`hackerone-mcp/`) | `search_disclosed_reports`, `get_program_stats`, `get_program_policy` |
-
-</details>
-
-<details>
-<summary><b>Hunt Memory System</b> — <code>memory/</code></summary>
-<br>
-
-| Module | What It Does |
-|:---|:---|
-| `hunt_journal.py` | Append-only JSONL hunt log (concurrent-safe via `fcntl.flock`) |
-| `pattern_db.py` | Cross-target pattern DB — matches by vuln class + tech stack |
-| `audit_log.py` | Every outbound request logged + per-host rate limiter + circuit breaker |
-| `schemas.py` | Schema validation for all entry types (versioned) |
-
-</details>
-
-<details>
-<summary><b>Full Directory Structure</b> — click to expand</summary>
-<br>
-
-```
-claude-bug-bounty/
-├── skills/                     8 skill domains (SKILL.md files)
-├── commands/                   13 slash commands
-├── agents/                     7 specialized AI agents
-├── tools/                      21 Python/shell tools
-├── memory/                     Persistent hunt memory system
-├── mcp/                        MCP server integrations
-│   ├── burp-mcp-client/        Burp Suite proxy
-│   └── hackerone-mcp/          HackerOne public API
-├── tests/                      129 tests
-├── rules/                      Always-active hunting + reporting rules
-├── hooks/                      Session start/stop hooks
-├── docs/                       Payload arsenal + technique guides
-├── web3/                       Smart contract skill chain
-├── scripts/                    Shell wrappers
-└── wordlists/                  5 wordlists
-```
+| **Accounting Desync** | Contract's math gets out of sync with reality | $50K - $2M |
+| **Access Control** | Functions that should be admin-only aren't | $50K - $2M |
+| **Incomplete Code Path** | Edge cases that drain funds | $50K - $2M |
+| **Off-By-One** | Math errors that let attackers take more than they should | $10K - $100K |
+| **Oracle Manipulation** | Manipulating price feeds to exploit DeFi protocols | $100K - $2M |
+| **ERC4626 Attacks** | Vault share inflation attacks | $50K - $500K |
+| **Reentrancy** | Calling back into a contract before it finishes | $10K - $500K |
+| **Flash Loan** | Using uncollateralized loans to manipulate prices | $100K - $2M |
+| **Signature Replay** | Reusing signed transactions | $10K - $200K |
+| **Proxy/Upgrade** | Exploiting upgradeable contract patterns | $50K - $2M |
 
 </details>
 
@@ -433,33 +345,35 @@ claude-bug-bounty/
 
 ## Installation
 
-### Prerequisites
+### What You Need First
 
 ```bash
 # macOS
 brew install go python3 node jq
 
-# Linux (Debian/Ubuntu)
+# Linux (Ubuntu/Debian)
 sudo apt install golang python3 nodejs jq
 ```
+
+You also need [Claude Code](https://claude.ai/claude-code) installed and a free account.
 
 ### Install
 
 ```bash
 git clone https://github.com/shuvonsec/claude-bug-bounty.git
 cd claude-bug-bounty
-chmod +x install.sh && ./install.sh     # Install skills + commands into ~/.claude/
-bash install_tools.sh                    # Install recon/scan tools + sisakulint
+chmod +x install_tools.sh && ./install_tools.sh   # scanning tools (subfinder, httpx, nuclei, etc.)
+chmod +x install.sh && ./install.sh               # AI skills + commands into Claude Code
 ```
 
 ### API Keys
 
 <details>
-<summary><b>Chaos API</b> (required for recon)</summary>
+<summary><b>Chaos API</b> (recommended for better subdomain discovery)</summary>
 <br>
 
-1. Sign up at [chaos.projectdiscovery.io](https://chaos.projectdiscovery.io)
-2. Export your key:
+1. Sign up free at [chaos.projectdiscovery.io](https://chaos.projectdiscovery.io)
+2. Add your key:
 
 ```bash
 export CHAOS_API_KEY="your-key-here"
@@ -469,10 +383,10 @@ echo 'export CHAOS_API_KEY="your-key-here"' >> ~/.zshrc
 </details>
 
 <details>
-<summary><b>Optional API keys</b> (better subdomain coverage)</summary>
+<summary><b>Optional keys</b> (even better subdomain coverage)</summary>
 <br>
 
-Configure in `~/.config/subfinder/config.yaml`:
+Add to `~/.config/subfinder/config.yaml`:
 - [VirusTotal](https://www.virustotal.com) — free
 - [SecurityTrails](https://securitytrails.com) — free tier
 - [Censys](https://censys.io) — free tier
@@ -486,21 +400,18 @@ Configure in `~/.config/subfinder/config.yaml`:
 
 <br>
 
-## The Golden Rules
+## The Rules (Always Active)
 
-These are always active. Non-negotiable.
+These apply every session, no exceptions:
 
 ```
- 1. READ FULL SCOPE        verify every asset before the first request
- 2. NO THEORETICAL BUGS    "Can attacker do this RIGHT NOW?" — if no, stop
- 3. KILL WEAK FAST         Gate 0 is 30 seconds, saves hours
- 4. NEVER OUT-OF-SCOPE     one request = potential ban
- 5. 5-MINUTE RULE          nothing after 5 min = move on
- 6. RECON ONLY AUTO        manual testing finds unique bugs
- 7. IMPACT-FIRST           "worst thing if auth broken?" drives target selection
- 8. SIBLING RULE           9 endpoints have auth? check the 10th
- 9. A→B SIGNAL             confirming A means B exists nearby — hunt it
-10. VALIDATE FIRST         7-Question Gate (15 min) before report (30 min)
+ 1. READ FULL SCOPE FIRST   — only test what the program says you can
+ 2. ONLY REAL BUGS          — "Can an attacker do this RIGHT NOW?" if no, stop
+ 3. KILL WEAK FINDINGS FAST — 30-second check saves hours of wasted reporting
+ 4. NEVER GO OUT OF SCOPE   — one wrong request can get you banned
+ 5. 5-MINUTE RULE           — no progress after 5 min? move to the next target
+ 6. VALIDATE BEFORE REPORT  — run /validate before you spend 30 min writing
+ 7. IMPACT FIRST            — start with the bugs that have the worst consequences
 ```
 
 <br>
@@ -509,13 +420,13 @@ These are always active. Non-negotiable.
 
 <br>
 
-## The Trilogy
+## Related Projects
 
-| Repo | Purpose |
+| Repo | What It's For |
 |:---|:---|
-| **[claude-bug-bounty](https://github.com/shuvonsec/claude-bug-bounty)** | Full hunting pipeline — recon to report |
-| **[web3-bug-bounty-hunting-ai-skills](https://github.com/shuvonsec/web3-bug-bounty-hunting-ai-skills)** | Smart contract security — 10 bug classes, Foundry PoCs |
-| **[public-skills-builder](https://github.com/shuvonsec/public-skills-builder)** | Ingest 500+ writeups into Claude skill files |
+| **[claude-bug-bounty](https://github.com/shuvonsec/claude-bug-bounty)** | This — full hunting pipeline from recon to report |
+| **[web3-bug-bounty-hunting-ai-skills](https://github.com/shuvonsec/web3-bug-bounty-hunting-ai-skills)** | Smart contract security — 10 bug classes, Foundry PoC templates |
+| **[public-skills-builder](https://github.com/shuvonsec/public-skills-builder)** | Turns 500+ public bug writeups into Claude skill files |
 
 <br>
 
@@ -526,12 +437,10 @@ These are always active. Non-negotiable.
 ## Contributing
 
 PRs welcome. Best contributions:
-
 - New vulnerability scanners or detection modules
 - Payload additions to `skills/security-arsenal/SKILL.md`
-- New agent definitions for specific platforms
 - Real-world methodology improvements (with evidence from paid reports)
-- Platform support (YesWeHack, Synack, HackenProof)
+- Support for more platforms (YesWeHack, Synack, HackenProof)
 
 ```bash
 git checkout -b feature/your-contribution
@@ -555,17 +464,15 @@ git push origin feature/your-contribution
 
 ---
 
-**For authorized security testing only.** Only test targets within an approved bug bounty scope.<br>
-Never test systems without explicit permission. Follow responsible disclosure practices.
+**For authorized security testing only.** Only test targets within an approved bug bounty program scope.<br>
+Never test systems without explicit written permission. Follow responsible disclosure.
 
 ---
 
 <br>
 
-MIT License
+MIT License · **Built by bug hunters, for bug hunters.**
 
-**Built by bug hunters, for bug hunters.**
-
-If this helped you find a bug, leave a star.
+If this helped you find a bug, leave a star ⭐
 
 </div>

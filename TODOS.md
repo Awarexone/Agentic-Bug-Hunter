@@ -48,7 +48,9 @@ Items deferred from the MCP-First Bionic Hunter design review (2026-03-24).
 
 ---
 
-## TODO-6: Auto-memory at hunt session end
+## ~~TODO-6: Auto-memory at hunt session end~~ ✅ RESOLVED (2026-04-16)
+
+**Resolution:** Added `make_session_summary_entry()` to `memory/schemas.py` and `log_session_summary()` to `memory/hunt_journal.py`. Both `agents/autopilot.md` and `commands/hunt.md` now instruct the agent to call `log_session_summary()` at session end. Entries are tagged `auto_logged` + `session_summary` and are non-fatal on failure. 11 new tests in `tests/test_hunt_journal.py`.
 
 **What:** `/remember` is currently the only write path into hunt memory. Hunters forget to run it. The memory → hunt feedback loop never spins up in practice. At the end of every `/hunt` and `/autopilot` session, automatically write a journal entry with target, endpoints tested, vuln classes tried, and results. Hunter can still run `/remember` for rich notes (payout, technique, tags).
 

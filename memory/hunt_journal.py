@@ -11,7 +11,7 @@ import os
 import sys
 from pathlib import Path
 
-from memory.schemas import validate_journal_entry, SchemaError
+from memory.schemas import validate_journal_entry, make_session_summary_entry, SchemaError
 
 
 class HuntJournal:
@@ -83,6 +83,32 @@ class HuntJournal:
                 entries.append(entry)
 
         return entries
+
+    def log_session_summary(
+        self,
+        target: str,
+        action: str,
+        endpoints_tested: list[str],
+        vuln_classes_tried: list[str],
+        findings_count: int,
+        session_id: str | None = None,
+    ) -> None:
+        """Auto-log a session summary entry at the end of a hunt or autopilot session.
+
+        Silently swallows errors — auto-logging must never crash the hunt loop.
+        """
+        try:
+            entry = make_session_summary_entry(
+                target=target,
+                action=action,
+                endpoints_tested=endpoints_tested,
+                vuln_classes_tried=vuln_classes_tried,
+                findings_count=findings_count,
+                session_id=session_id,
+            )
+            self.append(entry)
+        except Exception as e:
+            print(f"WARNING: auto-log session summary failed (non-fatal): {e}", file=sys.stderr)
 
     def query(self, *, target: str | None = None, vuln_class: str | None = None,
               action: str | None = None, result: str | None = None) -> list[dict]:

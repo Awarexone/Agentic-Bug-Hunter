@@ -250,6 +250,49 @@ def validate_audit_entry(entry: dict) -> dict:
     return entry
 
 
+def make_session_summary_entry(
+    target: str,
+    action: str,
+    endpoints_tested: list[str],
+    vuln_classes_tried: list[str],
+    findings_count: int,
+    session_id: str | None = None,
+) -> dict:
+    """Create a journal entry summarising a completed hunt or autopilot session.
+
+    Written automatically at session end so memory populates without requiring
+    a manual /remember call.  action should be 'hunt' for interactive sessions
+    or 'hunt' for autopilot (both map to the hunt action type).
+    """
+    tested_str = ", ".join(endpoints_tested) if endpoints_tested else "none"
+    classes_str = ", ".join(vuln_classes_tried) if vuln_classes_tried else "none"
+    notes = (
+        f"Auto-logged session summary. "
+        f"Endpoints tested: {len(endpoints_tested)}. "
+        f"Vuln classes tried: {classes_str}. "
+        f"Findings: {findings_count}."
+    )
+    if session_id:
+        notes += f" Session: {session_id}."
+
+    tags = ["auto_logged", "session_summary"]
+    if findings_count > 0:
+        tags.append("has_findings")
+
+    entry = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "target": target,
+        "action": action if action in VALID_ACTIONS else "hunt",
+        "vuln_class": "session_summary",
+        "endpoint": tested_str[:200] if tested_str else "session",
+        "result": "informational",
+        "notes": notes,
+        "tags": tags,
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+    return validate_journal_entry(entry)
+
+
 def make_audit_entry(
     url: str,
     method: str,

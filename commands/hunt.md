@@ -194,3 +194,23 @@ Every 20 min ask: "Am I making progress?" No → rotate to next endpoint or vuln
 - 20+ payload variations, identical response
 - Finding needs 5+ simultaneous preconditions
 - 30+ min on same endpoint with no progress
+
+## Auto-Memory (runs at session end)
+
+When the hunt session ends, auto-log a summary to hunt memory so `/resume` picks it up next time:
+
+```python
+from pathlib import Path
+from memory.hunt_journal import HuntJournal
+
+journal = HuntJournal(Path.home() / ".claude/projects" / "<project>" / "hunt-memory/journal.jsonl")
+journal.log_session_summary(
+    target="<target>",
+    action="hunt",
+    endpoints_tested=["<endpoints tested this session>"],
+    vuln_classes_tried=["<vuln classes tried>"],
+    findings_count=<N confirmed findings>,
+)
+```
+
+Runs silently — non-fatal. Keeps memory populated without requiring a manual `/remember`.

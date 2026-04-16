@@ -36,19 +36,13 @@ Items deferred from the MCP-First Bionic Hunter design review (2026-03-24).
 
 ---
 
-## TODO-4: Fix hunt.py BASE_DIR path resolution
+## ~~TODO-4: Fix hunt.py BASE_DIR path resolution~~ ✅ RESOLVED (2026-04-16)
+
+**Resolution:** `hunt.py` was moved from repo root to `tools/` — `TOOLS_DIR` and `BASE_DIR` now resolve correctly via single `os.path.dirname` chain. Verified: `BASE_DIR` matches repo root exactly.
 
 **What:** `hunt.py` line 1 uses `BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))` which goes 2 levels up. But `hunt.py` is at repo root, so `BASE_DIR` points to the parent of the repo — all derived paths (TOOLS_DIR, RECON_DIR, FINDINGS_DIR) resolve to wrong locations.
 
 **Why:** This is a latent bug — any code path that uses these directories will fail silently or write to unexpected locations.
-
-**Pros:** Fix is trivial (change to single `os.path.dirname`). Prevents future confusion when memory/ module imports hunt.py paths.
-
-**Cons:** None — pure bug fix.
-
-**Context:** The fix is `BASE_DIR = os.path.dirname(os.path.abspath(__file__))`. Verify downstream paths (TOOLS_DIR, RECON_DIR, FINDINGS_DIR) still make sense after the fix. This should be fixed before Phase 1 since the memory module may reference these paths.
-
-**Depends on:** Nothing — standalone fix.
 
 **Source:** Outside voice (eng review, 2026-03-24)
 

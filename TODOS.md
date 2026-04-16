@@ -48,6 +48,42 @@ Items deferred from the MCP-First Bionic Hunter design review (2026-03-24).
 
 ---
 
+## TODO-6: Auto-memory at hunt session end
+
+**What:** `/remember` is currently the only write path into hunt memory. Hunters forget to run it. The memory → hunt feedback loop never spins up in practice. At the end of every `/hunt` and `/autopilot` session, automatically write a journal entry with target, endpoints tested, vuln classes tried, and results. Hunter can still run `/remember` for rich notes (payout, technique, tags).
+
+**Why:** The "memory-informed hunt" promise only works if memory gets populated. Manual `/remember` has ~10% usage rate in practice. Auto-logging makes the flywheel start on day 1.
+
+**Implementation:** Add session summary auto-log to the end of `agents/autopilot.md` and `commands/hunt.md`. Write a minimal journal entry via `HuntJournal.append()`. Fields: target, action=hunt, endpoints_tested list, vuln_classes_tried list, result=session_summary.
+
+**Source:** /autoplan review (2026-04-16)
+
+---
+
+## TODO-7: Memory GC / rotation policy
+
+**What:** `journal.jsonl`, `patterns.jsonl`, and `audit.jsonl` grow indefinitely with no rotation or size limit. A `/memory gc` command or automatic rotation at 10MB should be added.
+
+**Why:** On active hunters, audit.jsonl can reach 100MB+ in months. Also, audit.jsonl contains full URL history — worth a size cap and optional purge.
+
+**Source:** /autoplan review (2026-04-16)
+
+---
+
+## TODO-8: Missing test coverage
+
+**What:** 4 test gaps identified in /autoplan eng review:
+1. Concurrent-write stress test for `HuntJournal` + `PatternDB` (two processes writing simultaneously)
+2. End-to-end hunt loop integration test (recon → rank → hunt → validate → report as a sequence)
+3. Disk-full OSError propagation test (verify user-facing error message)
+4. `PatternDB.save()` performance test at 10,000 entries
+
+**Why:** Unit coverage is strong (2,766 lines / 15 files). These 4 gaps cover failure modes that could bite users in production.
+
+**Source:** /autoplan review (2026-04-16)
+
+---
+
 ## ~~TODO-5: Define canonical recon output format + legacy adapter~~ ✅ RESOLVED (2026-04-02)
 
 **Resolution:** Implemented `tools/recon_adapter.py` — `ReconAdapter` class reads from nested directory format (canonical), with fallback paths for flat-file compat. `normalize()` creates all missing stubs brain.py expects (priority/, api_specs/, urls/graphql.txt, resolved.txt). Builds prioritized_hosts.json and attack_surface.md from live data. 31 tests in `tests/test_recon_adapter.py`.

@@ -4,7 +4,7 @@
 
 <div align="center">
 
-<img src="https://img.shields.io/badge/v3.0.0-Bionic_Hunter-blueviolet?style=for-the-badge" alt="v3.0.0">
+<img src="https://img.shields.io/badge/v4.1.0-Bionic_Hunter-blueviolet?style=for-the-badge" alt="v4.1.0">
 
 # Claude Bug Bounty
 
@@ -29,7 +29,7 @@
 <br>
 
 ```
-  13 commands  ·  7 AI agents  ·  8 skill domains
+  14 commands  ·  8 AI agents  ·  9 skill domains
   20 web2 vuln classes  ·  10 web3 bug classes
   Burp MCP  ·  HackerOne MCP  ·  Autonomous Mode
 ```
@@ -79,12 +79,13 @@ Claude Bug Bounty is an **agent harness** — not just scripts. It reasons about
 
 ## Quick Start
 
-**Step 1 — Install**
+**Step 1 — Install tools + skills**
 
 ```bash
 git clone https://github.com/shuvonsec/claude-bug-bounty.git
 cd claude-bug-bounty
-chmod +x install.sh && ./install.sh
+chmod +x install_tools.sh && ./install_tools.sh   # subfinder, httpx, nuclei, etc.
+chmod +x install.sh && ./install.sh               # skills + commands into Claude Code
 ```
 
 **Step 2 — Hunt**

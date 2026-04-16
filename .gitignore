@@ -2,6 +2,7 @@
 findings/
 recon/
 reports/
+hunt-memory/
 config.json
 *.burp
 *.json.bak

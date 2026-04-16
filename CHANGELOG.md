@@ -1,5 +1,38 @@
 # Changelog
 
+## v4.1.0 — Patch: Bug Fixes + Assets (Apr 2026)
+
+### Fixed
+- **TODO-4 resolved**: `hunt.py` BASE_DIR path resolution — `hunt.py` was relocated to `tools/` so `TOOLS_DIR`/`BASE_DIR`/`RECON_DIR`/`FINDINGS_DIR` now resolve correctly. All 5 open TODOs are now closed.
+
+### Added
+- `logo-banner.svg` and `logo-icon.svg` — SVG vector assets for banner and icon variants
+
+---
+
+## v4.0.0 — Meme Coin Security Module (Apr 2026)
+
+### Added — New Skill Domain
+- `skills/meme-coin-audit/SKILL.md`: **Meme coin rug pull detection + 8 token bug classes**
+  - Mint authority / freeze authority checks
+  - Bonding curve exploit patterns
+  - LP lock verification
+  - Honeypot detection
+  - Token metadata tampering
+  - Solana-specific audit path (SPL token checks)
+  - Pre-dive kill signals for obvious rugs
+
+### Added — Tool
+- `tools/token_scanner.py`: automated token red flag scanner supporting EVM + Solana
+  - EVM: ABI analysis, ownership checks, hidden mint functions, transfer tax detection
+  - Solana: SPL token account authority checks, metadata validation
+
+### Changed
+- `CLAUDE.md`: Skills count 8 → 9, added `meme-coin-audit` to skill table; Commands 13 → 14, added `/token-scan`
+- `README.md`: Updated skill domain count
+
+---
+
 ## v3.1.1 — CI/CD GitHub Actions Security Expansion (Mar 2026)
 
 ### Changed — Existing Skill Enhancement

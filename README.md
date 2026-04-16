@@ -24,7 +24,7 @@
 
 <br>
 
-<a href="#-what-is-this">What Is This?</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="#-quick-start">Quick Start</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="#-commands">Commands</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="#-whats-new">What's New</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="#-installation">Install</a>
+<a href="#-what-is-this">What Is This?</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="#-quick-start">Quick Start</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="#-commands">Commands</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="#-whats-new">What's New</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="#-installation">Install</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="FAQ.md">FAQ</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="TERMS.md">Terms</a>
 
 <br>
 

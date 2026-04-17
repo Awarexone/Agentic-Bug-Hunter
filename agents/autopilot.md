@@ -181,7 +181,7 @@ Requests:   142 total (142 in-scope, 0 blocked)
 Endpoints:  23 tested, 14 remaining
 Findings:   2 validated, 1 killed, 3 partial
 
-Next:       14 untested endpoints — run /resume target.com to continue
+Next:       14 untested endpoints — run /pickup target.com to continue
 ```
 
 Then **auto-log a session summary to hunt memory** (do this every session, no user action needed):
@@ -201,4 +201,4 @@ journal.log_session_summary(
 )
 ```
 
-This runs silently — failures are non-fatal warnings. The entry is tagged `auto_logged` and `session_summary` so `/resume` and `/remember` can distinguish it from manually-logged rich entries.
+This runs silently — failures are non-fatal warnings. The entry is tagged `auto_logged` and `session_summary` so `/pickup` and `/remember` can distinguish it from manually-logged rich entries.

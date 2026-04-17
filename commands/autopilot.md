@@ -12,7 +12,38 @@ Autonomous hunt loop with deterministic scope safety and configurable checkpoint
 /autopilot target.com                    # default: --paranoid mode
 /autopilot target.com --normal           # batch checkpoint after validation
 /autopilot target.com --yolo             # minimal checkpoints (still requires report approval)
+/autopilot target.com --quick            # fast surface scan, fewer checks, lower token use
+/autopilot targets.txt                   # multiple targets — one domain per line in the file
 ```
+
+## Session Isolation (Important)
+
+**Start a fresh Claude Code session per target.** Claude accumulates context across a session —
+testing multiple targets in one session causes cross-contamination where findings, payloads,
+and tech stack assumptions from target A bleed into target B.
+
+Best practice:
+```bash
+# Terminal 1: target A
+claude  →  /autopilot targetA.com
+
+# Terminal 2: target B (separate process)
+claude  →  /autopilot targetB.com
+```
+
+If you must test multiple targets in one session, run `/pickup target.com` at the start of
+each target switch to reload the correct context.
+
+## Token Optimization
+
+Use `--quick` for faster, lower-cost scans (skips deep fuzzing and extended nuclei templates):
+```
+/autopilot target.com --quick    # ~40% fewer tokens, covers main attack surface
+/hunt target.com --vuln-class idor   # single bug class — lowest token use
+```
+
+For long hunts, run `/compact` (Claude Code built-in) periodically to compress context
+without losing findings.
 
 ## What This Does
 
@@ -48,5 +79,5 @@ Runs the full hunt cycle without stopping for approval at each step:
 ## After Autopilot
 
 - Run `/remember` to log successful patterns to hunt memory
-- Run `/resume target.com` next time to pick up where you left off
+- Run `/pickup target.com` next time to pick up where you left off
 - Check `hunt-memory/audit.jsonl` for a full request log

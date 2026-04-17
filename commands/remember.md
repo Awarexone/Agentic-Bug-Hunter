@@ -58,5 +58,5 @@ Save to hunt memory? [y/n]
 ## Why This Matters
 
 - Next time you hunt a target with similar tech stack, your successful patterns are suggested first
-- `/resume target.com` shows which endpoints you've tested and which remain
+- `/pickup target.com` shows which endpoints you've tested and which remain
 - Cross-target learning: patterns from target A inform hunting on target B

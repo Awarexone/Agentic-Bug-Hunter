@@ -1,10 +1,12 @@
 ---
-description: Resume a previous hunt on a target — shows hunt history, untested endpoints, and memory-informed suggestions. Usage: /resume target.com
+description: Pick up a previous hunt on a target — shows hunt history, untested endpoints, and memory-informed suggestions. Usage: /pickup target.com
 ---
 
-# /resume
+# /pickup
 
 Pick up where you left off on a target.
+
+> **Renamed from `/resume`** — `/resume` is a reserved Claude Code command. Use `/pickup` to continue a previous hunt.
 
 ## What This Does
 
@@ -12,18 +14,18 @@ Pick up where you left off on a target.
 2. Shows hunt history (sessions, findings, payouts)
 3. Lists untested endpoints from last recon
 4. Suggests techniques based on tech stack + pattern DB
-5. Asks: resume hunting or re-run recon?
+5. Asks: continue hunting or re-run recon?
 
 ## Usage
 
 ```
-/resume target.com
+/pickup target.com
 ```
 
 ## Output
 
 ```
-RESUME: target.com
+PICKUP: target.com
 ═══════════════════════════════════════
 
 Hunt History:
@@ -43,7 +45,7 @@ Memory Suggestions:
   where you found auth bypass. Try introspection → mutation pattern.
 
 Actions:
-  [r] Resume hunting untested endpoints
+  [r] Continue hunting untested endpoints
   [n] Re-run recon first (surface may have changed)
   [s] Show full hunt journal for this target
 ```

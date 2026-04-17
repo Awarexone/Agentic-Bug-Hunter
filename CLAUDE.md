@@ -20,6 +20,9 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 
 ### Commands (14 slash commands)
 
+> **Note:** All commands are prefixed to avoid conflicts with Claude Code's built-in commands.
+> `/resume` is a reserved Claude Code command — use `/pickup` to continue a previous hunt.
+
 | Command | Usage |
 |---|---|
 | `/recon` | `/recon target.com` — full recon pipeline |
@@ -32,7 +35,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `/web3-audit` | `/web3-audit <contract.sol>` — smart contract audit |
 | `/autopilot` | `/autopilot target.com --normal` — autonomous hunt loop |
 | `/surface` | `/surface target.com` — ranked attack surface |
-| `/resume` | `/resume target.com` — pick up previous hunt |
+| `/pickup` | `/pickup target.com` — pick up previous hunt (was `/resume`) |
 | `/remember` | `/remember` — log finding to hunt memory |
 | `/intel` | `/intel target.com` — fetch CVE + disclosure intel |
 | `/token-scan` | `/token-scan <contract>` — meme coin/token rug pull scanner |

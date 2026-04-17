@@ -128,7 +128,7 @@ claude                          # open Claude Code in your terminal
 
 ```bash
 /autopilot target.com --normal  # AI does the whole thing, pauses for your review at the end
-/resume target.com              # continue where you left off on a previous target
+/pickup target.com              # continue where you left off on a previous target
 /intel target.com               # get CVEs + disclosed reports relevant to this target
 ```
 
@@ -201,7 +201,7 @@ Each step feeds the next. Claude orchestrates all of it, or you run any step on 
 |:---|:---|
 | `/autopilot target.com` | AI runs the full loop automatically — recon → hunt → validate → report |
 | `/surface target.com` | Shows a ranked list of the best places to test (based on your past findings) |
-| `/resume target.com` | Shows untested endpoints from last session and picks up where you left off |
+| `/pickup target.com` | Shows untested endpoints from last session and picks up where you left off |
 | `/remember` | Saves the current finding or technique to memory for future use |
 | `/intel target.com` | Pulls CVEs and past disclosed reports relevant to this target |
 | `/chain` | When you find bug A, this finds bugs B and C that usually come with it |
@@ -269,7 +269,7 @@ Each step feeds the next. Claude orchestrates all of it, or you run any step on 
 - Hunt memory — journal, pattern DB, target profiles, cross-target learning
 - Burp MCP — AI reads your proxy history in real time
 - HackerOne MCP — search disclosed reports, get program stats and policy
-- `/intel`, `/resume`, `/remember`, `/surface` commands
+- `/intel`, `/pickup`, `/remember`, `/surface` commands
 
 **v2.1.0 — 20 Vuln Classes**
 - MFA/2FA bypass and SAML/SSO attacks added (classes 19 and 20)

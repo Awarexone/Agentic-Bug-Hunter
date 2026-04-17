@@ -18,11 +18,62 @@ Active vulnerability hunting on a target.
 
 ```
 /hunt target.com
-/hunt target.com --vuln-class idor
+/hunt target.com --vuln-class idor          # focus on one bug class (lower tokens, faster)
 /hunt target.com --vuln-class ssrf
 /hunt target.com --vuln-class graphql
-/hunt target.com --source-code   (if repo is available)
+/hunt target.com --source-code ./repo       # static analysis + live testing
+/hunt target.com --chrome                   # browser-based testing via Chrome MCP
+/hunt targets.txt                           # multi-target: one domain per line
 ```
+
+## Session Isolation
+
+**One session per target.** Claude accumulates context — testing two targets in one session
+causes cross-contamination where payloads, assumptions, and findings from target A
+affect target B.
+
+```bash
+claude  →  /hunt targetA.com   # Terminal 1
+claude  →  /hunt targetB.com   # Terminal 2 (separate process)
+```
+
+## Multi-Target
+
+Create a `targets.txt` with one domain per line:
+```
+api.target.com
+app.target.com
+admin.target.com
+```
+Then: `/hunt targets.txt --vuln-class idor`
+
+Each target runs independently. Findings scoped per-target in hunt memory.
+
+## Source Code Mode (--source-code)
+
+```
+/hunt target.com --source-code ./path/to/repo
+/hunt target.com --source-code https://github.com/org/repo
+```
+
+Enables:
+- Hardcoded secrets and API key grep
+- Route-to-controller mapping — find endpoints with missing auth decorators
+- Dangerous function scan: eval, exec, unserialize, raw SQL concat
+- Cross-reference source findings with live endpoint scan
+
+## Chrome MCP Mode (--chrome)
+
+```
+/hunt target.com --chrome
+```
+
+Requires Chrome MCP configured in Claude Code settings. Enables:
+- OAuth / SSO / 2FA flows that require JS
+- DOM-based XSS (invisible to curl probes)
+- WebSocket endpoints
+- SPA route discovery (React/Vue/Angular)
+- Real file upload and form submission
 
 ## Phase 1: Read Before Touching (15 min)
 
@@ -195,9 +246,30 @@ Every 20 min ask: "Am I making progress?" No → rotate to next endpoint or vuln
 - Finding needs 5+ simultaneous preconditions
 - 30+ min on same endpoint with no progress
 
+## Getting Specific Results (Anti-Vague Rule)
+
+If Claude gives you a generic message like "try testing for XSS" or "check for IDOR",
+that is not useful. Demand specificity by including this in your prompt:
+
+```
+Give me the EXACT curl command to test endpoint X.
+Include: full URL, exact headers (including auth token placeholder), exact body.
+Do not describe what to do — show the command.
+```
+
+Example:
+```
+I found /api/v2/users/{id}/invoices returns a 200 for any user.
+Give me the exact curl to confirm IDOR from an attacker account.
+My attacker token is ATTACKER_TOKEN, victim user ID is 456.
+```
+
+The tool should ALWAYS respond with runnable commands, not descriptions.
+If it doesn't, add: "Show commands only. No prose."
+
 ## Auto-Memory (runs at session end)
 
-When the hunt session ends, auto-log a summary to hunt memory so `/resume` picks it up next time:
+When the hunt session ends, auto-log a summary to hunt memory so `/pickup` picks it up next time:
 
 ```python
 from pathlib import Path

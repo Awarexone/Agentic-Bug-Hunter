@@ -20,13 +20,42 @@ log_info()  { echo -e "${CYAN}[*]${NC} $1"; }
 log_step()  { echo -e "    ${CYAN}[>]${NC} $1"; }
 log_done()  { echo -e "    ${GREEN}[✓]${NC} $1"; }
 
-TARGET="${1:?Usage: $0 <target-domain> [--quick]}"
+TARGET="${1:?Usage: $0 <target> [--quick]  (target = FQDN, IP, or CIDR)}"
 QUICK_MODE="${2:-}"
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 RECON_DIR="$BASE_DIR/recon/$TARGET"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 THREADS=20
 RATE_LIMIT=50  # requests per second
+
+# ── Detect target type (passed from hunt.py or auto-detected here) ────────────
+_detect_target_type() {
+    local t="$1"
+    if [[ "$t" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$ ]]; then echo "cidr"
+    elif [[ "$t" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]];        then echo "ip"
+    else echo "domain"; fi
+}
+
+_expand_cidr_hosts() {
+    local target="$1"
+    python3 - "$target" <<'PY'
+import ipaddress
+import itertools
+import sys
+
+network = ipaddress.ip_network(sys.argv[1], strict=False)
+hosts = [str(host) for host in itertools.islice(network.hosts(), 254)]
+if not hosts:
+    hosts = [str(network.network_address)]
+print("\n".join(hosts))
+PY
+}
+TARGET_TYPE="${TARGET_TYPE:-$(_detect_target_type "$TARGET")}"
+
+# For IP/CIDR: always scope-lock — no subdomain enum needed
+if [ "$TARGET_TYPE" = "ip" ] || [ "$TARGET_TYPE" = "cidr" ]; then
+    SCOPE_LOCK=1
+fi
 
 mkdir -p "$RECON_DIR"/{subdomains,live,ports,urls,js,dirs,params}
 
@@ -39,9 +68,32 @@ echo "============================================="
 echo ""
 
 # ============================================================
-# Phase 1: Subdomain Enumeration
+# Phase 1: Subdomain Enumeration (or Host Discovery for IP/CIDR)
 # ============================================================
 log_info "Phase 1: Subdomain Enumeration"
+
+# ── For IP / CIDR targets: skip subdomain tools, do host discovery instead ───
+if [ "$TARGET_TYPE" = "cidr" ]; then
+    log_info "CIDR target — running nmap ping sweep to discover live hosts"
+    if command -v nmap &>/dev/null; then
+        nmap -sn "$TARGET" -oG - 2>/dev/null \
+            | awk '/Up$/{print $2}' \
+            > "$RECON_DIR/subdomains/all.txt" || true
+        LIVE_COUNT=$(wc -l < "$RECON_DIR/subdomains/all.txt" 2>/dev/null || echo 0)
+        if [ "$LIVE_COUNT" -eq 0 ]; then
+            log_warn "nmap did not identify live hosts — expanding the CIDR locally for downstream probing"
+            _expand_cidr_hosts "$TARGET" > "$RECON_DIR/subdomains/all.txt"
+        fi
+        log_ok "CIDR sweep: $(wc -l < "$RECON_DIR/subdomains/all.txt") live host(s) discovered"
+    else
+        log_warn "nmap not installed — expanding the CIDR locally for downstream probing"
+        _expand_cidr_hosts "$TARGET" > "$RECON_DIR/subdomains/all.txt"
+    fi
+    # Skip all subdomain enum tools — jump straight to live host probing
+elif [ "${SCOPE_LOCK:-0}" = "1" ] && [ "$TARGET_TYPE" = "ip" ]; then
+    log_info "Single IP target — skipping subdomain enumeration"
+    echo "$TARGET" > "$RECON_DIR/subdomains/all.txt"
+else
 
 # Subfinder (passive, fast)
 if command -v subfinder &>/dev/null; then
@@ -95,6 +147,8 @@ log_done "wayback: $(wc -l < "$RECON_DIR/subdomains/wayback_subs.txt" 2>/dev/nul
 cat "$RECON_DIR/subdomains/"*.txt 2>/dev/null | sort -u > "$RECON_DIR/subdomains/all.txt"
 TOTAL_SUBS=$(wc -l < "$RECON_DIR/subdomains/all.txt" 2>/dev/null || echo 0)
 log_ok "Total unique subdomains: $TOTAL_SUBS"
+
+fi  # end of domain-only subdomain enum block
 
 # ============================================================
 # Phase 2: HTTP Probing

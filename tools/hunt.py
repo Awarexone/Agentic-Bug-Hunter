@@ -16,11 +16,42 @@ Usage:
 """
 
 import argparse
+import itertools
+import ipaddress
 import json
 import os
 import subprocess
 import sys
 from datetime import datetime
+
+
+# ── Target type detection (FQDN / single IP / CIDR) ──────────────────────────
+
+MAX_CIDR_HOSTS = 254
+
+def detect_target_type(target: str) -> str:
+    """Return 'cidr', 'ip', or 'domain'."""
+    try:
+        net = ipaddress.ip_network(target, strict=False)
+        return "cidr" if net.num_addresses > 1 else "ip"
+    except ValueError:
+        return "domain"
+
+
+def expand_cidr(cidr: str, max_hosts: int = MAX_CIDR_HOSTS) -> list[str]:
+    """Expand CIDR to host IPs, rejecting ranges larger than max_hosts."""
+    net = ipaddress.ip_network(cidr, strict=False)
+    hosts = [str(host) for host in itertools.islice(net.hosts(), max_hosts + 1)]
+
+    if len(hosts) > max_hosts:
+        raise ValueError(
+            f"CIDR {cidr} expands beyond the supported limit of {max_hosts} hosts; "
+            "use /24 or smaller ranges"
+        )
+
+    if not hosts:
+        return [str(net.network_address)]
+    return hosts
 
 TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(TOOLS_DIR)
@@ -127,19 +158,35 @@ def select_targets(top_n=10):
     return []
 
 
-def run_recon(domain, quick=False):
-    """Run recon engine on a domain."""
+def run_recon(domain, quick=False, scope_lock=False):
+    """Run recon engine on a domain, single IP, or CIDR range."""
     log("info", f"Running recon on {domain}...")
     script = os.path.join(TOOLS_DIR, "recon_engine.sh")
     quick_flag = "--quick" if quick else ""
 
+    # Detect target type and pass to recon_engine.sh
+    target_type = detect_target_type(domain)
+    if target_type in ("ip", "cidr"):
+        scope_lock = True  # IPs/CIDRs never need subdomain enum
+        log("info", f"Target type: {target_type.upper()} — subdomain enum skipped")
+        if target_type == "cidr":
+            try:
+                hosts = expand_cidr(domain)
+            except ValueError as exc:
+                log("err", str(exc))
+                return False
+            log("info", f"CIDR {domain} → {len(hosts)} host(s) to scan")
+
+    scope_env  = "SCOPE_LOCK=1 " if scope_lock else ""
+    type_env   = f'TARGET_TYPE="{target_type}" '
+
     # Run with live output
     try:
         proc = subprocess.Popen(
-            f'bash "{script}" "{domain}" {quick_flag}',
+            f'{scope_env}{type_env}bash "{script}" "{domain}" {quick_flag}',
             shell=True, cwd=BASE_DIR
         )
-        proc.wait(timeout=1800)  # 30 min timeout
+        proc.wait(timeout=3600)  # 60 min timeout (CIDR ranges can be large)
         return proc.returncode == 0
     except subprocess.TimeoutExpired:
         proc.kill()
@@ -379,7 +426,7 @@ Examples:
   python3 hunt.py --setup-wordlists          Download wordlists
         """
     )
-    parser.add_argument("--target", type=str, help="Specific target domain to hunt")
+    parser.add_argument("--target", type=str, help="Target: FQDN, IP, or CIDR (e.g. example.com, 192.168.1.1, 10.0.0.0/24)")
     parser.add_argument("--quick", action="store_true", help="Quick scan mode (fewer checks)")
     parser.add_argument("--recon-only", action="store_true", help="Only run reconnaissance")
     parser.add_argument("--scan-only", action="store_true", help="Only run vulnerability scanner")

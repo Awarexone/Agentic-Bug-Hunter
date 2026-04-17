@@ -70,6 +70,19 @@
 - `README.md`: Updated skill domain count to 8
 - `SKILL.md`: Added cross-reference to `bb-methodology` after CRITICAL RULES section
 
+## v3.1.0 — CVSS 4.0 + TODO Fixes (Mar 2026)
+
+### Changed — CVSS 3.1 → 4.0
+- `tools/validate.py`: Full CVSS 4.0 interactive scorer. Replaces 8-metric CVSS 3.1 with 11-metric CVSS 4.0. New metrics: AT (Attack Requirements), VC/VI/VA (Vulnerable System), SC/SI/SA (Subsequent System, incl. Safety). Scope metric removed. UI now has three values (None / Passive / Active). Score verified via FIRST.org calculator link in output.
+- `agents/report-writer.md`: Updated CVSS section to 4.0. New metric descriptions, updated common-pattern examples, verification link.
+
+### Fixed — TODOs resolved
+- `agents/autopilot.md` already implemented TODO-2 (safe HTTP methods) and TODO-3 (circuit breaker) — marked resolved in TODOS.md
+- `tools/hunt.py` BASE_DIR path resolution was already correct (TODO-4 was based on wrong assumption about file location) — marked resolved
+- `tools/recon_adapter.py` created (TODO-5): auto-detects nested vs flat recon format, returns unified `ReconData`. `normalize_to_nested()` migrates legacy flat output. CLI: `python3 tools/recon_adapter.py example.com --migrate`
+
+---
+
 ## v2.1.0 — 20 Vuln Classes + Payload Expansion (Mar 2026)
 
 ### Config

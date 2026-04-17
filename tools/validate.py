@@ -37,57 +37,85 @@ BOLD   = "\033[1m"
 DIM    = "\033[2m"
 RESET  = "\033[0m"
 
-# ─── CVSS 3.1 scoring ─────────────────────────────────────────────────────────
+# ─── CVSS 4.0 scoring ─────────────────────────────────────────────────────────
+# Implements the CVSS 4.0 macro-vector approach from FIRST.org.
+# For authoritative scores verify at: https://www.first.org/cvss/calculator/4.0
 
-CVSS_WEIGHTS = {
-    "AV": {"N": 0.85, "A": 0.62, "L": 0.55, "P": 0.20},
-    "AC": {"L": 0.77, "H": 0.44},
-    "PR": {
-        "N":  {"U": 0.85, "C": 0.85},
-        "L":  {"U": 0.62, "C": 0.68},
-        "H":  {"U": 0.27, "C": 0.50},
-    },
-    "UI": {"N": 0.85, "R": 0.62},
-    "C":  {"H": 0.56, "L": 0.22, "N": 0.00},
-    "I":  {"H": 0.56, "L": 0.22, "N": 0.00},
-    "A":  {"H": 0.56, "L": 0.22, "N": 0.00},
+def _eq1(av: str, pr: str, ui: str) -> int:
+    """EQ1: Attack Vector / Privileges Required / User Interaction (0=highest severity)."""
+    if av == "N" and (pr == "N" or ui == "N"):
+        return 0
+    if av == "N" or pr == "N" or ui == "N":
+        return 1
+    return 2
+
+def _eq2(ac: str, at: str) -> int:
+    """EQ2: Attack Complexity / Attack Requirements."""
+    return 0 if (ac == "L" and at == "N") else 1
+
+def _eq3(vc: str, vi: str, va: str) -> int:
+    """EQ3: Vulnerable System CIA impact."""
+    if vc == "H" and vi == "H":
+        return 0
+    if vc == "H" or vi == "H" or va == "H":
+        return 1
+    return 2
+
+def _eq4(sc: str, si: str, sa: str) -> int:
+    """EQ4: Subsequent System impact (Safety > High > Low/None)."""
+    if si == "S" or sa == "S":
+        return 0
+    if sc == "H" or si == "H" or sa == "H":
+        return 1
+    return 2
+
+# CVSS 4.0 base score lookup by macro vector (eq1, eq2, eq3, eq4).
+# EQ5=0 (E=Active, default for base metrics).
+# EQ6 is derived from EQ3 with default CR=IR=AR=High.
+# Values approximate FIRST.org CVSS 4.0 specification.
+# Verify exact scores at: https://www.first.org/cvss/calculator/4.0
+#
+# eq1: 0=Network+(no-auth or no-UI), 1=partial advantage, 2=local/physical/high-priv+UI
+# eq2: 0=Low-complexity+no-prereqs, 1=otherwise
+# eq3: 0=VC+VI both High, 1=partial High, 2=no High CIA on vulnerable system
+# eq4: 0=Safety impact, 1=High subsequent-system impact, 2=no subsequent impact
+_CVSS40_TABLE: dict[tuple[int, int, int, int], float] = {
+    # eq1=0 (widest attack reach: network + no-auth OR no-UI)
+    (0, 0, 0, 0): 10.0, (0, 0, 0, 1): 10.0, (0, 0, 0, 2): 9.3,
+    (0, 0, 1, 0): 9.5,  (0, 0, 1, 1): 9.1,  (0, 0, 1, 2): 7.1,
+    (0, 0, 2, 0): 7.9,  (0, 0, 2, 1): 6.9,  (0, 0, 2, 2): 4.8,
+    (0, 1, 0, 0): 9.5,  (0, 1, 0, 1): 9.1,  (0, 1, 0, 2): 8.0,
+    (0, 1, 1, 0): 8.9,  (0, 1, 1, 1): 8.5,  (0, 1, 1, 2): 6.5,
+    (0, 1, 2, 0): 7.0,  (0, 1, 2, 1): 5.5,  (0, 1, 2, 2): 4.0,
+    # eq1=1 (some network/auth/UI advantage)
+    (1, 0, 0, 0): 9.3,  (1, 0, 0, 1): 9.0,  (1, 0, 0, 2): 7.8,
+    (1, 0, 1, 0): 8.8,  (1, 0, 1, 1): 8.5,  (1, 0, 1, 2): 6.5,
+    (1, 0, 2, 0): 7.0,  (1, 0, 2, 1): 6.0,  (1, 0, 2, 2): 4.5,
+    (1, 1, 0, 0): 9.0,  (1, 1, 0, 1): 8.5,  (1, 1, 0, 2): 7.5,
+    (1, 1, 1, 0): 8.5,  (1, 1, 1, 1): 7.5,  (1, 1, 1, 2): 5.9,
+    (1, 1, 2, 0): 6.0,  (1, 1, 2, 1): 5.5,  (1, 1, 2, 2): 3.5,
+    # eq1=2 (local/physical or high-privileges + active UI required)
+    (2, 0, 0, 0): 9.0,  (2, 0, 0, 1): 8.5,  (2, 0, 0, 2): 7.5,
+    (2, 0, 1, 0): 8.0,  (2, 0, 1, 1): 7.5,  (2, 0, 1, 2): 6.5,
+    (2, 0, 2, 0): 6.0,  (2, 0, 2, 1): 5.5,  (2, 0, 2, 2): 4.0,
+    (2, 1, 0, 0): 8.5,  (2, 1, 0, 1): 8.0,  (2, 1, 0, 2): 7.0,
+    (2, 1, 1, 0): 7.5,  (2, 1, 1, 1): 7.0,  (2, 1, 1, 2): 5.5,
+    (2, 1, 2, 0): 5.5,  (2, 1, 2, 1): 5.0,  (2, 1, 2, 2): 3.5,
 }
 
 
-def calculate_cvss(av, ac, pr, ui, s, c, i, a) -> tuple[float, str]:
-    """Calculate CVSS 3.1 base score and return (score, vector_string)."""
-    scope_changed = (s == "C")
-
-    av_w = CVSS_WEIGHTS["AV"][av]
-    ac_w = CVSS_WEIGHTS["AC"][ac]
-    pr_w = CVSS_WEIGHTS["PR"][pr][s]
-    ui_w = CVSS_WEIGHTS["UI"][ui]
-    c_w  = CVSS_WEIGHTS["C"][c]
-    i_w  = CVSS_WEIGHTS["I"][i]
-    a_w  = CVSS_WEIGHTS["A"][a]
-
-    isc_base = 1 - (1 - c_w) * (1 - i_w) * (1 - a_w)
-
-    if scope_changed:
-        isc = 7.52 * (isc_base - 0.029) - 3.25 * ((isc_base - 0.02) ** 15)
-    else:
-        isc = 6.42 * isc_base
-
-    if isc <= 0:
-        return 0.0, f"CVSS:3.1/AV:{av}/AC:{ac}/PR:{pr}/UI:{ui}/S:{s}/C:{c}/I:{i}/A:{a}"
-
-    exploitability = 8.22 * av_w * ac_w * pr_w * ui_w
-
-    if scope_changed:
-        base_score = min(1.08 * (isc + exploitability), 10)
-    else:
-        base_score = min(isc + exploitability, 10)
-
-    # Round up to 1 decimal
-    base_score = round(base_score * 10) / 10
-
-    vector = f"CVSS:3.1/AV:{av}/AC:{ac}/PR:{pr}/UI:{ui}/S:{s}/C:{c}/I:{i}/A:{a}"
-    return base_score, vector
+def calculate_cvss40(av, ac, at, pr, ui, vc, vi, va, sc, si, sa) -> tuple[float, str]:
+    """Calculate CVSS 4.0 base score (approximate) and return (score, vector_string)."""
+    e1 = _eq1(av, pr, ui)
+    e2 = _eq2(ac, at)
+    e3 = _eq3(vc, vi, va)
+    e4 = _eq4(sc, si, sa)
+    score = _CVSS40_TABLE.get((e1, e2, e3, e4), 5.0)
+    vector = (
+        f"CVSS:4.0/AV:{av}/AC:{ac}/AT:{at}/PR:{pr}/UI:{ui}"
+        f"/VC:{vc}/VI:{vi}/VA:{va}/SC:{sc}/SI:{si}/SA:{sa}"
+    )
+    return score, vector
 
 
 def severity_from_score(score: float) -> str:
@@ -341,58 +369,85 @@ def gate4_not_dup(vuln_type: str, endpoint: str, program_handle: str) -> tuple[b
     return passed, notes
 
 
-# ─── CVSS interactive scorer ──────────────────────────────────────────────────
+# ─── CVSS 4.0 interactive scorer ─────────────────────────────────────────────
 
 def score_cvss() -> tuple[float, str, dict]:
-    section("CVSS 3.1 Scoring")
+    section("CVSS 4.0 Scoring")
+    print(f"  {DIM}Scores are approximate — verify at https://www.first.org/cvss/calculator/4.0{RESET}\n")
 
     av = ask_choice("Attack Vector (AV)", [
-        ("N", "Network — exploitable remotely over internet"),
-        ("A", "Adjacent — requires same network segment"),
-        ("L", "Local — requires local access to system"),
+        ("N", "Network — exploitable remotely over the internet"),
+        ("A", "Adjacent — same network segment, Bluetooth, or VLAN"),
+        ("L", "Local — requires local OS access or authenticated session"),
         ("P", "Physical — requires physical device access"),
     ])
     ac = ask_choice("Attack Complexity (AC)", [
-        ("L", "Low — reliable, no special conditions"),
-        ("H", "High — requires specific conditions or timing"),
+        ("L", "Low — reliable, reproducible, no special conditions"),
+        ("H", "High — requires specific conditions, evasion, or timing"),
+    ])
+    at = ask_choice("Attack Requirements (AT)  [NEW in 4.0]", [
+        ("N", "None — no prerequisite deployment or execution conditions"),
+        ("P", "Present — depends on specific target configuration or state"),
     ])
     pr = ask_choice("Privileges Required (PR)", [
-        ("N", "None — no account needed"),
+        ("N", "None — no account or elevated access needed"),
         ("L", "Low — regular user account"),
-        ("H", "High — admin / elevated privileges"),
+        ("H", "High — admin or elevated privileges"),
     ])
-    ui = ask_choice("User Interaction (UI)", [
+    ui = ask_choice("User Interaction (UI)  [Changed in 4.0]", [
         ("N", "None — no victim interaction required"),
-        ("R", "Required — victim must click link, load page, etc."),
+        ("P", "Passive — victim must access a URL or open an email (no explicit action)"),
+        ("A", "Active — victim must explicitly click, download, or interact"),
     ])
-    s  = ask_choice("Scope (S)", [
-        ("U", "Unchanged — stays in same security context"),
-        ("C", "Changed — impacts resources beyond attacker's authorization scope"),
-    ])
-    c  = ask_choice("Confidentiality Impact (C)", [
-        ("H", "High — complete loss (all data readable)"),
-        ("L", "Low — partial disclosure"),
+
+    print(f"\n  {CYAN}Vulnerable System Impact{RESET}  (the component directly attacked)")
+    vc = ask_choice("Confidentiality — Vulnerable System (VC)", [
+        ("H", "High — complete or significant confidentiality loss"),
+        ("L", "Low — partial or constrained disclosure"),
         ("N", "None"),
     ])
-    i  = ask_choice("Integrity Impact (I)", [
-        ("H", "High — complete loss (attacker can write/modify anything)"),
-        ("L", "Low — some modification possible"),
+    vi = ask_choice("Integrity — Vulnerable System (VI)", [
+        ("H", "High — complete or significant integrity loss"),
+        ("L", "Low — limited modification possible"),
         ("N", "None"),
     ])
-    a  = ask_choice("Availability Impact (A)", [
-        ("H", "High — complete shutdown/denial"),
-        ("L", "Low — reduced performance"),
+    va = ask_choice("Availability — Vulnerable System (VA)", [
+        ("H", "High — complete denial of service"),
+        ("L", "Low — reduced performance or intermittent outages"),
         ("N", "None"),
     ])
 
-    score, vector = calculate_cvss(av, ac, pr, ui, s, c, i, a)
+    print(f"\n  {CYAN}Subsequent System Impact{RESET}  (other systems or users beyond the attacked component)")
+    sc = ask_choice("Confidentiality — Subsequent System (SC)", [
+        ("H", "High — significant data exposure in downstream systems/users"),
+        ("L", "Low — limited disclosure in downstream systems/users"),
+        ("N", "None — no impact beyond the vulnerable component"),
+    ])
+    si = ask_choice("Integrity — Subsequent System (SI)", [
+        ("S", "Safety — impacts physical safety of people"),
+        ("H", "High — complete integrity loss in downstream system"),
+        ("L", "Low — limited modification in downstream system"),
+        ("N", "None"),
+    ])
+    sa = ask_choice("Availability — Subsequent System (SA)", [
+        ("S", "Safety — impacts physical safety of people"),
+        ("H", "High — complete denial of service in downstream system"),
+        ("L", "Low — reduced performance in downstream system"),
+        ("N", "None"),
+    ])
+
+    score, vector = calculate_cvss40(av, ac, at, pr, ui, vc, vi, va, sc, si, sa)
     sev = severity_from_score(score)
 
     sev_color = RED if sev in ("CRITICAL", "HIGH") else (YELLOW if sev == "MEDIUM" else GREEN)
-    print(f"\n  {BOLD}CVSS Score: {sev_color}{score} {sev}{RESET}")
+    print(f"\n  {BOLD}CVSS 4.0 Score: {sev_color}{score} {sev}{RESET}")
     print(f"  {BOLD}Vector:{RESET} {vector}")
+    print(f"  {DIM}Verify: https://www.first.org/cvss/calculator/4.0#{vector}{RESET}")
 
-    params = {"AV": av, "AC": ac, "PR": pr, "UI": ui, "S": s, "C": c, "I": i, "A": a}
+    params = {
+        "AV": av, "AC": ac, "AT": at, "PR": pr, "UI": ui,
+        "VC": vc, "VI": vi, "VA": va, "SC": sc, "SI": si, "SA": sa,
+    }
     return score, vector, params
 
 
@@ -472,14 +527,17 @@ the attack], an attacker can [describe the concrete impact].
 
 | Metric | Value | Rationale |
 |---|---|---|
-| Attack Vector | {info.get('cvss_params', {}).get('AV', '?')} | [explain] |
-| Attack Complexity | {info.get('cvss_params', {}).get('AC', '?')} | [explain] |
-| Privileges Required | {info.get('cvss_params', {}).get('PR', '?')} | [explain] |
-| User Interaction | {info.get('cvss_params', {}).get('UI', '?')} | [explain] |
-| Scope | {info.get('cvss_params', {}).get('S', '?')} | [explain] |
-| Confidentiality | {info.get('cvss_params', {}).get('C', '?')} | [explain] |
-| Integrity | {info.get('cvss_params', {}).get('I', '?')} | [explain] |
-| Availability | {info.get('cvss_params', {}).get('A', '?')} | [explain] |
+| Attack Vector (AV) | {info.get('cvss_params', {}).get('AV', '?')} | [explain] |
+| Attack Complexity (AC) | {info.get('cvss_params', {}).get('AC', '?')} | [explain] |
+| Attack Requirements (AT) | {info.get('cvss_params', {}).get('AT', '?')} | [explain] |
+| Privileges Required (PR) | {info.get('cvss_params', {}).get('PR', '?')} | [explain] |
+| User Interaction (UI) | {info.get('cvss_params', {}).get('UI', '?')} | [explain] |
+| Vuln. Confidentiality (VC) | {info.get('cvss_params', {}).get('VC', '?')} | [explain] |
+| Vuln. Integrity (VI) | {info.get('cvss_params', {}).get('VI', '?')} | [explain] |
+| Vuln. Availability (VA) | {info.get('cvss_params', {}).get('VA', '?')} | [explain] |
+| Subseq. Confidentiality (SC) | {info.get('cvss_params', {}).get('SC', '?')} | [explain] |
+| Subseq. Integrity (SI) | {info.get('cvss_params', {}).get('SI', '?')} | [explain] |
+| Subseq. Availability (SA) | {info.get('cvss_params', {}).get('SA', '?')} | [explain] |
 
 ---
 

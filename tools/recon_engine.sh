@@ -5,7 +5,7 @@
 # Usage: ./recon_engine.sh <target-domain> [--quick]
 # =============================================================================
 
-set -euo pipefail
+set -uo pipefail
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -23,10 +23,24 @@ log_done()  { echo -e "    ${GREEN}[✓]${NC} $1"; }
 TARGET="${1:?Usage: $0 <target> [--quick]  (target = FQDN, IP, or CIDR)}"
 QUICK_MODE="${2:-}"
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-RECON_DIR="$BASE_DIR/recon/$TARGET"
+RECON_DIR="${RECON_OUT_DIR:-$BASE_DIR/recon/$TARGET}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 THREADS=20
 RATE_LIMIT=50  # requests per second
+
+# Prefer Go tools in ~/go/bin
+export PATH="$HOME/go/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+# macOS compatibility: GNU timeout may not exist; use gtimeout or passthrough
+if ! command -v timeout &>/dev/null; then
+    if command -v gtimeout &>/dev/null; then
+        timeout() { gtimeout "$@"; }
+        export -f timeout
+    else
+        timeout() { shift; "$@"; }
+        export -f timeout
+    fi
+fi
 
 # ── Detect target type (passed from hunt.py or auto-detected here) ────────────
 _detect_target_type() {
@@ -58,6 +72,19 @@ if [ "$TARGET_TYPE" = "ip" ] || [ "$TARGET_TYPE" = "cidr" ]; then
 fi
 
 mkdir -p "$RECON_DIR"/{subdomains,live,ports,urls,js,dirs,params}
+
+# Safety net: merge partial subdomain results on early exit (watchdog kill, etc.)
+_emergency_merge_subs() {
+    if [ ! -s "$RECON_DIR/subdomains/all.txt" ] && \
+       ls "$RECON_DIR/subdomains/"*.txt &>/dev/null; then
+        cat "$RECON_DIR/subdomains/"*.txt 2>/dev/null \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed 's/^\*\.//' \
+            | grep -E "^[a-zA-Z0-9._-]+\.[a-zA-Z]{2,}$" \
+            | sort -u > "$RECON_DIR/subdomains/all.txt" 2>/dev/null || true
+    fi
+}
+trap _emergency_merge_subs EXIT
 
 echo "============================================="
 echo "  Recon Engine — $TARGET"

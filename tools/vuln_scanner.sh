@@ -60,6 +60,19 @@ RECON_DIR="$(cd "$RECON_DIR" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BASE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# macOS compatibility: GNU timeout may not exist
+if ! command -v timeout &>/dev/null; then
+    if command -v gtimeout &>/dev/null; then
+        timeout() { gtimeout "$@"; }
+        export -f timeout
+    else
+        timeout() { shift; "$@"; }
+        export -f timeout
+    fi
+fi
+
+mkdir -p "$FINDINGS_DIR"/{xss,sqli,takeover,misconfig,exposure,ssrf,cves,redirects,ssti,manual_review}
+
 if [ "$(basename "$(dirname "$RECON_DIR")")" = "sessions" ]; then
     SESSION_ID=$(basename "$RECON_DIR")
     TARGET=$(basename "$(dirname "$(dirname "$RECON_DIR")")")
@@ -269,14 +282,57 @@ fi
 
 # ── Check 3: XSS ────────────────────────────────────────────────────────
 if ! skip_has xss; then
-    log_info "Check 3: XSS (dalfox)"
+    log_info "Check 3: XSS (dalfox + URL dedup + global timeout)"
     PARAMS_FILE="$RECON_DIR/urls/with_params.txt"
     if tool_ok dalfox && [ -s "$PARAMS_FILE" ]; then
-        DAL_OUT="$FINDINGS_DIR/xss/dalfox_results.txt"
-        DAL_LIMIT=$([ "$QUICK_MODE" = "--quick" ] && echo 30 || echo 100)
-        log_step "Running dalfox on up to $DAL_LIMIT URLs..."
-        head -"$DAL_LIMIT" "$PARAMS_FILE" | dalfox pipe --silence --no-spinner --skip-bav --timeout 15 -o "$DAL_OUT" 2>/dev/null || true
-        log_done "dalfox check done"
+LIVE_COUNT=$(wc -l < "$LIVE_URLS" 2>/dev/null || echo 0)
+log_info "Scanning $LIVE_COUNT live hosts"
+
+# ============================================================
+# Check 1: XSS (Cross-Site Scripting)
+# ============================================================
+log_info "Check 1: XSS Detection"
+
+# Dalfox — automated XSS scanner (with global timeout + URL dedup)
+if command -v dalfox &>/dev/null && [ -s "$PARAM_URLS" ]; then
+    DAL_LIMIT=$([ "$QUICK_MODE" = "--quick" ] && echo 30 || echo 100)
+    DAL_MAX_TIME=$([ "$QUICK_MODE" = "--quick" ] && echo 300 || echo 900)
+    # Deduplicate by base-URL + sorted param keys to avoid scanning the same
+    # endpoint N times with different random values (e.g. ?rand=1.234 variants)
+    DAL_DEDUP_FILE=$(mktemp /tmp/dalfox_dedup_XXXXXX.txt)
+    python3 - "$PARAM_URLS" "$DAL_DEDUP_FILE" <<'PYEOF' 2>/dev/null || cp "$PARAM_URLS" "$DAL_DEDUP_FILE"
+import sys
+from urllib.parse import urlparse, parse_qs
+seen = set()
+with open(sys.argv[1]) as fin, open(sys.argv[2], 'w') as fout:
+    for line in fin:
+        url = line.strip()
+        if not url:
+            continue
+        try:
+            p = urlparse(url)
+            key = (p.scheme, p.netloc, p.path, frozenset(parse_qs(p.query).keys()))
+        except Exception:
+            key = url
+        if key not in seen:
+            seen.add(key)
+            fout.write(url + '\n')
+PYEOF
+    ORIG_COUNT=$(wc -l < "$PARAM_URLS" 2>/dev/null || echo 0)
+    DEDUP_COUNT=$(wc -l < "$DAL_DEDUP_FILE" 2>/dev/null || echo 0)
+    log_step "Running dalfox on $DAL_LIMIT URLs (deduped $ORIG_COUNT → $DEDUP_COUNT, timeout: ${DAL_MAX_TIME}s)..."
+    head -"$DAL_LIMIT" "$DAL_DEDUP_FILE" | \
+        timeout "$DAL_MAX_TIME" dalfox pipe \
+        --silence \
+        --no-color \
+        --worker 5 \
+        --delay 100 \
+        --timeout 10 \
+        --output "$FINDINGS_DIR/xss/dalfox_results.txt" 2>/dev/null || true
+    rm -f "$DAL_DEDUP_FILE"
+
+    DALFOX_COUNT=$(count_findings "$FINDINGS_DIR/xss/dalfox_results.txt")
+    [ "$DALFOX_COUNT" -gt 0 ] && log_vuln "Dalfox found $DALFOX_COUNT potential XSS" || log_done "Dalfox: no XSS found"
     fi
 fi
 

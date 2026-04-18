@@ -101,8 +101,21 @@ class LLMClient:
         else:
             self._init_provider(self.provider)
 
+    # Env var a provider's API key is read from; keyed for quick lookup.
+    PROVIDER_KEY_ENV = {
+        "claude": "ANTHROPIC_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "grok":   "XAI_API_KEY",
+    }
+
     def _auto_detect(self) -> str:
-        for p in self.PROVIDER_PRIORITY:
+        # Front-load cloud providers whose API keys are set so users with
+        # only ANTHROPIC_API_KEY don't wait on an Ollama probe that will
+        # fail or mis-route. Ollama stays as the final fallback.
+        key_providers = [p for p, env in self.PROVIDER_KEY_ENV.items()
+                         if os.environ.get(env)]
+        rest = [p for p in self.PROVIDER_PRIORITY if p not in key_providers]
+        for p in key_providers + rest:
             try:
                 self._init_provider(p)
                 if self.available:

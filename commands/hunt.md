@@ -269,20 +269,6 @@ If it doesn't, add: "Show commands only. No prose."
 
 ## Auto-Memory (runs at session end)
 
-When the hunt session ends, auto-log a summary to hunt memory so `/pickup` picks it up next time:
+When the hunt session ends, run `/remember` to log a summary to hunt memory so `/pickup` picks it up next time.
 
-```python
-from pathlib import Path
-from memory.hunt_journal import HuntJournal
-
-journal = HuntJournal(Path.home() / ".claude/projects" / "<project>" / "hunt-memory/journal.jsonl")
-journal.log_session_summary(
-    target="<target>",
-    action="hunt",
-    endpoints_tested=["<endpoints tested this session>"],
-    vuln_classes_tried=["<vuln classes tried>"],
-    findings_count=<N confirmed findings>,
-)
-```
-
-Runs silently — non-fatal. Keeps memory populated without requiring a manual `/remember`.
+Runs silently — non-fatal. Keeps memory populated without requiring a manual note.

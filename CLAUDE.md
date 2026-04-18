@@ -61,7 +61,6 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 - `tools/hunt.py` — master orchestrator
 - `tools/recon_engine.sh` — subdomain + URL discovery
 - `tools/validate.py` — 4-gate finding validator
-- `tools/report_generator.py` — report writer
 - `tools/learn.py` — CVE + disclosure intel
 - `tools/intel_engine.py` — on-demand intel with memory context
 - `tools/scope_checker.py` — deterministic scope safety checker
@@ -75,7 +74,6 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 
 ### Hunt Memory (in `memory/`)
 
-- `memory/hunt_journal.py` — append-only hunt log (JSONL)
 - `memory/pattern_db.py` — cross-target pattern learning
 - `memory/audit_log.py` — request audit log, rate limiter, circuit breaker
 - `memory/schemas.py` — schema validation for all data

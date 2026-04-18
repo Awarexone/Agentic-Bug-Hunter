@@ -184,21 +184,4 @@ Findings:   2 validated, 1 killed, 3 partial
 Next:       14 untested endpoints — run /pickup target.com to continue
 ```
 
-Then **auto-log a session summary to hunt memory** (do this every session, no user action needed):
-
-```python
-from pathlib import Path
-from memory.hunt_journal import HuntJournal
-
-journal = HuntJournal(Path.home() / ".claude/projects" / "<project>" / "hunt-memory/journal.jsonl")
-journal.log_session_summary(
-    target="<target>",
-    action="hunt",
-    endpoints_tested=["<list of endpoints tested this session>"],
-    vuln_classes_tried=["<list of vuln classes tried>"],
-    findings_count=<N>,
-    session_id="<session_id>",
-)
-```
-
-This runs silently — failures are non-fatal warnings. The entry is tagged `auto_logged` and `session_summary` so `/pickup` and `/remember` can distinguish it from manually-logged rich entries.
+Then **auto-log a session summary to hunt memory** by running `/remember` — no user action needed. The entry is tagged `auto_logged` and `session_summary` so `/pickup` can pick it up next time.

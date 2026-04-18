@@ -255,20 +255,7 @@ def run_vuln_scan(domain, quick=False):
 
 def generate_reports(domain):
     """Generate reports for findings."""
-    findings_dir = os.path.join(FINDINGS_DIR, domain)
-    if not os.path.isdir(findings_dir):
-        log("warn", f"No findings for {domain}")
-        return 0
-
-    log("info", f"Generating reports for {domain}...")
-    script = os.path.join(TOOLS_DIR, "report_generator.py")
-    success, output = run_cmd(f'python3 "{script}" "{findings_dir}"')
-    print(output)
-
-    # Count generated reports
-    report_dir = os.path.join(REPORTS_DIR, domain)
-    if os.path.isdir(report_dir):
-        return len([f for f in os.listdir(report_dir) if f.endswith(".md") and f != "SUMMARY.md"])
+    log("warn", "report_generator.py has been removed. Use /report in Claude Code to generate reports.")
     return 0
 
 
@@ -363,22 +350,8 @@ def print_dashboard(results):
 
 def run_cve_hunt(domain):
     """Run CVE hunter on a target."""
-    log("info", f"Running CVE hunter on {domain}...")
-    script = os.path.join(TOOLS_DIR, "cve_hunter.py")
-    recon_dir = os.path.join(RECON_DIR, domain)
-    recon_flag = f'--recon-dir "{recon_dir}"' if os.path.isdir(recon_dir) else ""
-
-    try:
-        proc = subprocess.Popen(
-            f'python3 "{script}" "{domain}" {recon_flag}',
-            shell=True, cwd=BASE_DIR
-        )
-        proc.wait(timeout=600)
-        return proc.returncode == 0
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        log("err", f"CVE hunt timed out for {domain}")
-        return False
+    log("warn", "cve_hunter.py has been removed. Use /intel in Claude Code for CVE intelligence.")
+    return False
 
 
 def run_zero_day_fuzzer(domain, deep=False):

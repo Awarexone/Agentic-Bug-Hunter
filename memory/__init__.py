@@ -11,7 +11,6 @@ from memory.schemas import (
     validate_pattern_entry,
     validate_audit_entry,
 )
-from memory.hunt_journal import HuntJournal
 from memory.pattern_db import PatternDB
 from memory.audit_log import AuditLog, RateLimiter, CircuitBreaker
 
@@ -20,7 +19,6 @@ __all__ = [
     "validate_target_profile",
     "validate_pattern_entry",
     "validate_audit_entry",
-    "HuntJournal",
     "PatternDB",
     "AuditLog",
     "RateLimiter",

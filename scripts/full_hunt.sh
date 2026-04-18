@@ -59,6 +59,17 @@ check_tool() {
     command -v "$1" &>/dev/null && echo true || echo false
 }
 
+# macOS compatibility: GNU timeout may not exist; use gtimeout or passthrough
+if ! command -v timeout &>/dev/null; then
+    if command -v gtimeout &>/dev/null; then
+        timeout() { gtimeout "$@"; }
+        export -f timeout
+    else
+        timeout() { shift; "$@"; }
+        export -f timeout
+    fi
+fi
+
 # ── Parse Args ────────────────────────────────────────────────────────────────
 shift  # Remove TARGET from args
 while [[ "$#" -gt 0 ]]; do
@@ -182,13 +193,16 @@ log "PHASE 2: Content Discovery"
 sep
 
 # ── Crawl with katana ──────────────────────────────────────────────────────────
+# 5 min cap: depth-5 katana runs can hang indefinitely on content-heavy
+# targets (news, video, infinite calendars). Depth reduced to 3 to match
+# agents/recon-agent.md and commands/recon.md.
 if [ "$(check_tool katana)" = true ]; then
-    log "Crawling with katana..."
+    log "Crawling with katana (5 min cap, depth 3)..."
     KATANA_OPTS=""
     [ -n "$TOKEN" ] && KATANA_OPTS="$KATANA_OPTS -H 'Authorization: Bearer $TOKEN'"
-    katana -u "$TARGETURL" -d 5 -jc -o "$OUT/urls/katana.txt" -silent 2>/dev/null
-    ok "Katana: $(wc -l < $OUT/urls/katana.txt) URLs"
-    cat "$OUT/urls/katana.txt" >> "$OUT/urls/all_urls.txt"
+    timeout 300 katana -u "$TARGETURL" -d 3 -jc -kf all -o "$OUT/urls/katana.txt" -silent 2>/dev/null || true
+    ok "Katana: $(wc -l < $OUT/urls/katana.txt 2>/dev/null || echo 0) URLs"
+    [ -s "$OUT/urls/katana.txt" ] && cat "$OUT/urls/katana.txt" >> "$OUT/urls/all_urls.txt"
     sort -u "$OUT/urls/all_urls.txt" -o "$OUT/urls/all_urls.txt"
 fi
 

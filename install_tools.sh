@@ -190,10 +190,10 @@ MISSING=0
 for tool in "${ALL_TOOLS[@]}"; do
     if command -v "$tool" &>/dev/null; then
         log_ok "$tool: $(which "$tool")"
-        ((INSTALLED++))
+        ((++INSTALLED))
     else
         log_err "$tool: NOT FOUND"
-        ((MISSING++))
+        ((++MISSING))
     fi
 done
 

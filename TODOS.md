@@ -86,7 +86,9 @@ Items deferred from the MCP-First Bionic Hunter design review (2026-03-24).
 
 ---
 
-## TODO-7: Memory GC / rotation policy
+## ~~TODO-7: Memory GC / rotation policy~~ ✅ RESOLVED (2026-04-30)
+
+**Resolution:** Added `memory/rotation.py` — size-based JSONL rotator (10 MB cap, 3 backups) under `fcntl.LOCK_EX`. Wired into `AuditLog.log()` and `PatternDB.save()` so writes auto-rotate transparently. Added `tools/memory_gc.py` + `commands/memory-gc.md` for manual reporting / rotation / backup purge. 22 tests in `tests/test_rotation.py`.
 
 **What:** `journal.jsonl`, `patterns.jsonl`, and `audit.jsonl` grow indefinitely with no rotation or size limit. A `/memory gc` command or automatic rotation at 10MB should be added.
 
@@ -96,13 +98,13 @@ Items deferred from the MCP-First Bionic Hunter design review (2026-03-24).
 
 ---
 
-## TODO-8: Missing test coverage
+## TODO-8: Missing test coverage (partially resolved)
 
 **What:** 4 test gaps identified in /autoplan eng review:
-1. Concurrent-write stress test for `HuntJournal` + `PatternDB` (two processes writing simultaneously)
-2. End-to-end hunt loop integration test (recon → rank → hunt → validate → report as a sequence)
-3. Disk-full OSError propagation test (verify user-facing error message)
-4. `PatternDB.save()` performance test at 10,000 entries
+1. ✅ Concurrent-write stress test for `AuditLog` (2 cases in `test_rotation.py::TestConcurrentWrites`, 2026-04-30) — `HuntJournal` removed in 97d4efb so no longer applicable
+2. ⏳ End-to-end hunt loop integration test (recon → rank → hunt → validate → report as a sequence)
+3. ✅ Disk-full OSError propagation test (`test_rotation.py::TestDiskFullPropagation`, 2026-04-30)
+4. ⏳ `PatternDB.save()` performance test at 10,000 entries
 
 **Why:** Unit coverage is strong (2,766 lines / 15 files). These 4 gaps cover failure modes that could bite users in production.
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## v4.2.0 — Memory Rotation (Apr 2026)
+
+### Added
+- `memory/rotation.py`: size-based JSONL rotator under `fcntl.LOCK_EX`. Default cap 10 MB, keep 3 backups.
+- `tools/memory_gc.py` + `/memory-gc` slash command: scan, rotate, or purge backups across the hunt-memory tree.
+- `tests/test_rotation.py`: 22 tests covering rotation primitives, auto-rotation in `AuditLog`/`PatternDB`, multi-process concurrent writes (with and without rotation), and disk-full OSError propagation.
+
+### Changed
+- `memory/audit_log.py` `AuditLog.log()`: calls `rotate_if_needed` before each append.
+- `memory/pattern_db.py` `PatternDB.save()`: calls `rotate_if_needed` before each append.
+- `memory/__init__.py`: exports rotation helpers.
+
+### Resolved
+- **TODO-7** — memory GC / rotation policy.
+- **TODO-8** (partial) — concurrent-write stress test + disk-full OSError propagation test.
+
+---
+
 ## v4.1.0 — Patch: Bug Fixes + Assets (Apr 2026)
 
 ### Fixed

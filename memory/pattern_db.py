@@ -11,19 +11,29 @@ import os
 import sys
 from pathlib import Path
 
+from memory.rotation import DEFAULT_KEEP, DEFAULT_MAX_BYTES, rotate_if_needed
 from memory.schemas import validate_pattern_entry, SchemaError
 
 
 class PatternDB:
     """Read/write/match successful hunt patterns."""
 
-    def __init__(self, path: str | Path):
+    def __init__(
+        self,
+        path: str | Path,
+        max_bytes: int = DEFAULT_MAX_BYTES,
+        keep_backups: int = DEFAULT_KEEP,
+    ):
         """
         Args:
             path: Path to the patterns.jsonl file. Parent dirs are created if needed.
+            max_bytes: Rotate the file when it exceeds this size.
+            keep_backups: Number of rotated backups to retain.
         """
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.max_bytes = max_bytes
+        self.keep_backups = keep_backups
 
     def save(self, entry: dict) -> bool:
         """Validate and save a pattern entry. Returns True if saved, False if duplicate.
@@ -42,6 +52,8 @@ class PatternDB:
 
         line = json.dumps(validated, separators=(",", ":")) + "\n"
         encoded = line.encode("utf-8")
+
+        rotate_if_needed(self.path, max_bytes=self.max_bytes, keep=self.keep_backups)
 
         fd = os.open(str(self.path), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
         try:

@@ -18,7 +18,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `skills/report-writing/` | H1/Bugcrowd/Intigriti/Immunefi report templates, CVSS 3.1, human tone |
 | `skills/triage-validation/` | 7-Question Gate, 4 gates, never-submit list, conditionally valid table |
 
-### Commands (14 slash commands)
+### Commands (15 slash commands)
 
 > **Note:** All commands are prefixed to avoid conflicts with Claude Code's built-in commands.
 > `/resume` is a reserved Claude Code command — use `/pickup` to continue a previous hunt.
@@ -39,6 +39,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `/remember` | `/remember` — log finding to hunt memory |
 | `/intel` | `/intel target.com` — fetch CVE + disclosure intel |
 | `/token-scan` | `/token-scan <contract>` — meme coin/token rug pull scanner |
+| `/memory-gc` | `/memory-gc [--rotate|--purge-backups]` — inspect/rotate hunt-memory JSONL files (10MB cap, 3 backups) |
 
 ### Agents (8 specialized agents)
 
@@ -76,6 +77,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 
 - `memory/pattern_db.py` — cross-target pattern learning
 - `memory/audit_log.py` — request audit log, rate limiter, circuit breaker
+- `memory/rotation.py` — size-based JSONL rotation (10MB cap, keep 3 backups), auto-fired on append
 - `memory/schemas.py` — schema validation for all data
 
 ## Start Here

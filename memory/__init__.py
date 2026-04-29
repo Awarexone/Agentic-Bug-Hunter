@@ -13,6 +13,15 @@ from memory.schemas import (
 )
 from memory.pattern_db import PatternDB
 from memory.audit_log import AuditLog, RateLimiter, CircuitBreaker
+from memory.rotation import (
+    DEFAULT_KEEP,
+    DEFAULT_MAX_BYTES,
+    list_backups,
+    purge_backups,
+    rotate,
+    rotate_if_needed,
+    total_bytes,
+)
 
 __all__ = [
     "validate_journal_entry",
@@ -23,4 +32,11 @@ __all__ = [
     "AuditLog",
     "RateLimiter",
     "CircuitBreaker",
+    "DEFAULT_KEEP",
+    "DEFAULT_MAX_BYTES",
+    "list_backups",
+    "purge_backups",
+    "rotate",
+    "rotate_if_needed",
+    "total_bytes",
 ]

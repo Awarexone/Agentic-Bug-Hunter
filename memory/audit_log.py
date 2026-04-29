@@ -12,21 +12,31 @@ import sys
 import time
 from pathlib import Path
 
+from memory.rotation import DEFAULT_KEEP, DEFAULT_MAX_BYTES, rotate_if_needed
 from memory.schemas import validate_audit_entry, make_audit_entry, SchemaError
 
 
 class AuditLog:
     """Append-only audit log for tracking outbound requests."""
 
-    def __init__(self, path: str | Path):
+    def __init__(
+        self,
+        path: str | Path,
+        max_bytes: int = DEFAULT_MAX_BYTES,
+        keep_backups: int = DEFAULT_KEEP,
+    ):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.max_bytes = max_bytes
+        self.keep_backups = keep_backups
 
     def log(self, entry: dict) -> None:
         """Validate and append an audit entry."""
         validated = validate_audit_entry(entry)
         line = json.dumps(validated, separators=(",", ":")) + "\n"
         encoded = line.encode("utf-8")
+
+        rotate_if_needed(self.path, max_bytes=self.max_bytes, keep=self.keep_backups)
 
         fd = os.open(str(self.path), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
         try:

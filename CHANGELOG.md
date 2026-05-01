@@ -1,5 +1,15 @@
 # Changelog
 
+## v4.2.2 — Restore ReconAdapter (May 2026)
+
+### Fixed
+- **`tools/recon_adapter.py`** was missing the `ReconAdapter` class that `tests/test_recon_adapter.py` imports — the test file had been silently uncollectable since the rename in 0db9640. Added the class with read accessors for the subdir-nested layout that `recon_engine.sh` writes (`subdomains/all.txt`, `live/urls.txt`, `urls/with_params.txt`, `js/potential_secrets.txt`, etc.), graphql extraction, fallback path resolution, summary counts, and a `normalize()` method that creates the derived files brain.py expects (`priority/`, `api_specs/`, `urls/graphql.txt`, `subdomains/resolved.txt`).
+
+### Tests
+- 31 previously-uncollectable tests in `tests/test_recon_adapter.py` now run and pass. Suite total: **215 passing** (was 184).
+
+---
+
 ## v4.2.1 — PatternDB Perf Fix (May 2026)
 
 ### Fixed

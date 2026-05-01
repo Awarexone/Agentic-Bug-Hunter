@@ -189,3 +189,159 @@ if __name__ == "__main__":
         print(f"Migrated to nested format: {dest}")
     elif args.migrate and data.source_format == "nested":
         print("Already in canonical nested format — nothing to migrate.")
+
+
+# ─── Subdir-nested adapter (recon_engine.sh layout) ──────────────────────────
+#
+# recon_engine.sh writes a richer per-target tree:
+#   <target>/subdomains/all.txt        live/urls.txt          live/httpx_full.txt
+#   <target>/urls/all.txt              urls/with_params.txt   urls/js_files.txt
+#   <target>/urls/api_endpoints.txt    urls/sensitive_paths.txt
+#   <target>/js/potential_secrets.txt  params/interesting_params.txt
+#   <target>/exposure/config_files.txt
+#
+# ReconAdapter wraps that layout with typed accessors and a normalize() step
+# that creates the derived files brain.py expects (priority/, api_specs/,
+# urls/graphql.txt, subdomains/resolved.txt). Distinct from load_recon() above
+# which reads the simpler one-file-per-category canonical format.
+
+
+class ReconAdapter:
+    """Read and normalize recon output from the subdir-nested layout."""
+
+    GRAPHQL_HINTS = ("/graphql", "/gql", "/v1/graphql", "/api/graphql")
+
+    def __init__(self, recon_dir: str | Path):
+        self.recon_dir = Path(recon_dir)
+
+    # ── Internal ─────────────────────────────────────────────────────────
+
+    def _read_unique(self, *paths: Path) -> list[str]:
+        """Read the first existing file. Strip blanks, dedup, preserve order."""
+        for p in paths:
+            if p.exists():
+                with p.open() as f:
+                    lines = [ln.strip() for ln in f if ln.strip()]
+                return list(dict.fromkeys(lines))
+        return []
+
+    @staticmethod
+    def _first_token(line: str) -> str:
+        """Take the first whitespace-delimited token (URL out of httpx output)."""
+        return line.split()[0] if line.strip() else ""
+
+    # ── Reads ────────────────────────────────────────────────────────────
+
+    def get_subdomains(self) -> list[str]:
+        return self._read_unique(self.recon_dir / "subdomains" / "all.txt")
+
+    def get_resolved_subdomains(self) -> list[str]:
+        return self._read_unique(
+            self.recon_dir / "subdomains" / "resolved.txt",
+            self.recon_dir / "subdomains" / "all.txt",
+        )
+
+    def get_live_hosts(self) -> list[str]:
+        # Prefer the clean URL list; fall back to extracting URLs from the
+        # full httpx output (lines like "https://x [200] [json]").
+        clean = self._read_unique(self.recon_dir / "live" / "urls.txt")
+        if clean:
+            return clean
+        for src in (self.recon_dir / "live" / "httpx_full.txt", self.recon_dir / "httpx_full.txt"):
+            if src.exists():
+                with src.open() as f:
+                    urls = [self._first_token(ln) for ln in f if ln.strip()]
+                return list(dict.fromkeys(u for u in urls if u))
+        return []
+
+    def get_urls(self) -> list[str]:
+        return self._read_unique(self.recon_dir / "urls" / "all.txt")
+
+    def get_parameterized_urls(self) -> list[str]:
+        return self._read_unique(self.recon_dir / "urls" / "with_params.txt")
+
+    def get_js_files(self) -> list[str]:
+        return self._read_unique(self.recon_dir / "urls" / "js_files.txt")
+
+    def get_api_endpoints(self) -> list[str]:
+        return self._read_unique(self.recon_dir / "urls" / "api_endpoints.txt")
+
+    def get_sensitive_paths(self) -> list[str]:
+        return self._read_unique(self.recon_dir / "urls" / "sensitive_paths.txt")
+
+    def get_js_secrets(self) -> list[str]:
+        return self._read_unique(self.recon_dir / "js" / "potential_secrets.txt")
+
+    def get_interesting_params(self) -> list[str]:
+        return self._read_unique(self.recon_dir / "params" / "interesting_params.txt")
+
+    def get_config_exposure(self) -> list[str]:
+        return self._read_unique(self.recon_dir / "exposure" / "config_files.txt")
+
+    def get_graphql_endpoints(self) -> list[str]:
+        """Prefer urls/graphql.txt if present; otherwise filter all URLs."""
+        dedicated = self.recon_dir / "urls" / "graphql.txt"
+        if dedicated.exists():
+            return self._read_unique(dedicated)
+        return [u for u in self.get_urls() if any(h in u.lower() for h in self.GRAPHQL_HINTS)]
+
+    # ── Summary ──────────────────────────────────────────────────────────
+
+    def summary(self) -> dict[str, int]:
+        return {
+            "subdomains": len(self.get_subdomains()),
+            "live_hosts": len(self.get_live_hosts()),
+            "urls": len(self.get_urls()),
+            "parameterized_urls": len(self.get_parameterized_urls()),
+            "js_files": len(self.get_js_files()),
+            "api_endpoints": len(self.get_api_endpoints()),
+        }
+
+    # ── Normalize ────────────────────────────────────────────────────────
+
+    def normalize(self) -> None:
+        """Create derived files brain.py / autopilot expect.
+
+        Idempotent. Never overwrites files that already exist.
+        """
+        self.recon_dir.mkdir(parents=True, exist_ok=True)
+        (self.recon_dir / "priority").mkdir(exist_ok=True)
+        (self.recon_dir / "api_specs").mkdir(exist_ok=True)
+        (self.recon_dir / "urls").mkdir(exist_ok=True)
+        (self.recon_dir / "subdomains").mkdir(exist_ok=True)
+
+        # urls/graphql.txt — populate from the URL list if not present
+        gql_path = self.recon_dir / "urls" / "graphql.txt"
+        if not gql_path.exists():
+            gql = [u for u in self.get_urls() if any(h in u.lower() for h in self.GRAPHQL_HINTS)]
+            gql_path.write_text("\n".join(gql) + ("\n" if gql else ""))
+
+        # subdomains/resolved.txt — fall back to all.txt if not yet present
+        resolved_path = self.recon_dir / "subdomains" / "resolved.txt"
+        if not resolved_path.exists():
+            subs = self.get_subdomains()
+            resolved_path.write_text("\n".join(subs) + ("\n" if subs else ""))
+
+        # priority/prioritized_hosts.json — minimal scaffold
+        pj_path = self.recon_dir / "priority" / "prioritized_hosts.json"
+        if not pj_path.exists():
+            import json
+            pj_path.write_text(json.dumps({
+                "hosts": self.get_live_hosts(),
+                "summary": self.summary(),
+            }, indent=2) + "\n")
+
+        # priority/attack_surface.md — minimal scaffold
+        md_path = self.recon_dir / "priority" / "attack_surface.md"
+        if not md_path.exists():
+            target_label = self.recon_dir.name or "target"
+            s = self.summary()
+            md_path.write_text(
+                f"# Attack Surface — {target_label}\n\n"
+                f"- Subdomains: {s['subdomains']}\n"
+                f"- Live hosts: {s['live_hosts']}\n"
+                f"- URLs: {s['urls']}\n"
+                f"- Parameterized URLs: {s['parameterized_urls']}\n"
+                f"- JS files: {s['js_files']}\n"
+                f"- API endpoints: {s['api_endpoints']}\n"
+            )

@@ -48,4 +48,9 @@ from the repo root.
 - **Backups kept:** 3 (so `<file>.1` newest → `<file>.3` oldest)
 - **Scope:** `hunt-memory/` and any nested target dirs
 
-Auto-rotation also fires inside `AuditLog.log()` and `PatternDB.save()` whenever a write would push the file past the cap, so this command is mainly for reporting and one-shot cleanup.
+Auto-rotation fires automatically in two places:
+
+1. **On every write** — inside `AuditLog.log()` and `PatternDB.save()` when the next append would exceed the cap.
+2. **On session end** — a `Stop` hook in `.claude/settings.json` runs `python3 -m tools.memory_gc --rotate` so long sessions that wrote a lot but never crossed the cap mid-session still get cleaned up.
+
+So this slash command is mainly for ad-hoc reporting (`/memory-gc` with no args) and manual cleanup of accumulated backups (`/memory-gc --purge-backups`).

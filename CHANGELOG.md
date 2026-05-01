@@ -1,5 +1,12 @@
 # Changelog
 
+## v4.2.3 — Auto-rotation Stop Hook (May 2026)
+
+### Added
+- **`.claude/settings.json`** with a `Stop` hook that runs `python3 -m tools.memory_gc --rotate` (quietly, non-blocking via `async: true`) whenever a Claude Code session ends. Long-running hunts that never trigger an inline write-time rotation now still get GC'd at session end. Hook is a no-op if `tools/memory_gc.py` is missing or the working dir isn't the repo root, so it is safe to ship in the project file.
+
+---
+
 ## v4.2.2 — Restore ReconAdapter (May 2026)
 
 ### Fixed

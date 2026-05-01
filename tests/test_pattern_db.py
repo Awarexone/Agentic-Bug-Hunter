@@ -1,5 +1,7 @@
 """Tests for memory/pattern_db.py — save, match, duplicate, cross-target."""
 
+import time
+
 import pytest
 
 from memory.pattern_db import PatternDB
@@ -131,3 +133,89 @@ class TestPatternMatch:
         # Hunting new target with postgresql — should find patterns from alpha + beta
         results = db.match(tech_stack=["postgresql"])
         assert len(results) == 2
+
+
+class TestPatternPerformance:
+    """TODO-8: PatternDB.save() perf at 10k entries.
+
+    The original ``save()`` re-read the entire JSONL file on every call to
+    deduplicate, making it O(n²) overall. With 10k entries the back-of-the-
+    envelope cost is ~50M JSON parses / line scans — easily tens of seconds.
+
+    These tests pin the dedup behavior we care about (still works after the
+    perf fix) and assert a realistic upper bound on insertion time.
+    """
+
+    def _make_entry(self, n: int) -> dict:
+        return {
+            "ts": "2026-04-30T12:00:00Z",
+            "target": f"t{n}.com",
+            "vuln_class": "idor",
+            "technique": f"technique_{n}",
+            "tech_stack": ["express", "postgresql"],
+            "payout": 100 + (n % 1000),
+            "schema_version": CURRENT_SCHEMA_VERSION,
+        }
+
+    def test_save_10k_completes_under_5s(self, patterns_path):
+        db = PatternDB(patterns_path)
+        n = 10_000
+
+        start = time.perf_counter()
+        for i in range(n):
+            assert db.save(self._make_entry(i)) is True
+        elapsed = time.perf_counter() - start
+
+        # The constraint: an active hunter shouldn't pay seconds-per-save.
+        # 5 s for 10k inserts ≈ 0.5 ms/insert — comfortably bounded for a
+        # JSONL append. The unoptimized O(n²) path took ~30 s+ on a laptop.
+        assert elapsed < 5.0, f"save() at 10k entries took {elapsed:.2f}s, expected < 5s"
+
+    def test_save_10k_dedup_still_works(self, patterns_path):
+        """Perf fix must NOT change correctness — dedup keeps blocking duplicates."""
+        db = PatternDB(patterns_path)
+        n = 10_000
+        for i in range(n):
+            db.save(self._make_entry(i))
+
+        # Re-saving any of the prior entries must still return False.
+        assert db.save(self._make_entry(0)) is False
+        assert db.save(self._make_entry(n // 2)) is False
+        assert db.save(self._make_entry(n - 1)) is False
+
+        # And a brand-new entry still returns True.
+        new_entry = self._make_entry(n)
+        assert db.save(new_entry) is True
+
+    def test_save_dedup_survives_reopen(self, patterns_path):
+        """A new PatternDB instance must observe duplicates from prior saves."""
+        db1 = PatternDB(patterns_path)
+        for i in range(20):
+            db1.save(self._make_entry(i))
+
+        db2 = PatternDB(patterns_path)
+        # Existing entry → still a dup, even on a fresh instance.
+        assert db2.save(self._make_entry(5)) is False
+        # New entry → saved.
+        assert db2.save(self._make_entry(100)) is True
+
+    def test_dedup_skips_corrupted_lines(self, patterns_path):
+        """A corrupted line in the file should not crash the dedup load.
+
+        Behavior contract: corrupted lines are skipped. A subsequent save with
+        a key that "would have" appeared in the corrupted line still succeeds.
+        """
+        db1 = PatternDB(patterns_path)
+        db1.save(self._make_entry(1))
+        db1.save(self._make_entry(2))
+
+        # Inject a corrupted line between the two valid entries.
+        with open(patterns_path, "a") as f:
+            f.write("not valid json at all\n")
+
+        db2 = PatternDB(patterns_path)
+        # Existing valid entries are still recognized as dups.
+        assert db2.save(self._make_entry(1)) is False
+        assert db2.save(self._make_entry(2)) is False
+        # A new entry still saves.
+        assert db2.save(self._make_entry(3)) is True

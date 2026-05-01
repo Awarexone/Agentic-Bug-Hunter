@@ -104,7 +104,7 @@ Items deferred from the MCP-First Bionic Hunter design review (2026-03-24).
 1. ✅ Concurrent-write stress test for `AuditLog` (2 cases in `test_rotation.py::TestConcurrentWrites`, 2026-04-30) — `HuntJournal` removed in 97d4efb so no longer applicable
 2. ⏳ End-to-end hunt loop integration test (recon → rank → hunt → validate → report as a sequence)
 3. ✅ Disk-full OSError propagation test (`test_rotation.py::TestDiskFullPropagation`, 2026-04-30)
-4. ⏳ `PatternDB.save()` performance test at 10,000 entries
+4. ✅ `PatternDB.save()` performance test at 10,000 entries (`test_pattern_db.py::TestPatternPerformance`, 2026-05-01) — uncovered an O(n²) latent perf bug, fixed via in-memory dedup index
 
 **Why:** Unit coverage is strong (2,766 lines / 15 files). These 4 gaps cover failure modes that could bite users in production.
 

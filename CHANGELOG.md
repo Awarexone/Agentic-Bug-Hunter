@@ -1,5 +1,18 @@
 # Changelog
 
+## v4.2.1 — PatternDB Perf Fix (May 2026)
+
+### Fixed
+- **`PatternDB.save()` was O(n²)** — every save re-read the entire JSONL file to dedup. At 10k entries this pegged CPU for 5+ minutes per insert pass. Replaced with an in-memory dedup index of `(target, vuln_class, technique)` tuples, populated lazily on first save and updated per write. 10k saves now complete in ~2 seconds instead of 5+ minutes.
+
+### Added
+- `tests/test_pattern_db.py::TestPatternPerformance`: 4 new tests covering the perf bound, dedup correctness at 10k entries, lazy-load via reopen, and corrupted-line resilience.
+
+### Resolved
+- **TODO-8 (final item)** — `PatternDB.save()` performance test at 10,000 entries.
+
+---
+
 ## v4.2.0 — Memory Rotation (Apr 2026)
 
 ### Added

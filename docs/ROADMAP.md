@@ -7,6 +7,9 @@
 ## To do
 
 1. **Recon 紀錄可以紀錄** — 讓 recon 結果能存下來、之後查得到
+   - 開工前先回答的問題：
+     - Q1：`/recon domain` 怎麼定義 scope？除了 HackerOne，能不能用 `/recon domain @文件` 自訂範疇？
+     - Q2：`/recon` 產生哪些檔案？檔案結構與內容是什麼？
 2. **Bypass WAF skills 優化** — 強化 WAF 繞過相關內容
 3. **串接取得 CVE 資訊工具** — 整合更多 CVE 來源
 

@@ -8,6 +8,21 @@
 
 ### 1. 優化 Recon 紀錄 — 讓 recon 結果能存下來、之後查得到
 
+#### 🔥 前置：修正 `/recon` 指令呼叫 production 腳本（2026-05-05 發現，🚧 進行中）
+
+**問題**（從另一個 session 實測 `/recon matters.news` 觀察到）：
+
+1. [commands/recon.md](commands/recon.md) 是 declarative guide — Claude 看完**自己重新詮釋**，**完全沒呼叫** [tools/recon_engine.sh](tools/recon_engine.sh) production 腳本
+2. 結果：production 腳本的 trap、timeout、Phase 3-8（port scan / URL crawl / JS 分析 / param 抽取 / config exposure / CI/CD 掃描）**全部沒跑**
+3. Claude `cd recon/$TARGET` 後又 `mkdir -p recon/$TARGET`，造成雙層 `recon/matters.news/recon/matters.news/findings.md`
+4. 我們的 [tools/recon_to_json.py](tools/recon_to_json.py) 假設 production 腳本的目錄結構（`subdomains/subfinder.txt`），但實際 `/recon` 跑出扁平結構（`subfinder.txt`），**JSON inventory 完全擦肩**
+
+**修法：**
+- 改 [commands/recon.md](commands/recon.md) 第一步直接 `bash tools/recon_engine.sh $TARGET`（commit `<TBD>`）
+- 接著自動 `python3 tools/recon_to_json.py recon/$TARGET` 產 JSON（同上）
+- 用絕對路徑避免 cwd 切換造成的雙層 bug
+- 文件清楚說明 output 子目錄結構
+
 #### Q&A（2026-05-05 已調查）
 
 **Q1：`/recon domain` 怎麼定義 scope？能不能用 `/recon domain @文件` 自訂範疇？**

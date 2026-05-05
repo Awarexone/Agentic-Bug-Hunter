@@ -119,6 +119,26 @@ A：全部 plain text 在 `recon/<target>/`：`subdomains.txt`、`live-hosts.txt
 
 ---
 
+### 4. `recon_engine.sh` 加 `--passive-only` flag
+
+**動機（2026-05-05 從 matters.news hunt 發現）：** 不少賞金程式明確禁止「自動化探測工具」。例如 Matters 政策：「不使用漏洞掃描軟件或者其他自動化探測工具…我們也有可能會凍結你的帳號並封鎖對應的 IP 地址。」目前 [tools/recon_engine.sh](tools/recon_engine.sh) 沒有 passive-only 模式，全跑會違規：
+
+| Phase | 動作 | passive 安全？ |
+|---|---|---|
+| 1 | subfinder/amass/crt.sh/wayback | ✅ |
+| 2 | httpx 輕量探活 | ✅（單 request/host） |
+| **3** | **nmap top 1000 ports** | ❌ |
+| 4 | gau | ✅ |
+| 5 | JS curl 抓 public JS | ✅ |
+| **6** | **ffuf 目錄爆破** | ❌ |
+| **6.5** | **配置檔暴露探測** | ❌ |
+| 7 | URL 參數抽取 | ✅ |
+| 8 | CI/CD GitHub 掃描（external） | ✅ |
+
+**修法：** 加 `--passive-only` flag 跳過 phase 3 / 6 / 6.5。Default 仍 active 全跑。
+
+---
+
 *（陸續補充中）*
 
 ---

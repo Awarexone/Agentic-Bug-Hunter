@@ -71,6 +71,39 @@ if [ "$TARGET_TYPE" = "ip" ] || [ "$TARGET_TYPE" = "cidr" ]; then
     SCOPE_LOCK=1
 fi
 
+# Resolve an absolute path to the *ProjectDiscovery* httpx, NOT the unrelated
+# Python httpx CLI which Brew installs at /opt/homebrew/bin/httpx and which
+# silently rejects PD flags like -silent / -tech-detect with "No such option"
+# — producing 0 live hosts on macs where Brew's bin precedes ~/go/bin on PATH
+# despite the export above.
+#
+# The PD binary's `-version` output contains the literal substring
+# "projectdiscovery"; the Python httpx CLI doesn't. Fall back to the bare
+# `httpx` token when no PD binary is found anywhere so the existing
+# command-not-found error path still fires with a clear message.
+_resolve_pd_httpx() {
+    local cand
+    for cand in \
+        "$HOME/go/bin/httpx" \
+        "/opt/homebrew/bin/httpx" \
+        "/usr/local/bin/httpx" \
+        "$(command -v httpx 2>/dev/null)"; do
+        [ -z "$cand" ] && continue
+        [ -x "$cand" ] || continue
+        if "$cand" -version 2>&1 | grep -qi "projectdiscovery"; then
+            echo "$cand"; return 0
+        fi
+    done
+    echo "httpx"
+    return 1
+}
+HTTPX_BIN="$(_resolve_pd_httpx || true)"
+if ! "$HTTPX_BIN" -version 2>&1 | grep -qi "projectdiscovery"; then
+    echo "[!] WARNING: ProjectDiscovery httpx not found on PATH. Live-host probing will fail." >&2
+    echo "    Install with:  GOBIN=\"\$HOME/go/bin\" go install github.com/projectdiscovery/httpx/cmd/httpx@latest" >&2
+fi
+export HTTPX_BIN
+
 mkdir -p "$RECON_DIR"/{subdomains,live,ports,urls,js,dirs,params}
 
 # Safety net: merge partial subdomain results on early exit (watchdog kill, etc.)
@@ -183,9 +216,9 @@ fi  # end of domain-only subdomain enum block
 echo ""
 log_info "Phase 2: HTTP Probing"
 
-if command -v httpx &>/dev/null && [ -s "$RECON_DIR/subdomains/all.txt" ]; then
+if [ -x "$HTTPX_BIN" ] && [ -s "$RECON_DIR/subdomains/all.txt" ]; then
     log_step "Probing with httpx (status, title, tech, content-length)..."
-    httpx -l "$RECON_DIR/subdomains/all.txt" \
+    "$HTTPX_BIN" -l "$RECON_DIR/subdomains/all.txt" \
         -silent \
         -status-code \
         -title \

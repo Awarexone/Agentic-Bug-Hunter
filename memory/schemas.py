@@ -29,6 +29,17 @@ AUDIT_REQUIRED = {"ts", "url", "method", "scope_check", "schema_version"}
 AUDIT_OPTIONAL = {"response_status", "finding_id", "session_id", "error"}
 AUDIT_ALL = AUDIT_REQUIRED | AUDIT_OPTIONAL
 
+# Recon inventory entries — recon/<target>/inventory/subdomains.json
+RECON_ASSET_REQUIRED = {"hostname", "status"}
+RECON_ASSET_OPTIONAL = {"ip", "cname", "cdn", "title", "tech", "discovery_method", "notes"}
+RECON_ASSET_ALL = RECON_ASSET_REQUIRED | RECON_ASSET_OPTIONAL
+
+RECON_INVENTORY_REQUIRED = {
+    "target", "scan_date", "summary", "live_subdomains", "all_discovered", "schema_version",
+}
+RECON_INVENTORY_OPTIONAL = {"scan_duration_seconds"}
+RECON_INVENTORY_ALL = RECON_INVENTORY_REQUIRED | RECON_INVENTORY_OPTIONAL
+
 VALID_RESULTS = {"confirmed", "rejected", "partial", "informational"}
 VALID_SEVERITIES = {"critical", "high", "medium", "low", "informational", "none"}
 VALID_ACTIONS = {"hunt", "recon", "validate", "report", "remember", "resume", "intel"}
@@ -291,6 +302,52 @@ def make_session_summary_entry(
         "schema_version": CURRENT_SCHEMA_VERSION,
     }
     return validate_journal_entry(entry)
+
+
+def validate_recon_inventory(inv: dict) -> dict:
+    """Validate a recon inventory (subdomains.json content). Returns inv if valid, raises SchemaError if not."""
+    if not isinstance(inv, dict):
+        raise SchemaError(f"Recon inventory must be a dict, got {type(inv).__name__}")
+
+    _check_required(inv, RECON_INVENTORY_REQUIRED, "Recon inventory")
+    _check_unknown_fields(inv, RECON_INVENTORY_ALL, "Recon inventory")
+    _check_schema_version(inv)
+    _check_timestamp(inv["scan_date"], "scan_date")
+
+    if not isinstance(inv["target"], str) or not inv["target"].strip():
+        raise SchemaError("Recon inventory: 'target' must be a non-empty string")
+
+    summary = inv.get("summary")
+    if not isinstance(summary, dict):
+        raise SchemaError("Recon inventory: 'summary' must be a dict")
+    for k in ("total_discovered", "live_resolved"):
+        if not isinstance(summary.get(k), int) or summary[k] < 0:
+            raise SchemaError(f"Recon inventory: 'summary.{k}' must be a non-negative integer")
+    if not isinstance(summary.get("sources"), list):
+        raise SchemaError("Recon inventory: 'summary.sources' must be a list")
+
+    if not isinstance(inv["live_subdomains"], list):
+        raise SchemaError("Recon inventory: 'live_subdomains' must be a list")
+    for asset in inv["live_subdomains"]:
+        if not isinstance(asset, dict):
+            raise SchemaError("Recon inventory: each live_subdomains entry must be a dict")
+        _check_required(asset, RECON_ASSET_REQUIRED, "Recon asset")
+        _check_unknown_fields(asset, RECON_ASSET_ALL, "Recon asset")
+        if not isinstance(asset["hostname"], str) or not asset["hostname"].strip():
+            raise SchemaError("Recon asset: 'hostname' must be a non-empty string")
+        if not isinstance(asset["status"], int):
+            raise SchemaError("Recon asset: 'status' must be an integer")
+        if "tech" in asset and (not isinstance(asset["tech"], list)
+                                 or not all(isinstance(t, str) for t in asset["tech"])):
+            raise SchemaError("Recon asset: 'tech' must be a list of strings")
+        if "discovery_method" in asset and (not isinstance(asset["discovery_method"], list)
+                                              or not all(isinstance(s, str) for s in asset["discovery_method"])):
+            raise SchemaError("Recon asset: 'discovery_method' must be a list of strings")
+
+    if not isinstance(inv["all_discovered"], list) or not all(isinstance(h, str) for h in inv["all_discovered"]):
+        raise SchemaError("Recon inventory: 'all_discovered' must be a list of strings")
+
+    return inv
 
 
 def make_audit_entry(

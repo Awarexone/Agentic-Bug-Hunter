@@ -243,7 +243,7 @@ Fixture：模擬 `recon/example.com/` 目錄，含 fake `subdomains.txt`、`live
    - 新增 `tools/recon_to_json.py` + `tests/test_recon_to_json.py`
    - 加 `memory/schemas.py` 的 schema
    - **不動 recon_engine.sh** — 純粹多一個工具，不改既有行為，最低風險，最易合
-   - PR 描述：`Adds a post-processing tool to generate JSON inventory from existing recon output. Design adapted from transilienceai/communitytools (MIT).`
+   - PR 描述：`Adds a post-processing tool to generate JSON inventory from existing recon output.`
 
 2. **PR B — Wire into pipeline**（A 合後再發）
    - 改 `tools/recon_engine.sh` 加 post-process hook
@@ -269,9 +269,35 @@ Fixture：模擬 `recon/example.com/` 目錄，含 fake `subdomains.txt`、`live
 
 ---
 
-## 10. 開放問題 (待確認再開工)
+## 10. 已決議的問題
 
-1. **CDN 偵測精度** — 簡單 IP 範圍 vs 整合 PD `cdncheck` CLI。前者零依賴後者準。建議：先做簡單版，留 TODO
-2. **Source attribution 實作** — 改 recon_engine.sh 保留中間檔（影響面較大），或讓 recon_to_json.py 重跑 query 比對（慢但乾淨）？建議：前者（一次性改動，之後跑得快）
-3. **schema 驗證失敗時行為** — log warn + 寫部分 JSON，還是直接 abort？建議：log warn + 寫不完整 JSON（recon 結果太貴不能丟）
-4. **是否包含 `out_of_scope` 欄位** — taipower JSON 沒有 `out_of_scope`，但 ROADMAP Q1 提到 scope 整合是另一個獨立議題。本 PR 不做。
+1. **CDN 偵測精度**：先做簡單 IP 範圍判斷，留 TODO
+2. **Source attribution 實作**：**已存在！** 實際 recon_engine.sh 的 `subdomains/{subfinder,amass,crtsh,wayback_subs}.txt` 各 source 檔已分離（merge 進 `all.txt` 前），直接讀即可，不需改 recon_engine.sh
+3. **schema 驗證失敗時行為**：log warn + 寫部分 JSON（recon 結果太貴不能丟）
+4. **`out_of_scope` 欄位**：本 PR 不做（scope 整合是 ROADMAP Q1 另一個獨立議題）
+
+## 11. 真實 recon 目錄結構（重要）
+
+實際 [tools/recon_engine.sh](tools/recon_engine.sh) 的輸出**不是 flat .txt**，而是：
+
+```
+recon/<target>/
+├── subdomains/
+│   ├── subfinder.txt     ← per-source（已分離）
+│   ├── amass.txt
+│   ├── crtsh.txt
+│   ├── wayback_subs.txt
+│   └── all.txt           ← merged & deduped
+├── live/
+│   ├── httpx_full.txt    ← 核心資料源：URL [status] [title] [tech] [length]
+│   ├── urls.txt
+│   └── status_{200,3xx,401,403}.txt
+├── ports/{nmap_results,nmap_greppable,open_ports}.txt
+├── urls/{gau,all,with_params,js_files,api_endpoints,sensitive_paths}.txt
+├── js/{endpoints,potential_secrets}.txt
+├── dirs/ffuf_*.json
+├── params/{param_frequency,unique_params,interesting_params}.txt
+└── exposure/config_files.txt
+```
+
+**JSON inventory 寫到：** `recon/<target>/inventory/subdomains.json`（新增子目錄）

@@ -43,11 +43,12 @@ A：全部 plain text 在 `recon/<target>/`：`subdomains.txt`、`live-hosts.txt
 
 ##### 要移植的（高 ROI）
 
-1. **JSON schema 結構化 inventory**
+1. **JSON schema 結構化 inventory** 📋 計畫中
    - 新增 `recon/<target>/inventory/subdomains.json`（與既有 `subdomains.txt` 並存，不破壞向後相容）
    - Schema 參考 communitytools [`formats/reconnaissance.md`](/Users/baihaojun/Documents/communitytools/formats/reconnaissance.md)：每個 asset 含 `{hostname, ip, cdn, status, title, tech, notes, discovery_method}`
    - **直接解決** Q2 列出的「無 JSON、無來源歸因、無 tech 聚合」三大限制
    - 動到的檔案：[tools/recon_engine.sh](tools/recon_engine.sh) 加 `--emit-json` flag、[memory/schemas.py](memory/schemas.py) 加 `ReconAsset` schema
+   - **詳細實作計畫：[RECON_JSON_INVENTORY_PLAN.md](RECON_JSON_INVENTORY_PLAN.md)**
 
 2. **每次 hunt 獨立輸出目錄**
    - 改 `recon/$TARGET/` → `recon/$TARGET/<YYYYMMDD_HHMMSS>/`，加 symlink `recon/$TARGET/latest`

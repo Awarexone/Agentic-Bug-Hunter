@@ -596,6 +596,19 @@ Keep it under 80 words total."""
             return True
         if len(clean) < 12:
             return True
+        # When sqlmap itself has tagged a candidate as "false positive or
+        # unexploitable" in the Note column of its CSV results, the
+        # 7-Question Gate previously still chewed through those lines and
+        # could rationalise a SUBMIT verdict during gate thinking — the
+        # final auto_triage.md ends up listing every sqlmap FP as [UNKNOWN]
+        # and operators waste time re-checking sqlmap's own negatives.
+        # Drop them at the candidate-collection layer so the gate never
+        # sees something its own scanner already rejected.
+        if "false positive or unexploitable" in lower:
+            return True
+        # CSV header lines from sqlmap_results.txt are also noise.
+        if lower.startswith("target url,place,parameter,technique"):
+            return True
         noisy_terms = (
             "traceback", "modulenotfounderror", "requestsdependencywarning",
             "warnings.warn", "from bs4 import", "spooling to file",

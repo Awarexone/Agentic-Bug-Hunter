@@ -8,7 +8,7 @@
 
 ### 1. 優化 Recon 紀錄 — 讓 recon 結果能存下來、之後查得到
 
-#### 🔥 前置：修正 `/recon` 指令呼叫 production 腳本（2026-05-05 發現，🚧 進行中）
+#### 🔥 前置：修正 `/recon` 指令呼叫 production 腳本（2026-05-05 發現，✅ 完成 commit `a6a6d42`）
 
 **問題**（從另一個 session 實測 `/recon matters.news` 觀察到）：
 
@@ -17,11 +17,13 @@
 3. Claude `cd recon/$TARGET` 後又 `mkdir -p recon/$TARGET`，造成雙層 `recon/matters.news/recon/matters.news/findings.md`
 4. 我們的 [tools/recon_to_json.py](tools/recon_to_json.py) 假設 production 腳本的目錄結構（`subdomains/subfinder.txt`），但實際 `/recon` 跑出扁平結構（`subfinder.txt`），**JSON inventory 完全擦肩**
 
-**修法：**
-- 改 [commands/recon.md](commands/recon.md) 第一步直接 `bash tools/recon_engine.sh $TARGET`（commit `<TBD>`）
-- 接著自動 `python3 tools/recon_to_json.py recon/$TARGET` 產 JSON（同上）
-- 用絕對路徑避免 cwd 切換造成的雙層 bug
-- 文件清楚說明 output 子目錄結構
+**修法：** ([commit a6a6d42](https://github.com/letztek/claude-bug-bounty/commit/a6a6d42))
+- ✅ [commands/recon.md](commands/recon.md) 第一步直接 `bash tools/recon_engine.sh $TARGET`
+- ✅ 接著自動 `python3 tools/recon_to_json.py recon/$TARGET` 產 JSON
+- ✅ 用絕對路徑（`$(git rev-parse --show-toplevel)`）避免 cwd 切換造成的雙層 bug
+- ✅ Output Layout 文件改成 8-phase 子目錄結構（subdomains/ live/ ports/ urls/ js/ dirs/ exposure/ params/ cicd/ inventory/）
+- ✅ 加 "Common Mistakes to Avoid" 章節明文警告 — 不要 inline 重寫 pipeline、不要 cd 進子目錄、不要跳過 JSON 步驟
+- ✅ "What to Do Next" 提供 3 條 jq 查詢示範（按 CDN / tech / status 過濾 attack surface）
 
 #### Q&A（2026-05-05 已調查）
 
@@ -124,3 +126,5 @@ A：全部 plain text 在 `recon/<target>/`：`subdomains.txt`、`live-hosts.txt
 ## Done
 
 - **2026-05-05** — [SKILLS_ARCHITECTURE.md](SKILLS_ARCHITECTURE.md)（commit `213f546`）— plugin 架構說明 + drift 清單
+- **2026-05-05** — JSON inventory 工具（commit `e17791f`）— [tools/recon_to_json.py](tools/recon_to_json.py) + [memory/schemas.py](memory/schemas.py) `RECON_INVENTORY_*` schema + [tests/test_recon_to_json.py](tests/test_recon_to_json.py)
+- **2026-05-05** — `/recon` 指令修正（commit `a6a6d42`）— [commands/recon.md](commands/recon.md) 改成直接呼叫 production 腳本 `tools/recon_engine.sh`，解決 cwd 切換造成的雙層目錄 bug 與 production 腳本沒被觸發的問題

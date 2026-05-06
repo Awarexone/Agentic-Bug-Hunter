@@ -31,7 +31,13 @@ from datetime import datetime
 MAX_CIDR_HOSTS = 254
 
 def detect_target_type(target: str) -> str:
-    """Return 'cidr', 'ip', or 'domain'."""
+    """Return 'list', 'cidr', 'ip', or 'domain'.
+
+    'list' = path to a readable file of pre-resolved hosts (one per line).
+    Used for programs without wildcard scope where subdomain enum is wasted.
+    """
+    if os.path.isfile(target):
+        return "list"
     try:
         net = ipaddress.ip_network(target, strict=False)
         return "cidr" if net.num_addresses > 1 else "ip"
@@ -186,8 +192,8 @@ def run_recon(domain, quick=False, scope_lock=False):
 
     # Detect target type and pass to recon_engine.sh
     target_type = detect_target_type(domain)
-    if target_type in ("ip", "cidr"):
-        scope_lock = True  # IPs/CIDRs never need subdomain enum
+    if target_type in ("ip", "cidr", "list"):
+        scope_lock = True  # IPs/CIDRs/pre-resolved lists never need subdomain enum
         log("info", f"Target type: {target_type.upper()} — subdomain enum skipped")
         if target_type == "cidr":
             try:
@@ -196,6 +202,20 @@ def run_recon(domain, quick=False, scope_lock=False):
                 log("err", str(exc))
                 return False
             log("info", f"CIDR {domain} → {len(hosts)} host(s) to scan")
+        elif target_type == "list":
+            try:
+                with open(domain, "r", encoding="utf-8") as f:
+                    n = sum(
+                        1 for line in f
+                        if line.strip() and not line.lstrip().startswith("#")
+                    )
+            except OSError as exc:
+                log("err", f"Could not read domain list {domain}: {exc}")
+                return False
+            if n == 0:
+                log("err", f"Domain list {domain} has no usable entries")
+                return False
+            log("info", f"Domain list {domain} → {n} host(s) to scan")
 
     scope_env  = "SCOPE_LOCK=1 " if scope_lock else ""
     type_env   = f'TARGET_TYPE="{target_type}" '

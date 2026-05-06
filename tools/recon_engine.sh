@@ -20,9 +20,21 @@ log_info()  { echo -e "${CYAN}[*]${NC} $1"; }
 log_step()  { echo -e "    ${CYAN}[>]${NC} $1"; }
 log_done()  { echo -e "    ${GREEN}[✓]${NC} $1"; }
 
-TARGET="${1:?Usage: $0 <target> [--quick]  (target = FQDN, IP, or CIDR)}"
+TARGET="${1:?Usage: $0 <target> [--quick]  (target = FQDN, IP, CIDR, or path to a file of domains/hosts)}"
 QUICK_MODE="${2:-}"
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Domain-list mode: if the target is a readable regular file, treat its
+# contents as a pre-resolved scope list (one host per line, # comments OK).
+# Useful for programs without wildcards where subdomain enum is wasted work.
+# Output dir is derived from the file basename so multiple lists don't collide.
+if [ -f "$TARGET" ] && [ -r "$TARGET" ]; then
+    TARGET_TYPE="list"
+    LIST_FILE="$TARGET"
+    TARGET="$(basename "$LIST_FILE")"
+    TARGET="${TARGET%.*}"
+fi
+
 RECON_DIR="${RECON_OUT_DIR:-$BASE_DIR/recon/$TARGET}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 THREADS=20
@@ -132,8 +144,23 @@ echo ""
 # ============================================================
 log_info "Phase 1: Subdomain Enumeration"
 
-# ── For IP / CIDR targets: skip subdomain tools, do host discovery instead ───
-if [ "$TARGET_TYPE" = "cidr" ]; then
+# ── For domain-list targets: load the file directly, skip enum entirely ───
+if [ "$TARGET_TYPE" = "list" ]; then
+    log_info "Domain-list target — loading $LIST_FILE (skipping subdomain enum)"
+    grep -vE '^[[:space:]]*(#|$)' "$LIST_FILE" \
+        | tr -d '\r' \
+        | tr '[:upper:]' '[:lower:]' \
+        | sed 's/^\*\.//' \
+        | awk 'NF' \
+        | sort -u > "$RECON_DIR/subdomains/all.txt"
+    LIST_COUNT=$(wc -l < "$RECON_DIR/subdomains/all.txt" 2>/dev/null || echo 0)
+    if [ "$LIST_COUNT" -eq 0 ]; then
+        log_err "Domain list $LIST_FILE has no usable entries — aborting"
+        exit 1
+    fi
+    log_ok "Loaded $LIST_COUNT host(s) from list"
+    SCOPE_LOCK=1
+elif [ "$TARGET_TYPE" = "cidr" ]; then
     log_info "CIDR target — running nmap ping sweep to discover live hosts"
     if command -v nmap &>/dev/null; then
         nmap -sn "$TARGET" -oG - 2>/dev/null \

@@ -67,3 +67,35 @@ def test_recon_engine_expands_cidr_when_nmap_is_unavailable():
     assert "_expand_cidr_hosts" in recon_engine
     assert 'log_warn "nmap not installed — expanding the CIDR locally for downstream probing"' in recon_engine
     assert 'log_warn "nmap did not identify live hosts — expanding the CIDR locally for downstream probing"' in recon_engine
+
+
+def test_detect_target_type_list(tmp_path):
+    hunt = load_hunt_module()
+    list_file = tmp_path / "scope.txt"
+    list_file.write_text("api.example.com\nshop.example.com\n")
+    assert hunt.detect_target_type(str(list_file)) == "list"
+
+
+def test_run_recon_skips_for_empty_list(tmp_path, monkeypatch):
+    hunt = load_hunt_module()
+
+    list_file = tmp_path / "empty.txt"
+    list_file.write_text("# only comments\n\n   \n")
+
+    popen_called = False
+
+    def fake_popen(*args, **kwargs):
+        nonlocal popen_called
+        popen_called = True
+        raise AssertionError("subprocess should not be started for an empty list")
+
+    monkeypatch.setattr(hunt.subprocess, "Popen", fake_popen)
+
+    assert hunt.run_recon(str(list_file)) is False
+    assert popen_called is False
+
+
+def test_recon_engine_handles_domain_list_mode():
+    recon_engine = (Path(__file__).resolve().parents[1] / "tools" / "recon_engine.sh").read_text()
+    assert 'TARGET_TYPE="list"' in recon_engine
+    assert 'Domain-list target' in recon_engine

@@ -69,14 +69,14 @@ Most hunters waste hours on things that shouldn't take that long. Here's the shi
 | Write reports from scratch (45 min each) | `report-writer` agent generates submission-ready reports in 60s |
 | Forget what worked last month | **Memory system** — patterns from target A inform target B |
 | Submit bugs without proper validation | **7-Question Gate** kills weak findings before you waste time reporting |
-| Can't see live browser traffic | **Burp MCP** — AI reads your proxy history in real time |
+| Can't see live browser traffic | **Burp MCP** or **Caido MCP** — AI reads your proxy history in real time |
 | Hunt one endpoint at a time | **`/autopilot`** runs the full hunt loop while you watch |
 
 <br>
 
 ## Quick Start
 
-> **Prerequisite:** You need [Claude Code](https://claude.ai/claude-code) installed. It's Anthropic's free AI coding tool that runs in your terminal.
+> **Prerequisite:** You need [Claude Code](https://claude.ai/claude-code) installed and a Claude **Pro** or **Max** plan (or an Anthropic API key with credit). Claude Code itself is free to install, but the underlying model usage requires a paid plan or API billing — the free Claude.ai web account does not include Claude Code access.
 
 **Step 1 — Install tools + skills**
 
@@ -302,7 +302,7 @@ brew install go python3 node jq
 sudo apt install golang python3 nodejs jq
 ```
 
-You also need [Claude Code](https://claude.ai/claude-code) installed and a free account.
+You also need [Claude Code](https://claude.ai/claude-code) installed and a **Claude Pro or Max plan** (or an Anthropic API key with credit). The free Claude.ai web account does not include Claude Code access — that's the model billing, not the CLI.
 
 ### Install
 

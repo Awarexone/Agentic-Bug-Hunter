@@ -19,7 +19,11 @@ Run the full recon pipeline on a target and produce a prioritized attack surface
 
 ```
 /recon target.com
+/recon 10.0.0.0/24                # CIDR — skips subdomain enum, runs nmap sweep
+/recon path/to/scope.txt          # Domain list — skips subdomain enum, uses file contents
 ```
+
+The domain-list form is for programs without wildcard scope: pre-resolved hosts go in a text file (one per line, `#` comments allowed) and recon jumps straight to live-host probing + URL crawl + nuclei against just those entries.
 
 Or with specific focus:
 ```

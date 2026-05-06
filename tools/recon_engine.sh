@@ -257,6 +257,18 @@ else
     log_done "wayback: $(wc -l < "$RECON_DIR/urls/wayback.txt" 2>/dev/null || echo 0) URLs"
 fi
 
+# katana — active crawl on live hosts (5 min cap prevents infinite crawl on
+# content-heavy sites like news/video portals)
+if command -v katana &>/dev/null && [ -s "$RECON_DIR/live/urls.txt" ]; then
+    log_step "Running katana (active crawl, 5min cap, top 50 hosts)..."
+    head -50 "$RECON_DIR/live/urls.txt" > "$RECON_DIR/urls/katana_targets.txt"
+    timeout 300 katana \
+        -list "$RECON_DIR/urls/katana_targets.txt" \
+        -d 3 -jc -kf all -silent \
+        -o "$RECON_DIR/urls/katana.txt" 2>/dev/null || true
+    log_done "katana: $(wc -l < "$RECON_DIR/urls/katana.txt" 2>/dev/null || echo 0) URLs"
+fi
+
 # Merge all collected URLs
 cat "$RECON_DIR/urls/"*.txt 2>/dev/null | sort -u > "$RECON_DIR/urls/all.txt" 2>/dev/null || true
 log_done "Total unique URLs: $(wc -l < "$RECON_DIR/urls/all.txt" 2>/dev/null || echo 0)"

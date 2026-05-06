@@ -139,6 +139,12 @@ A：全部 plain text 在 `recon/<target>/`：`subdomains.txt`、`live-hosts.txt
 
 ---
 
+### 5. Metasploit skill — 用 metasploit 找漏洞
+
+*（細節之後展開）*
+
+---
+
 *（陸續補充中）*
 
 ---

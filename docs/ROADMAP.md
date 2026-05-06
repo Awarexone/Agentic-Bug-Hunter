@@ -113,4 +113,6 @@ Recon 線只保留**已完成的 bug fix（commits `a6a6d42` + `e17791f`）**，
 
 **建議行動：** [`commands/recon.md`](../commands/recon.md) 的 bug fix 部分（commit `a6a6d42`）值得 PR 到 upstream，讓他們收進去 → 之後 upstream 維護由他們自動處理。
 
+✅ **2026-05-06 已發 PR：[shuvonsec/claude-bug-bounty#32](https://github.com/shuvonsec/claude-bug-bounty/pull/32)** — 待 upstream 審核中（80 行加 / 107 行減）。PR 描述只談 bug fix，不含我們本地的 JSON inventory feature（保持單一目的）。
+
 不 revert — revert 等於把雙層目錄 bug + production 腳本沒被叫起的 bug 拿回來。

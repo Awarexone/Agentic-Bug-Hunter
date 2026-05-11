@@ -4,7 +4,7 @@
 
 <div align="center">
 
-<img src="https://img.shields.io/badge/v4.2.0-Memory_Rotation-blueviolet?style=for-the-badge" alt="v4.2.0">
+<img src="https://img.shields.io/badge/v4.3.0-Auth_Sessions_%2B_Arsenal-blueviolet?style=for-the-badge" alt="v4.3.0">
 
 # Claude Bug Bounty
 
@@ -20,7 +20,7 @@
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![Tests](https://img.shields.io/badge/Tests-180_passing-brightgreen.svg?style=flat-square)](tests/)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-Plugin-D97706.svg?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai/claude-code)
-[![$BUG](https://img.shields.io/badge/$BUG-pump.fun-9945FF?style=flat-square&logo=solana&logoColor=white)](https://pump.fun/coin/J6VzBAGnyyNEyzyHhauwg3ofRctFxnTLzQCcjUdGpump)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](#contributing)
 
 <br>
 
@@ -28,13 +28,13 @@
 
 <br>
 
-![Commands](https://img.shields.io/badge/commands-15-D97706?style=flat-square)
+![Commands](https://img.shields.io/badge/commands-23-D97706?style=flat-square)
 ![Agents](https://img.shields.io/badge/AI_agents-8-blueviolet?style=flat-square)
 ![Skills](https://img.shields.io/badge/skill_domains-9-3776AB?style=flat-square)
 ![Web2](https://img.shields.io/badge/web2_classes-20-brightgreen?style=flat-square)
 ![Web3](https://img.shields.io/badge/web3_classes-10-yellow?style=flat-square)
 
-<sub>Burp MCP &nbsp;·&nbsp; HackerOne MCP &nbsp;·&nbsp; Autonomous Mode &nbsp;·&nbsp; CA: [`J6VzBAGnyy…UdGpump`](https://pump.fun/coin/J6VzBAGnyyNEyzyHhauwg3ofRctFxnTLzQCcjUdGpump)</sub>
+<sub>Burp MCP &nbsp;·&nbsp; Caido MCP &nbsp;·&nbsp; HackerOne MCP &nbsp;·&nbsp; Auth-aware hunting &nbsp;·&nbsp; Autonomous mode</sub>
 
 </div>
 
@@ -71,6 +71,7 @@ Most hunters waste hours on things that shouldn't take that long. Here's the shi
 | Submit bugs without proper validation | **7-Question Gate** kills weak findings before you waste time reporting |
 | Can't see live browser traffic | **Burp MCP** or **Caido MCP** — AI reads your proxy history in real time |
 | Hunt one endpoint at a time | **`/autopilot`** runs the full hunt loop while you watch |
+| Anonymous recon misses auth-only bugs | **Auth-aware pipeline** — set a session once, httpx/katana/ffuf/nuclei all carry it |
 
 <br>
 
@@ -167,6 +168,21 @@ Run the whole loop, or any step on its own.
 | `/token-scan <contract>` | Scans a meme coin / token for rug pull signals (EVM + Solana) |
 | `/memory-gc` | Inspect or rotate hunt-memory JSONL files (10 MB cap, keeps 3 backups) |
 
+### Recon Toolkit (v4.3)
+
+Thin wrappers over external tools. Each one is gated on tool presence — missing tools are skipped, not errors.
+
+| Command | What It Does |
+|:---|:---|
+| `/scope-aggregate <program>` | Pulls every in-scope asset across H1 · Bugcrowd · Intigriti · YWH · Immunefi (bbscope + bounty-targets-data) |
+| `/secrets-hunt --js-bundle <dir>` | Leaked credentials in source, JS bundles, or a GitHub org (trufflehog · noseyparker · gitleaks) |
+| `/takeover --recon <dir>` | Subdomain takeover candidates from a recon run (dnsReaper · subjack) |
+| `/cloud-recon --keyword <name>` | Public S3 · Azure · GCP buckets + CloudFlare-bypass origin IPs |
+| `/param-discover <url>` | Hidden HTTP parameters (Arjun · x8) |
+| `/bypass-403 <url>` | Header · method · encoding tricks against a 403/401 |
+| `/scan-cves <host>` | Focused nuclei high/critical sweep + optional log4j-scan |
+| `/arsenal [tool]` | Lists installed external tools or prints an install hint |
+
 <br>
 
 ## AI Agents
@@ -187,6 +203,14 @@ Run the whole loop, or any step on its own.
 <br>
 
 ## What's New
+
+### v4.3.0 — Auth Sessions + Recon Arsenal (May 2026)
+
+- **Auth-aware hunting.** Set a session once (`--cookie`, `--bearer`, env vars, or `.private/target.json`) and every downstream tool that takes auth — httpx, katana, ffuf, nuclei, dalfox, the SQLi/SSTI/upload PoC probes — carries it. Most paying bugs (IDOR, BOLA, mass assignment, SSRF behind a login) only exist after login; the default pipeline used to miss them. See [`docs/auth-sessions.md`](docs/auth-sessions.md).
+- **8 new commands.** `/scope-aggregate`, `/secrets-hunt`, `/takeover`, `/cloud-recon`, `/param-discover`, `/bypass-403`, `/scan-cves`, `/arsenal` — all under the **Recon Toolkit** table below.
+- **External tool registry.** `tools/external_arsenal.sh` is the single source of truth for ~50 external tools (install hints, upstream URLs, `_have <tool>` helper). Replaces scattered `command -v` checks across the shell scripts.
+- **Recon pipeline.** Optional nuclei phase in `recon_engine.sh` (off by default; gated on tool presence).
+- **Methodology cheatsheet.** `skills/security-arsenal/METHODOLOGY_CHEATSHEET.md` distills per-vuln quick-check tables from HowToHunt + HolyTips + AllAboutBugBounty + KingOfBugBountyTips into one reference.
 
 ### v4.2.0 — Memory Rotation (Apr 2026)
 

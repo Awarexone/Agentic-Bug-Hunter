@@ -25,6 +25,17 @@ import subprocess
 import sys
 from datetime import datetime
 
+# Auth session is bundled into the package; importable when run as a script
+# because tools/__init__.py is present.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from tools.auth_session import AuthSession, add_cli_args, session_from_args  # noqa: E402
+
+# Process-wide AuthSession. Populated in main() once flags are parsed and
+# read by run_recon / run_vuln_scan so every subprocess inherits the same
+# session env vars. (Plain assignment — kept 3.9-compatible; the codebase
+# elsewhere uses 3.10+ union syntax but hunt.py historically did not.)
+_AUTH_SESSION = None
+
 
 # ── Target type detection (FQDN / single IP / CIDR) ──────────────────────────
 
@@ -220,11 +231,18 @@ def run_recon(domain, quick=False, scope_lock=False):
     scope_env  = "SCOPE_LOCK=1 " if scope_lock else ""
     type_env   = f'TARGET_TYPE="{target_type}" '
 
+    # Inject auth env vars (if any) so the bash helper picks them up.
+    child_env = os.environ.copy()
+    if _AUTH_SESSION is not None:
+        _AUTH_SESSION.export_to_env(child_env)
+        if not _AUTH_SESSION.is_empty():
+            log("info", _AUTH_SESSION.describe())
+
     # Run with live output
     try:
         proc = subprocess.Popen(
             f'{scope_env}{type_env}bash "{script}" "{domain}" {quick_flag}',
-            shell=True, cwd=BASE_DIR
+            shell=True, cwd=BASE_DIR, env=child_env,
         )
         proc.wait(timeout=3600)  # 60 min timeout (CIDR ranges can be large)
         return proc.returncode == 0
@@ -260,10 +278,14 @@ def run_vuln_scan(domain, quick=False):
     script = os.path.join(TOOLS_DIR, "vuln_scanner.sh")
     quick_flag = "--quick" if quick else ""
 
+    child_env = os.environ.copy()
+    if _AUTH_SESSION is not None:
+        _AUTH_SESSION.export_to_env(child_env)
+
     try:
         proc = subprocess.Popen(
             f'bash "{script}" "{recon_dir}" {quick_flag}',
-            shell=True, cwd=BASE_DIR
+            shell=True, cwd=BASE_DIR, env=child_env,
         )
         proc.wait(timeout=1800)
         return proc.returncode == 0
@@ -450,7 +472,14 @@ Examples:
     parser.add_argument("--zero-day", action="store_true", help="Run zero-day fuzzer")
     parser.add_argument("--select-targets", action="store_true", help="Only run target selection")
     parser.add_argument("--top", type=int, default=10, help="Number of targets to select")
+    add_cli_args(parser)
     args = parser.parse_args()
+
+    # Build the auth session once. It propagates to every subprocess via
+    # BBHUNT_AUTH_HEADERS / BBHUNT_SESSION_ID env vars (set per-call so the
+    # session_id is consistent across recon, scan, and audit log entries).
+    global _AUTH_SESSION
+    _AUTH_SESSION = session_from_args(args)
 
     print(f"""
 {BOLD}╔══════════════════════════════════════════╗

@@ -5,18 +5,30 @@ All entries carry schema_version for future migration support.
 Validation is strict on required fields, permissive on optional ones.
 """
 
+import os
 from datetime import datetime, timezone
 
 CURRENT_SCHEMA_VERSION = 1
 
 # Required fields for each entry type
 JOURNAL_REQUIRED = {"ts", "target", "action", "vuln_class", "endpoint", "result", "schema_version"}
-JOURNAL_OPTIONAL = {"severity", "payout", "technique", "notes", "tags"}
+JOURNAL_OPTIONAL = {"severity", "payout", "technique", "notes", "tags", "session_id"}
 JOURNAL_ALL = JOURNAL_REQUIRED | JOURNAL_OPTIONAL
 
 PATTERN_REQUIRED = {"ts", "target", "vuln_class", "technique", "tech_stack", "schema_version"}
-PATTERN_OPTIONAL = {"endpoint", "payout", "notes", "tags"}
+PATTERN_OPTIONAL = {"endpoint", "payout", "notes", "tags", "session_id"}
 PATTERN_ALL = PATTERN_REQUIRED | PATTERN_OPTIONAL
+
+
+def _current_session_id() -> str | None:
+    """Return the BBHUNT_SESSION_ID env var if set (the auth-aware hash).
+
+    Findings logged during an authenticated run inherit the same 12-char hash
+    used by audit.jsonl, so journal entries can be correlated with which
+    identity discovered them. Anonymous runs leave the field unset.
+    """
+    sid = os.environ.get("BBHUNT_SESSION_ID")
+    return sid if sid else None
 
 TARGET_REQUIRED = {"target", "first_hunted", "last_hunted", "schema_version"}
 TARGET_OPTIONAL = {
@@ -102,6 +114,10 @@ def validate_journal_entry(entry: dict) -> dict:
         if not isinstance(entry["tags"], list) or not all(isinstance(t, str) for t in entry["tags"]):
             raise SchemaError("Journal entry: 'tags' must be a list of strings")
 
+    if "session_id" in entry:
+        if not isinstance(entry["session_id"], str) or not entry["session_id"].strip():
+            raise SchemaError("Journal entry: 'session_id' must be a non-empty string")
+
     return entry
 
 
@@ -120,6 +136,10 @@ def validate_pattern_entry(entry: dict) -> dict:
 
     if not isinstance(entry["technique"], str) or not entry["technique"].strip():
         raise SchemaError("Pattern entry: 'technique' must be a non-empty string")
+
+    if "session_id" in entry:
+        if not isinstance(entry["session_id"], str) or not entry["session_id"].strip():
+            raise SchemaError("Pattern entry: 'session_id' must be a non-empty string")
 
     return entry
 
@@ -164,8 +184,14 @@ def make_journal_entry(
     technique: str | None = None,
     notes: str | None = None,
     tags: list[str] | None = None,
+    session_id: str | None = None,
 ) -> dict:
-    """Create and validate a new journal entry with current timestamp."""
+    """Create and validate a new journal entry with current timestamp.
+
+    If session_id is None, falls back to BBHUNT_SESSION_ID env var so
+    findings made under an auth-aware hunt automatically carry the same
+    identity hash that audit.jsonl uses.
+    """
     entry = {
         "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "target": target,
@@ -185,6 +211,10 @@ def make_journal_entry(
         entry["notes"] = notes
     if tags is not None:
         entry["tags"] = tags
+    if session_id is None:
+        session_id = _current_session_id()
+    if session_id is not None:
+        entry["session_id"] = session_id
 
     return validate_journal_entry(entry)
 
@@ -198,8 +228,14 @@ def make_pattern_entry(
     payout: int | float | None = None,
     notes: str | None = None,
     tags: list[str] | None = None,
+    session_id: str | None = None,
 ) -> dict:
-    """Create and validate a new pattern entry with current timestamp."""
+    """Create and validate a new pattern entry with current timestamp.
+
+    If session_id is None, falls back to BBHUNT_SESSION_ID env var so
+    patterns discovered under an auth-aware hunt record which identity
+    surfaced the technique (important for IDOR / BOLA-class patterns).
+    """
     entry = {
         "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "target": target,
@@ -216,6 +252,10 @@ def make_pattern_entry(
         entry["notes"] = notes
     if tags is not None:
         entry["tags"] = tags
+    if session_id is None:
+        session_id = _current_session_id()
+    if session_id is not None:
+        entry["session_id"] = session_id
 
     return validate_pattern_entry(entry)
 
@@ -290,6 +330,14 @@ def make_session_summary_entry(
         "tags": tags,
         "schema_version": CURRENT_SCHEMA_VERSION,
     }
+    # Stamp with the auth session_id if the run was authenticated. The
+    # function's existing session_id param is a *display label* (e.g.
+    # "autopilot-2026-03-24-001") — keep that semantic but also attach the
+    # auth-session hash as a separate optional field on the entry for
+    # cross-correlation with audit.jsonl.
+    auth_sid = _current_session_id()
+    if auth_sid is not None:
+        entry["session_id"] = auth_sid
     return validate_journal_entry(entry)
 
 

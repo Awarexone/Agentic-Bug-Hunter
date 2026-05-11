@@ -135,6 +135,12 @@ Before touching any tool:
 1. **Define**: "Today I target [feature/domain] to achieve [C/I/A/ATO/RCE]"
 2. **Select**: Choose 1-2 vuln classes (IDOR, XSS, SSRF, etc.)
 3. **Execute**: Focus ONLY on selected techniques
+4. **Identity**: Anonymous or authenticated? If the bugs you're hunting need a
+   session (IDOR, BOLA, privilege escalation, auth bypass, mass-assignment),
+   load auth **once** at session start — see `docs/auth-sessions.md`. Then
+   every downstream tool (httpx, katana, ffuf, nuclei, dalfox, PoC verifiers)
+   sends those headers automatically and audit log entries are stamped with
+   a stable `session_id` hash.
 
 **Route selection -- Wide or Deep?**
 
@@ -145,6 +151,7 @@ Before touching any tool:
 | Main webapp, been here >3 days | | X |
 | Scope update (new domain added) | X | |
 | Found interesting subdomain | | X |
+| Hunting IDOR / BOLA / auth bugs | | X (auth-aware) |
 
 ### Phase 1: RECON
 

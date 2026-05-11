@@ -7,10 +7,26 @@ description: Complete reference for 20 web2 bug classes with root causes, detect
 
 Root cause, pattern, bypass table, chaining opportunity, real paid examples.
 
+> **Auth-required classes** (🔐): the ones below need **at least one logged-in
+> session** loaded into the hunt to be testable. Use `hunt.py --auth-file
+> .private/T.json` or `--cookie/--bearer` flags — every recon/scan tool then
+> inherits the headers automatically. For IDOR/BOLA/priv-esc, load **two
+> sessions** (low- and high-priv) and diff. See `docs/auth-sessions.md`.
+>
+> 🔐 IDOR · Broken Auth/Access Control · Mass Assignment · OAuth/OIDC · JWT ·
+> GraphQL field-level auth · LLM/AI chatbot IDOR · MFA (rate-limit + response
+> manipulation tests) · ATO chains · SSRF behind login
+>
+> The MFA workflow-skip and SAML signature-stripping probes intentionally
+> stay **unauthenticated** even when a session is loaded — that's the
+> attack premise.
+
 ---
 
-## 1. IDOR — INSECURE DIRECT OBJECT REFERENCE
+## 1. IDOR — INSECURE DIRECT OBJECT REFERENCE  🔐
 > #1 most paid web2 class — 30% of all submissions that get paid.
+> **Needs two sessions** (A=attacker, B=victim) — load both via `--auth-file`
+> and diff audit-log `session_id` hashes to confirm cross-tenant access.
 
 ### Root Cause
 ```python
@@ -57,8 +73,11 @@ def get_order(order_id):
 
 ---
 
-## 2. BROKEN AUTH / ACCESS CONTROL
+## 2. BROKEN AUTH / ACCESS CONTROL  🔐
 > #2 most paid class. The sibling function rule: if 9 endpoints have auth, the 10th that doesn't is your bug.
+> **Needs auth loaded** — you're testing which sibling routes a logged-in
+> user can reach that shouldn't be reachable. Compare authed responses
+> against the same paths hit anonymously.
 
 ### The Sibling Rule
 ```

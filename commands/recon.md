@@ -45,6 +45,7 @@ The script runs 8 phases automatically:
 |---|---|---|
 | 1 | Subdomain enum (subfinder + amass + crt.sh + wayback) | `subdomains/{subfinder,amass,crtsh,wayback_subs,all}.txt` |
 | 2 | httpx live host probing (status + title + tech + length) | `live/{httpx_full,urls,status_200,status_3xx,status_403,status_401}.txt` |
+| 2.5 | wafw00f fingerprint on top live hosts | `waf/fingerprint.txt` (per-host WAF vendor: cloudflare/aws/imperva/f5/none) |
 | 3 | nmap port scan (top 1000 ports) | `ports/{nmap_results,nmap_greppable,open_ports}.txt` |
 | 4 | URL collection (gau + wayback fallback) | `urls/{gau,all,with_params,js_files,api_endpoints,sensitive_paths}.txt` |
 | 5 | JS endpoint extraction + secret grep | `js/{endpoints,potential_secrets}.txt` |
@@ -132,7 +133,7 @@ After recon completes, prioritize in this order:
 ## 5-Minute Rule
 
 If after running this pipeline you see:
-- All hosts return 403 or static marketing pages
+- All hosts return 403 even after `tools/bypass_403.sh` + wafw00f bypass, or return only static marketing pages
 - No API endpoints visible
 - nuclei returns 0 medium/high findings
 - `inventory/subdomains.json` shows all assets behind CDN with no direct IPs

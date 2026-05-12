@@ -80,3 +80,45 @@ Origin IP hunt (crt.sh + Shodan + SecurityTrails)
        v 5 min total elapsed
 Kill target, move to next surface
 ```
+
+---
+
+## v2 — Soft Block Detection (2026-05-12)
+
+**Problem discovered:** Original bypass logic used HTTP status code as the only oracle.
+WAFs return 200 OK with block pages ("soft blocks"), making status-only checks unreliable.
+
+**Root cause:** HTTP-status oracle is a broken oracle against adversarial WAFs.
+Correct oracle = differential response analysis (distance from block baseline).
+
+**Changes:**
+
+### `tools/bypass_403.sh` (P0 bash patch)
+- Added `_sample_block_baseline()` — samples WAF block response with known-bad XSS payload
+- Added `_is_real_bypass()` — 3-check verdict: status whitelist + body signature regex + length diff vs BB
+- Added `_extract_log_ids()` — extracts CF-Ray/Support-ID/Incident-ID/ModSec-Rule-ID from body
+- Added `_classify_with_analyzer()` — delegates to Python analyzer when available, bash fallback otherwise
+- **Expanded status whitelist to include 401, 500, 502, 503** (backend-reached signals)
+- Probe loop now captures body to tmpfile, uses verdict system (bypassed/needs_review/blocked)
+- Vendor-specific case blocks also updated to use body-aware verdict
+- New output file: `bypass_uncertain.txt` for needs_review cases
+
+### `tools/waf_response_analyzer.py` (P1 new file)
+- Full baseline calibration (BB from known-bad probes + NB from /robots.txt etc.)
+- WAFSignatureDB: 12 vendor regex sets (Cloudflare/AWS/Imperva/Akamai/F5/ModSec/Sucuri/FortiWeb/Barracuda/Wallarm/360/Wordfence)
+- ResponseClassifier: weighted score engine (block_score → verdict)
+- LogIDExtractor: 7 ID types extracted + generic pattern
+- CLI: --calibrate / --classify / --diff
+
+### Skill / Command / Rule updates
+- `security-arsenal`: Added "Soft Block Detection" section with verdict table, 401/500 explanation, log ID value
+- `bb-methodology`: Updated 403 handling to mention soft blocks + 200 OK ambiguity
+- `commands/bypass-403.md`: Added Verdict System section
+
+### Key design decisions
+1. Block baseline via known-bad XSS probe (not synthetic) — real WAF response
+2. 3-verdict not binary: `needs_review` prevents both false-positive and false-negative
+3. Python analyzer is optional — bash fallback ensures tool works without Python
+4. 401/500 as bypass signals — critical insight missed in v1
+5. Log ID extraction for report quality improvement
+

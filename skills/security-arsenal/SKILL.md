@@ -517,6 +517,46 @@ Basic desync          → Capture victim's next request → Read their auth toke
 
 WAF bypass techniques compiled from disclosed reports, DEVCORE 2024 "牆の調查", PortSwigger, PayloadsAllTheThings, and WAFFLED (ACSAC 2025).
 
+### Soft Block Detection (200 OK ≠ Bypass)
+
+WAF vendors often return **HTTP 200 OK with a block page** to confuse attackers:
+- Cloudflare JS challenge: `200 OK` + `cf-challenge-form` body
+- F5 BIG-IP: `200 OK` + "The requested URL was rejected" + `Support ID: xxxx`
+- Imperva: `200 OK` + CAPTCHA page + `_Incapsula_Resource`
+- Custom enterprise WAFs: `200 OK` + "Your request has been blocked. Log ID: WAF-..."
+- AWS + CloudFront custom error pages: may return `200` or `403` depending on config
+
+**Verdict system in `tools/bypass_403.sh`:**
+
+| Verdict | Meaning | Action |
+|---|---|---|
+| `bypassed` | Status OK + body diverges from block baseline + no vendor signature | Escalate endpoint |
+| `needs_review` | Ambiguous — status looks OK but body unclear | Manual check required |
+| `blocked` | Body matches block signature OR length ≈ block baseline | Keep trying |
+
+**401 and 500 are POSITIVE bypass signals:**
+- `401 Unauthorized` = you reached the auth middleware (past WAF edge)
+- `500 Internal Server Error` = payload triggered backend exception (SQLi/SSTI lead)
+- `502/503` = you reached origin (WAF forwarded the request)
+
+**Block baseline:** `bypass_403.sh` samples the target host with a known-bad XSS payload (`/?_waftest=<script>...`) before running probes. It stores the block response length. A bypass probe is only confirmed if:
+1. Status ∈ {200, 201, 204, 301, 302, **401, 500, 502, 503**}
+2. Body does NOT match vendor block signatures
+3. Body length diverges from block baseline by >5%
+
+**WAF Log IDs — also extract them:**
+
+| WAF | Log ID Location | Value for Hunting |
+|---|---|---|
+| Cloudflare | `CF-Ray: 8a3b...-NRT` | PoP code = origin region hint |
+| F5 BIG-IP | Body: `Support ID: 1234567890123456789` | Timestamp encoded in prefix |
+| ModSecurity | Body: `[id "942100"]` | **Rule ID = tells you exactly which rule fired** |
+| Imperva | Body: `incident ID: 12345-6789` | Sequence gap = traffic volume |
+| AWS | Header: `X-Amzn-Trace-Id: Root=1-<hex-ts>-...` | Timestamp in hex |
+| Generic | Body: `Log ID: WAF-20240512-xxxx` | Include in bug report for triage |
+
+Log IDs extracted by `tools/bypass_403.sh` and `tools/waf_response_analyzer.py --classify`. Include them in reports — triage can verify directly from internal WAF logs.
+
 ### 403 Bypass Quick Reference
 
 | Category | Technique | Payload Example |

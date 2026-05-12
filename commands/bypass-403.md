@@ -60,6 +60,36 @@ tools/multipart_mutator.py --file shell.aspx --field file \
 
 Emits 10 parser-confusion variants based on DEVCORE 2024 research: boundary simplification, double-boundary case confusion, charset=utf-16le encoding, null-byte boundary, Content-Disposition sub-param injection, post-terminator payload, per-part image/jpeg Content-Type, CRLF/LF mix, leading-whitespace boundary, duplicate filename parameter.
 
+## Verdict System
+
+`bypass_403.sh` uses a 3-verdict system instead of raw status-code matching:
+
+| Verdict | Condition | Output file |
+|---|---|---|
+| `bypassed` | Status ∈ {200,201,204,301,302,401,500,502,503} AND body ≠ block baseline AND no vendor signature | `bypass_hits.txt` |
+| `needs_review` | Ambiguous — status OK but body unclear (manual check needed) | `bypass_uncertain.txt` |
+| `blocked` | Body matches WAF vendor signature OR length ≈ block baseline (±5%) | `bypass_blocked.txt` |
+
+When `waf_response_analyzer.py` is available (Python 3 + file exists), a weighted score engine is used: score ≥ 60 = blocked, 30–59 = needs_review, < 30 = bypassed. Without Python, a 3-check bash fallback runs (status whitelist + body regex + length diff).
+
+**Why 200 OK is not enough:** WAF vendors intentionally return 200 with a challenge/block page
+to hide that they're blocking. The tool samples a "block baseline" (known-bad XSS payload) at
+startup to learn what blocked responses look like for this target.
+
+**401 and 500 are bypass wins:** They indicate the request reached the backend past the WAF edge.
+Previously these were incorrectly discarded as failures.
+
+**WAF Log IDs:** When a block page contains a Log/Support/Incident ID, the tool extracts it
+and logs it to `findings/bypass/<ts>/waf_fingerprint.txt`. Include these IDs in bug reports —
+triage can look up the exact WAF rule that fired.
+
+For more sophisticated analysis (baseline calibration + weighted score engine + log ID extraction):
+```bash
+tools/waf_response_analyzer.py --calibrate https://target.com --output /tmp/baseline.json
+tools/waf_response_analyzer.py --classify --status 200 --body /tmp/resp.html \
+  --headers /tmp/resp.hdr --baseline /tmp/baseline.json --metrics "200|2048|0.05" --format json
+```
+
 ## When it pays
 
 - 403 on `/admin`, `/api/internal/*`, `/debug` — admin panel exposure.

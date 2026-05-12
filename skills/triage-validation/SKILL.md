@@ -95,6 +95,37 @@ Check the NEVER SUBMIT list below. If it's on this list without a chain → **KI
 
 ---
 
+### Q8: Identity check — which session found this, and does it survive?
+
+For any finding made under an authenticated hunt, record the answer to each:
+
+```
+1. Session ID:        [12-char BBHUNT_SESSION_ID hash from audit.jsonl]
+2. Identity:          [low-priv user A / high-priv user B / API key / etc.]
+3. Anonymous repro:   Does the same request work with NO auth header?
+4. Cross-identity:    Does it work under session B with the same data scope?
+5. Stale-cred repro:  Does a logged-out / expired session still get the data?
+```
+
+Why this matters:
+- **IDOR / BOLA**: must work with session A reading session B's data — if it
+  only works with no auth, that's "missing auth" not IDOR (different bug,
+  different severity).
+- **Priv-esc**: must work with low-priv session reading high-priv data — if
+  both sessions can already see it, no bug.
+- **Auth bypass**: must work *without* a valid session — if it stops working
+  when you log out, you've found a permissions issue, not a bypass.
+- **Always check both directions**: a finding that only reproduces under
+  one identity is often a real, scoped permission boundary, not a vuln.
+
+`audit.jsonl` entries are tagged with `session_id`. Re-run the request
+under each identity and confirm the bug holds before writing the report.
+This is the most common reason "confirmed IDOR" findings come back as N/A.
+
+---
+
+---
+
 ## 4 PRE-SUBMISSION GATES
 
 Run in sequence. ALL 4 must PASS.

@@ -18,7 +18,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `skills/report-writing/` | H1/Bugcrowd/Intigriti/Immunefi report templates, CVSS 3.1, human tone |
 | `skills/triage-validation/` | 7-Question Gate, 4 gates, never-submit list, conditionally valid table |
 
-### Commands (15 slash commands)
+### Commands (21 slash commands)
 
 > **Note:** All commands are prefixed to avoid conflicts with Claude Code's built-in commands.
 > `/resume` is a reserved Claude Code command — use `/pickup` to continue a previous hunt.
@@ -31,6 +31,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `/report` | `/report` — write submission-ready report |
 | `/chain` | `/chain` — build A→B→C exploit chain |
 | `/scope` | `/scope <asset>` — verify asset is in scope |
+| `/scope-aggregate` | `/scope-aggregate <program>` — pull every in-scope asset across H1/Bugcrowd/Intigriti/YWH/Immunefi |
 | `/triage` | `/triage` — quick 7-Question Gate |
 | `/web3-audit` | `/web3-audit <contract.sol>` — smart contract audit |
 | `/autopilot` | `/autopilot target.com --normal` — autonomous hunt loop |
@@ -40,6 +41,13 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `/intel` | `/intel target.com` — fetch CVE + disclosure intel |
 | `/token-scan` | `/token-scan <contract>` — meme coin/token rug pull scanner |
 | `/memory-gc` | `/memory-gc [--rotate|--purge-backups]` — inspect/rotate hunt-memory JSONL files (10MB cap, 3 backups) |
+| `/secrets-hunt` | `/secrets-hunt --js-bundle <recon-dir>` — leaked-credential scan (trufflehog/noseyparker/gitleaks) |
+| `/takeover` | `/takeover --recon <recon-dir>` — subdomain takeover candidates (dnsReaper/subjack) |
+| `/cloud-recon` | `/cloud-recon --keyword <name>` — public S3/Azure/GCP + CloudFlare-bypass origin IPs |
+| `/param-discover` | `/param-discover <url>` — find hidden HTTP parameters (Arjun/x8) |
+| `/bypass-403` | `/bypass-403 <url>` — try header/method/encoding tricks against a 403/401 |
+| `/arsenal` | `/arsenal [tool]` — list installed external tools or get an install hint |
+| `/scan-cves` | `/scan-cves <host>` — focused nuclei CVE sweep (high/critical) + optional log4j-scan |
 
 ### Agents (8 specialized agents)
 
@@ -60,13 +68,28 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 ### Tools (Python/shell — in `tools/`)
 
 - `tools/hunt.py` — master orchestrator
-- `tools/recon_engine.sh` — subdomain + URL discovery
+- `tools/recon_engine.sh` — subdomain + URL discovery (now with optional `nuclei` phase)
+- `tools/vuln_scanner.sh` — XSS/SQLi/SSTI/MFA/SAML probe pipeline
 - `tools/validate.py` — 4-gate finding validator
 - `tools/learn.py` — CVE + disclosure intel
 - `tools/intel_engine.py` — on-demand intel with memory context
 - `tools/scope_checker.py` — deterministic scope safety checker
+- `tools/scope_aggregator.sh` — multi-platform scope pull (bbscope + bounty-targets-data)
+- `tools/secrets_hunter.sh` — trufflehog/noseyparker/gitleaks wrapper for FS/git/JS/GH-org
+- `tools/takeover_scanner.sh` — dnsReaper/subjack subdomain-takeover scanner
+- `tools/cloud_recon.sh` — S3Scanner + cloud_enum + CloudFail wrapper
+- `tools/param_discovery.sh` — Arjun/x8 hidden-parameter discovery
+- `tools/bypass_403.sh` — byp4xx + built-in 403/401 bypass matrix
+- `tools/cve_scan.sh` — focused nuclei CVE-tag sweep + optional log4j-scan
+- `tools/external_arsenal.sh` — installed-tool registry (~50 tools); other scripts source this for `_have <tool>`
 - `tools/cicd_scanner.sh` — GitHub Actions workflow scanner (sisakulint wrapper, remote scan)
 - `tools/token_scanner.py` — automated token red flag scanner (EVM + Solana)
+
+### External tool references
+
+- `wordlists/REFERENCES.md` — pointers to SecLists / OneListForAll / fuzz4bounty / PayloadsAllTheThings
+- `skills/security-arsenal/REFERENCES.md` — methodology, writeup archives, dorks, key-verification, AI-security skill repos
+- `skills/security-arsenal/METHODOLOGY_CHEATSHEET.md` — per-vuln quick-check tables distilled from HowToHunt + HolyTips + AllAboutBugBounty + KingOfBugBountyTips
 
 ### MCP Integrations (in `mcp/`)
 

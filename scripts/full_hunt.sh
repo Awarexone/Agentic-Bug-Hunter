@@ -59,6 +59,17 @@ check_tool() {
     command -v "$1" &>/dev/null && echo true || echo false
 }
 
+# macOS compatibility: GNU timeout may not exist; use gtimeout or passthrough
+if ! command -v timeout &>/dev/null; then
+    if command -v gtimeout &>/dev/null; then
+        timeout() { gtimeout "$@"; }
+        export -f timeout
+    else
+        timeout() { shift; "$@"; }
+        export -f timeout
+    fi
+fi
+
 # ── Parse Args ────────────────────────────────────────────────────────────────
 shift  # Remove TARGET from args
 while [[ "$#" -gt 0 ]]; do
@@ -83,9 +94,18 @@ fi
 mkdir -p "$OUT"/{subdomains,urls,content,js,params,vulns,reports}
 
 # ── Auth headers ──────────────────────────────────────────────────────────────
-AUTH_HEADERS=""
-[ -n "$TOKEN" ]  && AUTH_HEADERS="$AUTH_HEADERS -H 'Authorization: Bearer $TOKEN'"
-[ -n "$COOKIE" ] && AUTH_HEADERS="$AUTH_HEADERS -H 'Cookie: $COOKIE'"
+# Build BBHUNT_AUTH_HEADERS (newline-separated) from --token / --cookie and
+# any pre-existing env value, then source _auth_helper.sh so BB_AUTH_ARGS is
+# splattable into curl/httpx/nuclei/katana/ffuf invocations below.
+_BB_HEADERS_TMP="${BBHUNT_AUTH_HEADERS:-}"
+[ -n "$TOKEN" ]  && _BB_HEADERS_TMP="${_BB_HEADERS_TMP:+$_BB_HEADERS_TMP$'\n'}Authorization: Bearer $TOKEN"
+[ -n "$COOKIE" ] && _BB_HEADERS_TMP="${_BB_HEADERS_TMP:+$_BB_HEADERS_TMP$'\n'}Cookie: $COOKIE"
+export BBHUNT_AUTH_HEADERS="$_BB_HEADERS_TMP"
+unset _BB_HEADERS_TMP
+
+# shellcheck source=tools/_auth_helper.sh
+# Helper computes BB_AUTH_ARGS + BBHUNT_SESSION_ID from BBHUNT_AUTH_HEADERS.
+. "$TOOLS_DIR/tools/_auth_helper.sh"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 echo ""
@@ -141,7 +161,7 @@ ok "Total unique subdomains: $(wc -l < $OUT/subdomains/all_subs.txt)"
 # ── Probe live subdomains ─────────────────────────────────────────────────────
 if [ "$(check_tool httpx)" = true ]; then
     log "Probing live subdomains..."
-    cat "$OUT/subdomains/all_subs.txt" | httpx -silent -o "$OUT/subdomains/live_subs.txt" 2>/dev/null
+    cat "$OUT/subdomains/all_subs.txt" | httpx -silent "${BB_AUTH_ARGS[@]}" -o "$OUT/subdomains/live_subs.txt" 2>/dev/null
     ok "Live subdomains: $(wc -l < $OUT/subdomains/live_subs.txt)"
 fi
 
@@ -182,25 +202,25 @@ log "PHASE 2: Content Discovery"
 sep
 
 # ── Crawl with katana ──────────────────────────────────────────────────────────
+# 5 min cap: depth-5 katana runs can hang indefinitely on content-heavy
+# targets (news, video, infinite calendars). Depth reduced to 3 to match
+# agents/recon-agent.md and commands/recon.md.
 if [ "$(check_tool katana)" = true ]; then
-    log "Crawling with katana..."
-    KATANA_OPTS=""
-    [ -n "$TOKEN" ] && KATANA_OPTS="$KATANA_OPTS -H 'Authorization: Bearer $TOKEN'"
-    katana -u "$TARGETURL" -d 5 -jc -o "$OUT/urls/katana.txt" -silent 2>/dev/null
-    ok "Katana: $(wc -l < $OUT/urls/katana.txt) URLs"
-    cat "$OUT/urls/katana.txt" >> "$OUT/urls/all_urls.txt"
+    log "Crawling with katana (5 min cap, depth 3)..."
+    timeout 300 katana -u "$TARGETURL" -d 3 -jc -kf all "${BB_AUTH_ARGS[@]}" -o "$OUT/urls/katana.txt" -silent 2>/dev/null || true
+    ok "Katana: $(wc -l < $OUT/urls/katana.txt 2>/dev/null || echo 0) URLs"
+    [ -s "$OUT/urls/katana.txt" ] && cat "$OUT/urls/katana.txt" >> "$OUT/urls/all_urls.txt"
     sort -u "$OUT/urls/all_urls.txt" -o "$OUT/urls/all_urls.txt"
 fi
 
 # ── Directory fuzzing ─────────────────────────────────────────────────────────
 if [ "$(check_tool ffuf)" = true ] && [ -f "$WL_DIRS" ]; then
     log "Fuzzing directories..."
-    FFUF_OPTS=""
-    [ -n "$TOKEN" ] && FFUF_OPTS="$FFUF_OPTS -H 'Authorization: Bearer $TOKEN'"
     ffuf -u "$TARGETURL/FUZZ" -w "$WL_DIRS" \
         -mc 200,301,302,403 -t 40 -s \
+        "${BB_AUTH_ARGS[@]}" \
         -o "$OUT/content/ffuf_dirs.json" -of json \
-        $FFUF_OPTS 2>/dev/null
+        2>/dev/null
     ok "ffuf dirs: $(python3 -c "import json; d=json.load(open('$OUT/content/ffuf_dirs.json')); print(len(d.get('results',[])))" 2>/dev/null || echo 0) found"
 else
     warn "ffuf or wordlist not available for directory scan"
@@ -212,6 +232,7 @@ if [ "$(check_tool ffuf)" = true ] && [ -f "$WL_FILES" ] && [ "$QUICK" = false ]
     ffuf -u "$TARGETURL/FUZZ" -w "$WL_FILES" \
         -e .php,.bak,.old,.env,.json,.xml,.yml,.yaml,.txt,.zip \
         -mc 200,301,302,403 -t 30 -s \
+        "${BB_AUTH_ARGS[@]}" \
         -o "$OUT/content/ffuf_files.json" -of json 2>/dev/null
     ok "ffuf files: $(python3 -c "import json; d=json.load(open('$OUT/content/ffuf_files.json')); print(len(d.get('results',[])))" 2>/dev/null || echo 0) found"
 fi
@@ -256,19 +277,19 @@ sep
 # ── Nuclei scan ───────────────────────────────────────────────────────────────
 if [ "$(check_tool nuclei)" = true ]; then
     log "Running Nuclei (critical + high)..."
-    NUCLEI_OPTS=""
-    [ -n "$TOKEN" ] && NUCLEI_OPTS="$NUCLEI_OPTS -H 'Authorization: Bearer $TOKEN'"
     nuclei -u "$TARGETURL" \
         -severity critical,high \
         -o "$OUT/vulns/nuclei_critical_high.txt" \
-        -silent $NUCLEI_OPTS 2>/dev/null
+        "${BB_AUTH_ARGS[@]}" \
+        -silent 2>/dev/null
     ok "Nuclei critical/high: $(wc -l < $OUT/vulns/nuclei_critical_high.txt) findings"
 
     if [ "$QUICK" = false ]; then
         nuclei -u "$TARGETURL" \
             -severity medium \
             -o "$OUT/vulns/nuclei_medium.txt" \
-            -silent $NUCLEI_OPTS 2>/dev/null
+            "${BB_AUTH_ARGS[@]}" \
+            -silent 2>/dev/null
         ok "Nuclei medium: $(wc -l < $OUT/vulns/nuclei_medium.txt) findings"
     fi
 else
@@ -279,6 +300,7 @@ fi
 if [ "$(check_tool dalfox)" = true ] && [ -s "$OUT/vulns/gf_xss.txt" ]; then
     log "Testing XSS candidates with dalfox..."
     cat "$OUT/vulns/gf_xss.txt" | dalfox pipe \
+        "${BB_AUTH_ARGS[@]}" \
         -o "$OUT/vulns/xss_found.txt" --silence 2>/dev/null
     ok "XSS found: $(wc -l < $OUT/vulns/xss_found.txt)"
 fi
@@ -286,6 +308,7 @@ fi
 # ── CORS scan ─────────────────────────────────────────────────────────────────
 log "Checking CORS misconfiguration..."
 CORS_RESULT=$(curl -sk "$TARGETURL/api/" \
+    "${BB_AUTH_ARGS[@]}" \
     -H "Origin: https://evil.com" \
     -I 2>/dev/null | grep -i "access-control-allow-origin: https://evil.com" || true)
 if [ -n "$CORS_RESULT" ]; then

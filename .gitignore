@@ -11,6 +11,10 @@ config.json
 .env
 secrets.txt
 api_keys.txt
+.private/
+
+# Nested local clones / sub-repos (not tracked)
+claude-bug-bounty/
 
 # Python
 __pycache__/

@@ -22,17 +22,32 @@ from urllib.parse import urljoin
 SUBDOMAIN = os.environ.get("ZENDESK_SUBDOMAIN", "")
 EMAIL = os.environ.get("ZENDESK_EMAIL", "")
 API_TOKEN = os.environ.get("ZENDESK_API_TOKEN", "")
+BASE_URL = f"https://{SUBDOMAIN}.zendesk.com" if SUBDOMAIN else ""
+AUTH = (f"{EMAIL}/token", API_TOKEN) if EMAIL and API_TOKEN else None
 
-if not all([SUBDOMAIN, EMAIL, API_TOKEN]):
-    print("ERROR: Set ZENDESK_SUBDOMAIN, ZENDESK_EMAIL, ZENDESK_API_TOKEN env vars")
-    sys.exit(1)
 
-BASE_URL = f"https://{SUBDOMAIN}.zendesk.com"
-AUTH = (f"{EMAIL}/token", API_TOKEN)
+def validate_config():
+    """Return an error message when required Zendesk credentials are missing."""
+    missing = []
+    if not SUBDOMAIN:
+        missing.append("ZENDESK_SUBDOMAIN")
+    if not EMAIL:
+        missing.append("ZENDESK_EMAIL")
+    if not API_TOKEN:
+        missing.append("ZENDESK_API_TOKEN")
+    if missing:
+        return f"Set {', '.join(missing)} env vars"
+    return None
 
 # --- Helpers ---
 def api_get(path, auth=True, params=None):
     """Make authenticated GET request to Zendesk API."""
+    if not BASE_URL:
+        print("  ERROR: Zendesk base URL is not configured")
+        return None
+    if auth and AUTH is None:
+        print("  ERROR: Zendesk auth credentials are not configured")
+        return None
     url = urljoin(BASE_URL, path)
     try:
         if auth:
@@ -46,6 +61,12 @@ def api_get(path, auth=True, params=None):
 
 def api_post(path, data, auth=True):
     """Make authenticated POST request."""
+    if not BASE_URL:
+        print("  ERROR: Zendesk base URL is not configured")
+        return None
+    if auth and AUTH is None:
+        print("  ERROR: Zendesk auth credentials are not configured")
+        return None
     url = urljoin(BASE_URL, path)
     headers = {"Content-Type": "application/json"}
     try:
@@ -291,7 +312,12 @@ def test_webhook_ssrf():
                 print(f"  [{target[:40]}] Status {r.status_code}")
 
 # === MAIN ===
-if __name__ == "__main__":
+def main() -> int:
+    error = validate_config()
+    if error:
+        print(f"ERROR: {error}")
+        return 1
+
     print(f"Zendesk IDOR/Access Control Tester")
     print(f"Target: {BASE_URL}")
     print(f"Auth: {EMAIL}")
@@ -300,7 +326,7 @@ if __name__ == "__main__":
     user = test_connectivity()
     if not user:
         print("\nCannot continue without valid auth. Check your credentials.")
-        sys.exit(1)
+        return 1
 
     my_user_id = user.get("id", 0)
 
@@ -316,3 +342,8 @@ if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("DONE. Review any INTERESTING or CRITICAL findings above.")
     print("Check recon/zendesk/ for any saved data.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

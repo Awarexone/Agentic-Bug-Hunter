@@ -1,0 +1,13 @@
+{
+  "_comment": "Copy this to .private/<target>.json and run hunt.py with --auth-file. .private/ is gitignored.",
+
+  "cookie": "session=PUT_YOUR_SESSION_COOKIE_HERE",
+  "bearer": "PUT_YOUR_JWT_HERE_WITHOUT_THE_BEARER_PREFIX",
+  "api_key": "PUT_YOUR_API_KEY_HERE",
+  "api_key_header": "X-API-Key",
+
+  "headers": [
+    "X-Org-Id: 42",
+    "X-CSRF-Token: PUT_CSRF_TOKEN_HERE"
+  ]
+}

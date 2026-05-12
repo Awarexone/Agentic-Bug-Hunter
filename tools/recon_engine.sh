@@ -20,9 +20,26 @@ log_info()  { echo -e "${CYAN}[*]${NC} $1"; }
 log_step()  { echo -e "    ${CYAN}[>]${NC} $1"; }
 log_done()  { echo -e "    ${GREEN}[✓]${NC} $1"; }
 
-TARGET="${1:?Usage: $0 <target> [--quick]  (target = FQDN, IP, or CIDR)}"
+TARGET="${1:?Usage: $0 <target> [--quick]  (target = FQDN, IP, CIDR, or path to a file of domains/hosts)}"
 QUICK_MODE="${2:-}"
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Auth-aware hunting: load BBHUNT_AUTH_HEADERS / BBHUNT_SESSION_ID into
+# BB_AUTH_ARGS=(-H 'Name: val' ...). Empty session = no-op.
+# shellcheck source=tools/_auth_helper.sh
+. "$(dirname "$0")/_auth_helper.sh"
+
+# Domain-list mode: if the target is a readable regular file, treat its
+# contents as a pre-resolved scope list (one host per line, # comments OK).
+# Useful for programs without wildcards where subdomain enum is wasted work.
+# Output dir is derived from the file basename so multiple lists don't collide.
+if [ -f "$TARGET" ] && [ -r "$TARGET" ]; then
+    TARGET_TYPE="list"
+    LIST_FILE="$TARGET"
+    TARGET="$(basename "$LIST_FILE")"
+    TARGET="${TARGET%.*}"
+fi
+
 RECON_DIR="${RECON_OUT_DIR:-$BASE_DIR/recon/$TARGET}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 THREADS=20
@@ -71,6 +88,39 @@ if [ "$TARGET_TYPE" = "ip" ] || [ "$TARGET_TYPE" = "cidr" ]; then
     SCOPE_LOCK=1
 fi
 
+# Resolve an absolute path to the *ProjectDiscovery* httpx, NOT the unrelated
+# Python httpx CLI which Brew installs at /opt/homebrew/bin/httpx and which
+# silently rejects PD flags like -silent / -tech-detect with "No such option"
+# — producing 0 live hosts on macs where Brew's bin precedes ~/go/bin on PATH
+# despite the export above.
+#
+# The PD binary's `-version` output contains the literal substring
+# "projectdiscovery"; the Python httpx CLI doesn't. Fall back to the bare
+# `httpx` token when no PD binary is found anywhere so the existing
+# command-not-found error path still fires with a clear message.
+_resolve_pd_httpx() {
+    local cand
+    for cand in \
+        "$HOME/go/bin/httpx" \
+        "/opt/homebrew/bin/httpx" \
+        "/usr/local/bin/httpx" \
+        "$(command -v httpx 2>/dev/null)"; do
+        [ -z "$cand" ] && continue
+        [ -x "$cand" ] || continue
+        if "$cand" -version 2>&1 | grep -qi "projectdiscovery"; then
+            echo "$cand"; return 0
+        fi
+    done
+    echo "httpx"
+    return 1
+}
+HTTPX_BIN="$(_resolve_pd_httpx || true)"
+if ! "$HTTPX_BIN" -version 2>&1 | grep -qi "projectdiscovery"; then
+    echo "[!] WARNING: ProjectDiscovery httpx not found on PATH. Live-host probing will fail." >&2
+    echo "    Install with:  GOBIN=\"\$HOME/go/bin\" go install github.com/projectdiscovery/httpx/cmd/httpx@latest" >&2
+fi
+export HTTPX_BIN
+
 mkdir -p "$RECON_DIR"/{subdomains,live,ports,urls,js,dirs,params}
 
 # Safety net: merge partial subdomain results on early exit (watchdog kill, etc.)
@@ -91,6 +141,7 @@ echo "  Recon Engine — $TARGET"
 echo "  Output: $RECON_DIR/"
 echo "  Mode: $([ "$QUICK_MODE" = "--quick" ] && echo "Quick" || echo "Full")"
 echo "  Time: $(date)"
+bb_auth_active && bb_auth_banner
 echo "============================================="
 echo ""
 
@@ -99,8 +150,23 @@ echo ""
 # ============================================================
 log_info "Phase 1: Subdomain Enumeration"
 
-# ── For IP / CIDR targets: skip subdomain tools, do host discovery instead ───
-if [ "$TARGET_TYPE" = "cidr" ]; then
+# ── For domain-list targets: load the file directly, skip enum entirely ───
+if [ "$TARGET_TYPE" = "list" ]; then
+    log_info "Domain-list target — loading $LIST_FILE (skipping subdomain enum)"
+    grep -vE '^[[:space:]]*(#|$)' "$LIST_FILE" \
+        | tr -d '\r' \
+        | tr '[:upper:]' '[:lower:]' \
+        | sed 's/^\*\.//' \
+        | awk 'NF' \
+        | sort -u > "$RECON_DIR/subdomains/all.txt"
+    LIST_COUNT=$(wc -l < "$RECON_DIR/subdomains/all.txt" 2>/dev/null || echo 0)
+    if [ "$LIST_COUNT" -eq 0 ]; then
+        log_err "Domain list $LIST_FILE has no usable entries — aborting"
+        exit 1
+    fi
+    log_ok "Loaded $LIST_COUNT host(s) from list"
+    SCOPE_LOCK=1
+elif [ "$TARGET_TYPE" = "cidr" ]; then
     log_info "CIDR target — running nmap ping sweep to discover live hosts"
     if command -v nmap &>/dev/null; then
         nmap -sn "$TARGET" -oG - 2>/dev/null \
@@ -183,9 +249,9 @@ fi  # end of domain-only subdomain enum block
 echo ""
 log_info "Phase 2: HTTP Probing"
 
-if command -v httpx &>/dev/null && [ -s "$RECON_DIR/subdomains/all.txt" ]; then
+if [ -x "$HTTPX_BIN" ] && [ -s "$RECON_DIR/subdomains/all.txt" ]; then
     log_step "Probing with httpx (status, title, tech, content-length)..."
-    httpx -l "$RECON_DIR/subdomains/all.txt" \
+    "$HTTPX_BIN" -l "$RECON_DIR/subdomains/all.txt" \
         -silent \
         -status-code \
         -title \
@@ -194,6 +260,7 @@ if command -v httpx &>/dev/null && [ -s "$RECON_DIR/subdomains/all.txt" ]; then
         -follow-redirects \
         -threads "$THREADS" \
         -rate-limit "$RATE_LIMIT" \
+        "${BB_AUTH_ARGS[@]}" \
         -o "$RECON_DIR/live/httpx_full.txt" 2>/dev/null || true
 
     # Extract just the URLs for other tools
@@ -257,6 +324,19 @@ else
     log_done "wayback: $(wc -l < "$RECON_DIR/urls/wayback.txt" 2>/dev/null || echo 0) URLs"
 fi
 
+# katana — active crawl on live hosts (5 min cap prevents infinite crawl on
+# content-heavy sites like news/video portals)
+if command -v katana &>/dev/null && [ -s "$RECON_DIR/live/urls.txt" ]; then
+    log_step "Running katana (active crawl, 5min cap, top 50 hosts)..."
+    head -50 "$RECON_DIR/live/urls.txt" > "$RECON_DIR/urls/katana_targets.txt"
+    timeout 300 katana \
+        -list "$RECON_DIR/urls/katana_targets.txt" \
+        -d 3 -jc -kf all -silent \
+        "${BB_AUTH_ARGS[@]}" \
+        -o "$RECON_DIR/urls/katana.txt" 2>/dev/null || true
+    log_done "katana: $(wc -l < "$RECON_DIR/urls/katana.txt" 2>/dev/null || echo 0) URLs"
+fi
+
 # Merge all collected URLs
 cat "$RECON_DIR/urls/"*.txt 2>/dev/null | sort -u > "$RECON_DIR/urls/all.txt" 2>/dev/null || true
 log_done "Total unique URLs: $(wc -l < "$RECON_DIR/urls/all.txt" 2>/dev/null || echo 0)"
@@ -292,7 +372,7 @@ if [ -s "$RECON_DIR/urls/js_files.txt" ]; then
     mkdir -p "$RECON_DIR/js"
 
     head -50 "$RECON_DIR/urls/js_files.txt" | while IFS= read -r js_url; do
-        curl -s --max-time 10 "$js_url" 2>/dev/null | \
+        curl -s --max-time 10 "${BB_AUTH_ARGS[@]}" "$js_url" 2>/dev/null | \
             sed -nE 's/.*["'"'"']([a-zA-Z0-9_/.-]*(\/[a-zA-Z0-9_/.-]+)+)["'"'"'].*/\1/p' \
             >> "$RECON_DIR/js/endpoints_raw.txt" 2>/dev/null || true
     done
@@ -303,7 +383,7 @@ if [ -s "$RECON_DIR/urls/js_files.txt" ]; then
 
         # Extract potential secrets from JS
         head -50 "$RECON_DIR/urls/js_files.txt" | while IFS= read -r js_url; do
-            curl -s --max-time 10 "$js_url" 2>/dev/null | \
+            curl -s --max-time 10 "${BB_AUTH_ARGS[@]}" "$js_url" 2>/dev/null | \
                 grep -oiE '(api[_-]?key|api[_-]?secret|access[_-]?token|auth[_-]?token|client[_-]?secret|password|secret[_-]?key)["\s]*[:=]["\s]*[a-zA-Z0-9_\-]{8,}' \
                 >> "$RECON_DIR/js/potential_secrets.txt" 2>/dev/null || true
         done
@@ -348,6 +428,7 @@ if command -v ffuf &>/dev/null && [ -s "$RECON_DIR/live/urls.txt" ]; then
                 -rate "$RATE_LIMIT" \
                 -sf \
                 -timeout 10 \
+                "${BB_AUTH_ARGS[@]}" \
                 -o "$RECON_DIR/dirs/ffuf_${domain}.json" \
                 -of json 2>/dev/null || true
             ((FUZZ_COUNT++))
@@ -388,9 +469,9 @@ if [ -s "$RECON_DIR/live/urls.txt" ]; then
 
     while IFS= read -r base_url; do
         for path in "${CONFIG_PATHS[@]}"; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "${base_url}${path}" 2>/dev/null || echo "000")
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "${BB_AUTH_ARGS[@]}" "${base_url}${path}" 2>/dev/null || echo "000")
             if [ "$STATUS" = "200" ]; then
-                CONTENT_TYPE=$(curl -sI --max-time 5 "${base_url}${path}" 2>/dev/null | grep -i content-type | head -1)
+                CONTENT_TYPE=$(curl -sI --max-time 5 "${BB_AUTH_ARGS[@]}" "${base_url}${path}" 2>/dev/null | grep -i content-type | head -1)
                 # Only flag if it returns JS/JSON/text (not HTML error pages)
                 if echo "$CONTENT_TYPE" | grep -qiE '(javascript|json|text/plain)'; then
                     echo "[EXPOSED] ${base_url}${path}" >> "$RECON_DIR/exposure/config_files.txt"
@@ -467,6 +548,85 @@ else
 fi
 
 # ============================================================
+# Phase 9: Nuclei vulnerability sweep (optional, gated on installed binary)
+# ============================================================
+echo ""
+log_info "Phase 9: Nuclei Vulnerability Sweep"
+
+if command -v nuclei &>/dev/null && [ -s "$RECON_DIR/live/urls.txt" ]; then
+    NUCLEI_OUT="$RECON_DIR/nuclei"
+    mkdir -p "$NUCLEI_OUT"
+    NUC_LIMIT=$([ "$QUICK_MODE" = "--quick" ] && echo 50 || echo 200)
+    NUC_SEV=$([ "$QUICK_MODE" = "--quick" ] && echo "high,critical" || echo "medium,high,critical")
+    NUC_TIMEOUT=$([ "$QUICK_MODE" = "--quick" ] && echo 600 || echo 1800)
+
+    head -"$NUC_LIMIT" "$RECON_DIR/live/urls.txt" > "$NUCLEI_OUT/targets.txt"
+    log_step "nuclei on $(wc -l < "$NUCLEI_OUT/targets.txt" | tr -d ' ') hosts (severity=$NUC_SEV, timeout=${NUC_TIMEOUT}s)..."
+
+    timeout "$NUC_TIMEOUT" nuclei \
+        -l "$NUCLEI_OUT/targets.txt" \
+        -severity "$NUC_SEV" \
+        -silent \
+        -stats \
+        "${BB_AUTH_ARGS[@]}" \
+        -jsonl \
+        -o "$NUCLEI_OUT/findings.jsonl" 2>/dev/null || true
+
+    if [ -s "$NUCLEI_OUT/findings.jsonl" ]; then
+        # Severity buckets for human review
+        for sev in critical high medium low info; do
+            grep -F "\"severity\":\"$sev\"" "$NUCLEI_OUT/findings.jsonl" \
+                > "$NUCLEI_OUT/${sev}.jsonl" 2>/dev/null || true
+            n=$(wc -l < "$NUCLEI_OUT/${sev}.jsonl" 2>/dev/null | tr -d ' ')
+            [ "$n" -gt 0 ] && log_done "nuclei $sev: $n"
+        done
+    else
+        log_done "nuclei: no findings"
+    fi
+else
+    [ -z "$(command -v nuclei)" ] && log_warn "nuclei not installed — see ./tools/external_arsenal.sh --install-hint nuclei"
+fi
+
+# ============================================================
+# Phase 10: Subdomain takeover quick-check (CNAME fingerprint grep)
+# ============================================================
+echo ""
+log_info "Phase 10: Subdomain Takeover Quick-Check"
+
+if command -v dig &>/dev/null && [ -s "$RECON_DIR/subdomains/all.txt" ]; then
+    TAKEOVER_OUT="$RECON_DIR/takeover_candidates.txt"
+    : > "$TAKEOVER_OUT"
+    SUB_LIMIT=$([ "$QUICK_MODE" = "--quick" ] && echo 100 || echo 500)
+
+    log_step "Resolving CNAMEs for top $SUB_LIMIT subdomains..."
+    head -"$SUB_LIMIT" "$RECON_DIR/subdomains/all.txt" | while IFS= read -r host; do
+        [ -z "$host" ] && continue
+        cname=$(dig +short "$host" CNAME 2>/dev/null | head -1)
+        [ -z "$cname" ] && continue
+        # Match common claimable-service CNAME suffixes (extend list as needed)
+        case "$cname" in
+            *github.io.*|*herokuapp.com.*|*herokussl.com.*|\
+            *s3.amazonaws.com.*|*s3-website*.amazonaws.com.*|\
+            *azurewebsites.net.*|*cloudapp.net.*|*trafficmanager.net.*|\
+            *shopify.com.*|*myshopify.com.*|\
+            *wordpress.com.*|*ghost.io.*|*tumblr.com.*|\
+            *pantheonsite.io.*|*surge.sh.*|*netlify.app.*|*vercel.app.*|\
+            *zendesk.com.*|*helpjuice.com.*|*helpscout.net.*|*statuspage.io.*|\
+            *fastly.net.*|*readme.io.*|*intercom.help.*)
+                echo "$host  CNAME→ $cname" >> "$TAKEOVER_OUT" ;;
+        esac
+    done
+
+    n=$(wc -l < "$TAKEOVER_OUT" | tr -d ' ')
+    if [ "$n" -gt 0 ]; then
+        log_warn "$n potential takeover candidate(s) — review $TAKEOVER_OUT"
+        log_warn "Confirm with: ./tools/takeover_scanner.sh --recon $RECON_DIR"
+    else
+        log_done "Takeover quick-check: clean"
+    fi
+fi
+
+# ============================================================
 # Summary
 # ============================================================
 echo ""
@@ -494,10 +654,17 @@ echo "  Unique params:     $(wc -l < "$RECON_DIR/params/unique_params.txt" 2>/de
 [ -d "$RECON_DIR/cicd" ] && \
 echo "  CI/CD findings:   $(find "$RECON_DIR/cicd" -name 'scan_results.txt' -exec grep -cP '\.github/workflows/' {} + 2>/dev/null | awk -F: '{s+=$NF} END {print s+0}')"
 
+[ -f "$RECON_DIR/nuclei/findings.jsonl" ] && \
+echo "  Nuclei hits:       $(wc -l < "$RECON_DIR/nuclei/findings.jsonl" | tr -d ' ')"
+[ -f "$RECON_DIR/takeover_candidates.txt" ] && \
+echo "  Takeover candidates: $(wc -l < "$RECON_DIR/takeover_candidates.txt" | tr -d ' ')"
+
 echo ""
 echo "  Results: $RECON_DIR/"
 echo "============================================="
 echo ""
-echo "  Next: Run vulnerability scanner"
-echo "    ./tools/vuln_scanner.sh $RECON_DIR"
+echo "  Next:"
+echo "    ./tools/vuln_scanner.sh $RECON_DIR        # active vuln probes"
+echo "    ./tools/takeover_scanner.sh --recon $RECON_DIR   # confirm CNAME takeovers"
+echo "    ./tools/secrets_hunter.sh --js-bundle $RECON_DIR  # leaked-cred sweep"
 echo "============================================="

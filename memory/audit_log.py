@@ -60,7 +60,16 @@ class AuditLog:
         session_id: str | None = None,
         error: str | None = None,
     ) -> None:
-        """Convenience method to create and log an audit entry."""
+        """Convenience method to create and log an audit entry.
+
+        If session_id is None, falls back to the BBHUNT_SESSION_ID env var
+        (set by tools/auth_session.py + _auth_helper.sh) so authenticated
+        requests get tagged with a stable, non-secret hash automatically.
+        """
+        if session_id is None:
+            env_sid = os.environ.get("BBHUNT_SESSION_ID")
+            if env_sid:
+                session_id = env_sid
         entry = make_audit_entry(
             url=url,
             method=method,

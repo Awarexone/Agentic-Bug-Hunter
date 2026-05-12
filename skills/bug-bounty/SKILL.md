@@ -54,6 +54,43 @@ Full pipeline: Recon -> Learn -> Hunt -> Validate -> Report. One skill for every
 
 ---
 
+## AUTH-AWARE HUNTING (when bugs live behind a login)
+
+Anonymous recon misses the bugs that pay most. IDOR, BOLA, mass-assignment,
+privilege escalation, auth bypass, SSRF behind login, and most LLM/agent
+bugs are invisible until you log in. Load auth **once** at session start and
+every downstream tool (httpx, katana, ffuf, nuclei, dalfox, the SQLi / SSTI
+/ upload PoC verifiers) sends those headers automatically.
+
+```bash
+# Pick ONE of these and run hunt.py normally:
+python3 tools/hunt.py --target T --cookie 'session=eyJabc...'
+python3 tools/hunt.py --target T --bearer 'eyJhbGciOi...'
+python3 tools/hunt.py --target T --auth-file .private/T.json
+
+# Or via env (persists for the shell):
+export BBHUNT_COOKIE='session=eyJabc...'
+python3 tools/hunt.py --target T
+```
+
+**For IDOR / BOLA hunts**, load two sessions and diff behavior:
+
+```bash
+python3 tools/hunt.py --target T --auth-file .private/T-user-a.json
+python3 tools/hunt.py --target T --auth-file .private/T-user-b.json
+# Audit log entries carry different session_id hashes → diff which
+# endpoints behaved differently per identity.
+```
+
+**Safety**: cookies/tokens never appear in logs, hunt-memory, or `repr()`.
+Only a 12-char `session_id` hash is recorded. `.private/` is gitignored.
+MFA-skip and SAML signature-stripping probes deliberately stay anonymous —
+that's the attack they're checking for.
+
+Full guide: `docs/auth-sessions.md`. Template: `docs/auth.example.json`.
+
+---
+
 ## A->B BUG SIGNAL METHOD (Cluster Hunting)
 
 **When you find bug A, systematically hunt for B and C nearby.** This is one of the most powerful methodologies in bug bounty. Single bugs pay. Chains pay 3-10x more.

@@ -101,8 +101,21 @@ class LLMClient:
         else:
             self._init_provider(self.provider)
 
+    # Env var a provider's API key is read from; keyed for quick lookup.
+    PROVIDER_KEY_ENV = {
+        "claude": "ANTHROPIC_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "grok":   "XAI_API_KEY",
+    }
+
     def _auto_detect(self) -> str:
-        for p in self.PROVIDER_PRIORITY:
+        # Front-load cloud providers whose API keys are set so users with
+        # only ANTHROPIC_API_KEY don't wait on an Ollama probe that will
+        # fail or mis-route. Ollama stays as the final fallback.
+        key_providers = [p for p, env in self.PROVIDER_KEY_ENV.items()
+                         if os.environ.get(env)]
+        rest = [p for p in self.PROVIDER_PRIORITY if p not in key_providers]
+        for p in key_providers + rest:
             try:
                 self._init_provider(p)
                 if self.available:
@@ -582,6 +595,19 @@ Keep it under 80 words total."""
         if category in {"brain", "exploits", "metasploit", "manual_review", "semgrep"}:
             return True
         if len(clean) < 12:
+            return True
+        # When sqlmap itself has tagged a candidate as "false positive or
+        # unexploitable" in the Note column of its CSV results, the
+        # 7-Question Gate previously still chewed through those lines and
+        # could rationalise a SUBMIT verdict during gate thinking — the
+        # final auto_triage.md ends up listing every sqlmap FP as [UNKNOWN]
+        # and operators waste time re-checking sqlmap's own negatives.
+        # Drop them at the candidate-collection layer so the gate never
+        # sees something its own scanner already rejected.
+        if "false positive or unexploitable" in lower:
+            return True
+        # CSV header lines from sqlmap_results.txt are also noise.
+        if lower.startswith("target url,place,parameter,technique"):
             return True
         noisy_terms = (
             "traceback", "modulenotfounderror", "requestsdependencywarning",

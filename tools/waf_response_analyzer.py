@@ -603,6 +603,15 @@ class ResponseClassifier:
                         }
                     )
 
+        # 4b. Empty body matching an empty-body block baseline (WAF silent-drop).
+        _EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        bb_sha256 = bb.get("common_sha256", "")
+        if fp.body_length == 0 and bb_sha256 == _EMPTY_SHA256:
+            score += 70
+            signals.append(
+                {"name": "empty_body_matches_bb_sha256", "weight": 70}
+            )
+
         # 5. Very fast response time (CDN/WAF edge).
         if 0 < fp.response_time_ms < 80:
             score += 10
@@ -619,9 +628,14 @@ class ResponseClassifier:
             signals.append({"name": "no_business_signal", "weight": 5})
 
         # 7. Status-code adjustment: real backend errors lean against "blocked".
-        if fp.status_code in {401, 500, 502, 503}:
-            score -= 20
-            signals.append({"name": "backend_status_penalty", "weight": -20})
+        #    These statuses indicate the request reached the backend past the WAF
+        #    edge. Treat them as a positive bypass signal only when no vendor
+        #    signature has fired — otherwise the vendor signature dominates.
+        backend_status_codes = {401, 500, 502, 503}
+        if fp.status_code in backend_status_codes:
+            if not any(("vendor" in s.get("name", "") or "signature" in s.get("name", "")) for s in signals):
+                score += 20
+                signals.append({"name": "backend_status_reached", "weight": 20})
 
         # 8. Challenge-page signal (Cloudflare JS challenge, etc.) -- treat as
         #    blocked but flag separately.

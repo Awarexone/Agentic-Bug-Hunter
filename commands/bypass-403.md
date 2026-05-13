@@ -102,4 +102,6 @@ tools/waf_response_analyzer.py --classify --status 200 --body /tmp/resp.html \
 
 `findings/bypass/<timestamp>/`:
 - `byp4xx.txt` — full upstream-tool output, OR
-- `bypass_hits.txt` — `method|url|header|status` lines for built-in fallback hits
+- `bypass_hits.txt` — `method|url|header|status|bodylen|verdict_json` lines for bypassed probes
+- `bypass_uncertain.txt` — probes that need manual review (ambiguous response)
+- `bypass_blocked.txt` — probes confirmed blocked (for debug/reporting)

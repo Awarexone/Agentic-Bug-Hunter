@@ -80,6 +80,7 @@ _sample_block_baseline() {
   local bb_len="$OUT_DIR/.block_baseline.len"
   [ -f "$bb_len" ] && return 0  # already sampled this run
   local probe_url="${host}/?_waftest=%3Cscript%3Ealert(document.cookie)%3C%2Fscript%3E"
+  touch "$bb_body"  # ensure file exists even if curl fails/times-out
   curl -sk --max-time 8 "$probe_url" -o "$bb_body" 2>/dev/null || true
   local len
   len=$(wc -c < "$bb_body" 2>/dev/null | tr -d ' ')

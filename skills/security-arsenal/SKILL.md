@@ -515,7 +515,7 @@ Basic desync          → Capture victim's next request → Read their auth toke
 
 ## WAF BYPASS REFERENCE
 
-WAF bypass techniques compiled from disclosed reports, DEVCORE 2024 "牆の調查", PortSwigger, PayloadsAllTheThings, and WAFFLED (ACSAC 2025).
+WAF bypass techniques compiled from disclosed bug bounty reports, PortSwigger, PayloadsAllTheThings, and public security research.
 
 ### Soft Block Detection (200 OK ≠ Bypass)
 
@@ -643,7 +643,7 @@ Generate all variants with: `tools/waf_encoder.py "<payload>" --class sqli|xss|g
 | `charset=utf-16le` in part | Backend decodes correctly, WAF sees null-byte-padded garbage |
 | Boundary case confusion | `boundary=x; BOUNDARY=y` exploits case-insensitive parser drift |
 
-### Multipart Parser Confusion (DEVCORE 2024)
+### Multipart Parser Confusion
 
 | Technique | Effect |
 |---|---|

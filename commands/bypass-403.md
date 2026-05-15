@@ -58,7 +58,7 @@ tools/multipart_mutator.py --file shell.aspx --field file \
   --url https://target/upload --send
 ```
 
-Emits 10 parser-confusion variants based on DEVCORE 2024 research: boundary simplification, double-boundary case confusion, charset=utf-16le encoding, null-byte boundary, Content-Disposition sub-param injection, post-terminator payload, per-part image/jpeg Content-Type, CRLF/LF mix, leading-whitespace boundary, duplicate filename parameter.
+Emits 10 parser-confusion variants: boundary simplification, double-boundary case confusion, charset=utf-16le encoding, null-byte boundary, Content-Disposition sub-param injection, post-terminator payload, per-part image/jpeg Content-Type, CRLF/LF mix, leading-whitespace boundary, duplicate filename parameter.
 
 ## Verdict System
 

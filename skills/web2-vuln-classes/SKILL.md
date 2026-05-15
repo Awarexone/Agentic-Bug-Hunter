@@ -373,8 +373,6 @@ filename=shell.phtml, shell.pHp, shell.php5   → extension variants
 
 ### Busboy / Undici Multipart Parser Internals (Node.js / Next.js)
 
-From DEVCORE 2025 research (React2Shell CTF, $250k bounty context):
-
 **Parser stack:**
 - **Busboy** — Next.js multipart/form-data parser (used when `Content-Type: multipart/form-data`)
 - **Undici** — Node.js built-in Fetch/FormData parser (used for `Next-Action` header RSC requests)

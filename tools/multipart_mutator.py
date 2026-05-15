@@ -2,7 +2,6 @@
 """
 Multipart Mutator — generate parser-confusion variants of a multipart upload.
 
-Based on DEVCORE 2024 "牆の調查" + Vercel CTF research (maple3142 / Ginoah).
 
 Usage:
   tools/multipart_mutator.py --file ./shell.aspx --field file

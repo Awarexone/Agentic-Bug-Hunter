@@ -60,7 +60,8 @@ Check: Is it a third-party service they just use? Third-party = out of scope.
 If a target surface shows nothing interesting after 5 minutes → move on.
 
 Kill signals:
-- All hosts return 403 or static pages
+- All hosts return 403 — first run `/bypass-403 <url>` + `wafw00f`; if bypass fails after 5 min, kill
+- Static marketing pages with no API/JS interactivity
 - No API endpoints with ID parameters
 - No JavaScript bundles with interesting paths
 - nuclei returns 0 medium/high findings

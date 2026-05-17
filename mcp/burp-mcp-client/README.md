@@ -15,24 +15,23 @@ With Burp MCP connected, the tool can:
 
 ## Setup (5 minutes)
 
-### Step 1: Install Burp MCP Server
+### Step 1: Install the Burp MCP Server extension
 
-Download the official MCP server from PortSwigger:
+The official PortSwigger Burp MCP server is distributed as a **Burp Suite extension**, not as a standalone JAR on portswigger.net/burp/releases. Install it from inside Burp:
 
-```bash
-# Option A: From PortSwigger's releases
-# Download burp-mcp-server.jar from https://portswigger.net/burp/releases
+1. Open Burp Suite (Community or Professional).
+2. Go to **Extensions → BApp Store**.
+3. Search for **"MCP Server"** (publisher: PortSwigger).
+4. Click **Install**.
 
-# Option B: If available via package manager
-# brew install portswigger/tap/burp-mcp-server
-```
+Source: <https://github.com/PortSwigger/mcp-server> (official repo with manual-install JAR releases for users without BApp Store access).
 
-### Step 2: Enable Burp API
+### Step 2: Enable Burp's MCP server
 
-1. Open Burp Suite Professional
-2. Go to **Settings → Suite → REST API**
-3. Enable the API on port `1337`
-4. Copy the API key
+1. In Burp, open the **MCP** tab (added by the extension above).
+2. Tick **"Enable MCP server"**.
+3. Note the bind address — default is `http://127.0.0.1:9876/sse`.
+4. (Optional, Burp Pro only) Enable the REST API too: **Settings → Suite → REST API**, port `1337`, copy the API key.
 
 ### Step 3: Set Environment Variable
 

@@ -2,7 +2,7 @@
 # =============================================================================
 # Bug Bounty Vulnerability Scanner v5 — Verified PoC Generation
 #
-# Usage: ./scanner.sh <recon_dir> [--quick] [--full] [--skip xss,sqli,...]
+# Usage: ./scanner.sh <recon_dir> [--quick] [--full] [--skip xss,sqli,...] [--approve-active --approval-reason "..."]
 #
 # UPDATED IN V5:
 #   • Bash 3.2 compatible (macOS)
@@ -39,6 +39,8 @@ RECON_DIR=""
 QUICK_MODE=""
 FULL_MODE=""
 SKIP_CHECKS=""
+SCOPE_MANIFEST="${SCOPE_MANIFEST:-}"
+ORIGINAL_ARGS=("$@")
 
 while [ "$#" -gt 0 ]; do
     arg="$1"
@@ -46,6 +48,9 @@ while [ "$#" -gt 0 ]; do
         --quick) QUICK_MODE="--quick" ;;
         --full) FULL_MODE="--full" ;;
         --skip) shift; SKIP_CHECKS="${SKIP_CHECKS:-}${SKIP_CHECKS:+,}$1" ;;
+        --scope) shift; SCOPE_MANIFEST="${1:?--scope requires a path}" ;;
+        --approve-active) ;;
+        --approval-reason|--session-log) shift ;;
         *) RECON_DIR="$arg" ;;
     esac
     shift
@@ -59,6 +64,10 @@ fi
 RECON_DIR="$(cd "$RECON_DIR" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BASE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+WRAPPER_DIR="$(cd "$BASE_DIR/.." && pwd)"
+
+# shellcheck source=tools/active_approval.sh
+. "$SCRIPT_DIR/active_approval.sh"
 
 # Auth-aware hunting: load BBHUNT_AUTH_HEADERS into BB_AUTH_ARGS.
 # shellcheck source=tools/_auth_helper.sh
@@ -76,8 +85,6 @@ if ! command -v timeout &>/dev/null; then
     fi
 fi
 
-mkdir -p "$FINDINGS_DIR"/{xss,sqli,takeover,misconfig,exposure,ssrf,cves,redirects,ssti,manual_review}
-
 if [ "$(basename "$(dirname "$RECON_DIR")")" = "sessions" ]; then
     SESSION_ID=$(basename "$RECON_DIR")
     TARGET=$(basename "$(dirname "$(dirname "$RECON_DIR")")")
@@ -89,6 +96,28 @@ else
 fi
 
 FINDINGS_DIR="${FINDINGS_OUT_DIR:-$DEFAULT_FINDINGS_DIR}"
+SESSION_LOG="${SESSION_LOG:-$FINDINGS_DIR/session.log}"
+
+# Re-parse active approval flags now that FINDINGS_DIR/SESSION_LOG exist.
+args=("${ORIGINAL_ARGS[@]}")
+idx=0
+while [ "$idx" -lt "${#args[@]}" ]; do
+    case "${args[$idx]}" in
+        --approve-active) ACTIVE_APPROVED=1; idx=$((idx + 1)) ;;
+        --approval-reason) APPROVAL_REASON="${args[$((idx + 1))]:-}"; idx=$((idx + 2)) ;;
+        --session-log) SESSION_LOG="${args[$((idx + 1))]:-}"; idx=$((idx + 2)) ;;
+        *) idx=$((idx + 1)) ;;
+    esac
+done
+
+if [ -z "$SCOPE_MANIFEST" ]; then
+    SCOPE_MANIFEST="$WRAPPER_DIR/targets/$TARGET/scope.yaml"
+fi
+if [ ! -f "$SCOPE_MANIFEST" ]; then
+    echo "[scope] Missing ScopeManifest: $SCOPE_MANIFEST" >&2
+    echo "[scope] Refusing active scan until targets/<slug>/scope.yaml exists." >&2
+    exit 1
+fi
 
 export PATH="$HOME/go/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
 export PRIORITY_DIR="$RECON_DIR/priority"
@@ -132,13 +161,9 @@ PY
     decision=$(printf '%s\n' "$guard_output" | sed -n '1p')
     reason=$(printf '%s\n' "$guard_output" | sed -n '2p')
 
-    if [ "$decision" = "require_approval" ] && [ "${ALLOW_UNSAFE_HTTP_TESTS:-0}" != "1" ]; then
-        log_warn "Skipping $label: $reason. Set ALLOW_UNSAFE_HTTP_TESTS=1 to opt in."
+    if [ "$decision" = "require_approval" ] && ! require_active_approval "$label"; then
+        log_warn "Skipping $label: $reason."
         return 1
-    fi
-
-    if [ "$decision" = "require_approval" ]; then
-        log_warn "$label uses unsafe HTTP method $method. Proceeding because ALLOW_UNSAFE_HTTP_TESTS=1 is set."
     fi
 
     return 0
@@ -215,9 +240,20 @@ done
 # Clean and uniqify
 awk '!seen[$0]++' "$ORDERED_SCAN" > "${ORDERED_SCAN}.tmp" && mv "${ORDERED_SCAN}.tmp" "$ORDERED_SCAN"
 [ ! -s "$ORDERED_SCAN" ] && log_err "No scan targets found" && exit 1
+while IFS= read -r scan_url; do
+    python3 "$BASE_DIR/tools/scope_checker.py" \
+        --scope "$SCOPE_MANIFEST" \
+        --url "$scan_url" \
+        --method GET \
+        --rate-limit 1 >/dev/null || {
+            log_err "ScopeManifest refused scan target: $scan_url"
+            exit 1
+        }
+done < "$ORDERED_SCAN"
 
 # ── Check 0: Upload Surface Discovery ──────────────────────────────────
 if ! skip_has upload; then
+    require_active_approval "multipart upload probe" || exit 0
     log_info "Check 0: Upload Surface Discovery"
     CATCHALL_HOSTS=""
     log_step "Detecting catchall behavior..."

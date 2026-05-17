@@ -102,17 +102,38 @@ ARSENAL_TOOLS=(
 
 # `_have <tool>` — true when the binary is on PATH. Source this file from other
 # scripts to use it; safe under `set -e` because it returns 1 (no exit).
+_runtime_status() {
+  if grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then
+    echo "wsl2"
+  elif [ "$(uname -s 2>/dev/null)" = "Linux" ]; then
+    echo "linux-non-wsl"
+  else
+    echo "wrong-platform"
+  fi
+}
+
 _have() { command -v "$1" >/dev/null 2>&1; }
 export -f _have 2>/dev/null || true
 
 _print_status() {
-  local installed=0 missing=0 total=${#ARSENAL_TOOLS[@]}
+  local installed=0 missing=0 wrong_platform=0 version_mismatch=0 total=${#ARSENAL_TOOLS[@]}
+  local runtime
+  runtime="$(_runtime_status)"
+  printf "Runtime: %s\n" "$runtime"
   printf "\n%-18s %-10s %-8s %s\n" "TOOL" "CATEGORY" "STATUS" "UPSTREAM"
   printf "%-18s %-10s %-8s %s\n" "----" "--------" "------" "--------"
   local sorted
   sorted=$(printf '%s\n' "${ARSENAL_TOOLS[@]}" | sort -t'|' -k2,2 -k1,1)
   while IFS='|' read -r name cat hint url; do
-    if _have "$name"; then
+    if [ "$runtime" = "wrong-platform" ]; then
+      printf "\033[0;33m%-18s\033[0m %-10s \033[0;33m%-8s\033[0m %s\n" "$name" "$cat" "WRONGOS" "$url"
+      wrong_platform=$((wrong_platform + 1))
+    elif _have "$name"; then
+      if [ "$name" = "httpx" ] && ! "$name" -version 2>&1 | grep -qi "projectdiscovery"; then
+        printf "\033[0;33m%-18s\033[0m %-10s \033[0;33m%-8s\033[0m %s\n" "$name" "$cat" "VERSION" "$url"
+        version_mismatch=$((version_mismatch + 1))
+        continue
+      fi
       printf "\033[0;32m%-18s\033[0m %-10s \033[0;32m%-8s\033[0m %s\n" "$name" "$cat" "OK" "$url"
       installed=$((installed + 1))
     else
@@ -120,7 +141,8 @@ _print_status() {
       missing=$((missing + 1))
     fi
   done <<< "$sorted"
-  printf "\nInstalled: %d / %d   Missing: %d\n" "$installed" "$total" "$missing"
+  printf "\nInstalled: %d / %d   Missing: %d   Version-mismatch: %d   Wrong-platform: %d\n" \
+    "$installed" "$total" "$missing" "$version_mismatch" "$wrong_platform"
   printf "Run \`%s --install-hint <tool>\` to see how to install one.\n" "$0"
 }
 

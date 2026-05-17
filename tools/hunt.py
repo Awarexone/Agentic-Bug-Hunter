@@ -20,7 +20,9 @@ import itertools
 import ipaddress
 import json
 import os
+import platform
 import signal
+import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -35,6 +37,26 @@ from tools.auth_session import AuthSession, add_cli_args, session_from_args  # n
 # session env vars. (Plain assignment — kept 3.9-compatible; the codebase
 # elsewhere uses 3.10+ union syntax but hunt.py historically did not.)
 _AUTH_SESSION = None
+
+
+def is_wsl2() -> bool:
+    if platform.system().lower() != "linux":
+        return False
+    try:
+        version = open("/proc/version", encoding="utf-8").read().lower()
+    except OSError:
+        return False
+    return "microsoft" in version or "wsl" in version
+
+
+def require_wsl2_runtime() -> None:
+    if is_wsl2():
+        return
+    raise SystemExit(
+        "CBB hunt.py must run inside WSL2 Ubuntu. "
+        "PowerShell is launcher/glue only; start WSL2 and run: "
+        "cd /mnt/f/bugbounty/claude-bug-bounty && python3 tools/hunt.py --status"
+    )
 
 
 # ── Target type detection (FQDN / single IP / CIDR) ──────────────────────────
@@ -103,16 +125,22 @@ def run_cmd(cmd, cwd=None, timeout=600):
     """
     proc = None
     try:
+        popen_kwargs = {}
+        if hasattr(os, "setsid"):
+            popen_kwargs["preexec_fn"] = os.setsid
         proc = subprocess.Popen(
             cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, cwd=cwd, preexec_fn=os.setsid,
+            text=True, cwd=cwd, **popen_kwargs,
         )
         stdout, _ = proc.communicate(timeout=timeout)
         return proc.returncode == 0, stdout or ""
     except subprocess.TimeoutExpired:
         if proc is not None:
             try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                if hasattr(os, "killpg"):
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                else:
+                    proc.kill()
             except Exception:
                 proc.kill()
             proc.wait()
@@ -120,7 +148,10 @@ def run_cmd(cmd, cwd=None, timeout=600):
     except Exception as e:
         if proc is not None:
             try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                if hasattr(os, "killpg"):
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                else:
+                    proc.kill()
             except Exception:
                 proc.kill()
             proc.wait()
@@ -134,8 +165,7 @@ def check_tools():
     missing = []
 
     for tool in tools:
-        success, _ = run_cmd(f"command -v {tool}")
-        if success:
+        if shutil.which(tool):
             installed.append(tool)
         else:
             missing.append(tool)
@@ -449,6 +479,7 @@ def hunt_target(domain, quick=False, recon_only=False, scan_only=False, cve_hunt
 
 
 def main():
+    require_wsl2_runtime()
     parser = argparse.ArgumentParser(
         description="Bug Bounty Hunt Orchestrator",
         formatter_class=argparse.RawDescriptionHelpFormatter,

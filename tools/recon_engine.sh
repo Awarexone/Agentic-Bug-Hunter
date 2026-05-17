@@ -2,7 +2,7 @@
 # =============================================================================
 # Enhanced Recon Engine
 # Full reconnaissance pipeline for bug bounty targets
-# Usage: ./recon_engine.sh <target-domain> [--quick]
+# Usage: ./recon_engine.sh <target-domain> [--quick] [--scope path] [--rate-limit N --scope-allows-rate N]
 # =============================================================================
 
 set -uo pipefail
@@ -20,9 +20,41 @@ log_info()  { echo -e "${CYAN}[*]${NC} $1"; }
 log_step()  { echo -e "    ${CYAN}[>]${NC} $1"; }
 log_done()  { echo -e "    ${GREEN}[✓]${NC} $1"; }
 
-TARGET="${1:?Usage: $0 <target> [--quick]  (target = FQDN, IP, CIDR, or path to a file of domains/hosts)}"
-QUICK_MODE="${2:-}"
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+WRAPPER_DIR="$(cd "$BASE_DIR/.." && pwd)"
+
+usage() {
+    cat <<EOF
+Usage: $0 <target> [--quick] [--scope <scope.yaml>] [--rate-limit N --scope-allows-rate N]
+
+Options:
+  --quick                  Reduce crawl/scanner limits.
+  --scope PATH             ScopeManifest YAML. Default: ../targets/<target>/scope.yaml.
+  --rate-limit N           Requests per second. Default: 1.
+  --scope-allows-rate N    Required companion proving scope permits N.
+  -h, --help               Show this help.
+EOF
+}
+
+TARGET=""
+QUICK_MODE=""
+SCOPE_MANIFEST="${SCOPE_MANIFEST:-}"
+RATE_LIMIT=1
+SCOPE_ALLOWS_RATE=""
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --quick) QUICK_MODE="--quick"; shift ;;
+        --scope) SCOPE_MANIFEST="${2:?--scope requires a path}"; shift 2 ;;
+        --rate-limit) RATE_LIMIT="${2:?--rate-limit requires a value}"; shift 2 ;;
+        --scope-allows-rate) SCOPE_ALLOWS_RATE="${2:?--scope-allows-rate requires a value}"; shift 2 ;;
+        -h|--help) usage; exit 0 ;;
+        --*) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+        *) TARGET="$1"; shift ;;
+    esac
+done
+
+[ -n "$TARGET" ] || { usage >&2; exit 1; }
 
 # Auth-aware hunting: load BBHUNT_AUTH_HEADERS / BBHUNT_SESSION_ID into
 # BB_AUTH_ARGS=(-H 'Name: val' ...). Empty session = no-op.
@@ -43,7 +75,13 @@ fi
 RECON_DIR="${RECON_OUT_DIR:-$BASE_DIR/recon/$TARGET}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 THREADS=20
-RATE_LIMIT=50  # requests per second
+
+if [ "$RATE_LIMIT" != "1" ]; then
+    if [ -z "$SCOPE_ALLOWS_RATE" ] || [ "$SCOPE_ALLOWS_RATE" != "$RATE_LIMIT" ]; then
+        echo "[scope] Refusing --rate-limit $RATE_LIMIT without matching --scope-allows-rate $RATE_LIMIT" >&2
+        exit 1
+    fi
+fi
 
 # Prefer Go tools in ~/go/bin
 export PATH="$HOME/go/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
@@ -122,6 +160,17 @@ fi
 export HTTPX_BIN
 
 mkdir -p "$RECON_DIR"/{subdomains,live,ports,urls,js,dirs,params}
+
+if [ -z "$SCOPE_MANIFEST" ]; then
+    SCOPE_MANIFEST="$WRAPPER_DIR/targets/$TARGET/scope.yaml"
+fi
+if [ ! -f "$SCOPE_MANIFEST" ]; then
+    echo "[scope] Missing ScopeManifest: $SCOPE_MANIFEST" >&2
+    echo "[scope] Refusing active recon until targets/<slug>/scope.yaml exists." >&2
+    exit 1
+fi
+SCOPE_CHECK=(python3 "$BASE_DIR/tools/scope_checker.py" --scope "$SCOPE_MANIFEST" --method GET --rate-limit "$RATE_LIMIT")
+"${SCOPE_CHECK[@]}" --url "$TARGET" >/dev/null || exit $?
 
 # Safety net: merge partial subdomain results on early exit (watchdog kill, etc.)
 _emergency_merge_subs() {
@@ -563,11 +612,14 @@ if command -v nuclei &>/dev/null && [ -s "$RECON_DIR/live/urls.txt" ]; then
     head -"$NUC_LIMIT" "$RECON_DIR/live/urls.txt" > "$NUCLEI_OUT/targets.txt"
     log_step "nuclei on $(wc -l < "$NUCLEI_OUT/targets.txt" | tr -d ' ') hosts (severity=$NUC_SEV, timeout=${NUC_TIMEOUT}s)..."
 
+    NUC_RATE_ARGS=(-rl "$RATE_LIMIT")
+    [ -n "$SCOPE_ALLOWS_RATE" ] && NUC_RATE_ARGS+=(-rlm "$SCOPE_ALLOWS_RATE")
     timeout "$NUC_TIMEOUT" nuclei \
         -l "$NUCLEI_OUT/targets.txt" \
         -severity "$NUC_SEV" \
         -silent \
         -stats \
+        "${NUC_RATE_ARGS[@]}" \
         "${BB_AUTH_ARGS[@]}" \
         -jsonl \
         -o "$NUCLEI_OUT/findings.jsonl" 2>/dev/null || true

@@ -76,8 +76,6 @@ if ! command -v timeout &>/dev/null; then
     fi
 fi
 
-mkdir -p "$FINDINGS_DIR"/{xss,sqli,takeover,misconfig,exposure,ssrf,cves,redirects,ssti,manual_review}
-
 if [ "$(basename "$(dirname "$RECON_DIR")")" = "sessions" ]; then
     SESSION_ID=$(basename "$RECON_DIR")
     TARGET=$(basename "$(dirname "$(dirname "$RECON_DIR")")")

@@ -11,7 +11,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `skills/bug-bounty/` | Master workflow — recon to report, all vuln classes, LLM testing, chains |
 | `skills/bb-methodology/` | **Hunting mindset + 5-phase non-linear workflow + tool routing + session discipline** |
 | `skills/web2-recon/` | Subdomain enum, live host discovery, URL crawling, nuclei |
-| `skills/web2-vuln-classes/` | 18 bug classes with bypass tables (SSRF, open redirect, file upload, Agentic AI) |
+| `skills/web2-vuln-classes/` | 21 bug classes with bypass tables (SSRF, open redirect, file upload, Agentic AI) |
 | `skills/security-arsenal/` | Payloads, bypass tables, gf patterns, always-rejected list |
 | `skills/web3-audit/` | 10 smart contract bug classes, Foundry PoC template, pre-dive kill signals |
 | `skills/meme-coin-audit/` | Meme coin rug pull detection, token authority checks, bonding curve exploits, LP attacks |

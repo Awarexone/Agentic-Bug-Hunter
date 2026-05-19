@@ -1,0 +1,1258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BugHunter.Fun — AI bug bounty hunting from your terminal</title>
+<meta name="description" content="Open-source Claude Code plugin for bug bounty hunters. Recon, twenty vuln classes, CVSS scoring, and submission-ready reports for HackerOne, Bugcrowd, Intigriti, and Immunefi. Free.">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="BugHunter.Fun — AI bug bounty hunting from your terminal">
+<meta property="og:description" content="Open-source Claude Code plugin. Recon, 20 vuln classes, CVSS scoring, submission-ready reports for H1, Bugcrowd, Intigriti, Immunefi. Free.">
+<meta property="og:url" content="https://bughunter.fun">
+<meta property="og:image" content="https://bughunter.fun/og.png">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@shuvonsec">
+<meta name="twitter:title" content="BugHunter.Fun — AI bug bounty hunting from your terminal">
+<meta name="twitter:description" content="Open-source Claude Code plugin. Recon, 20 vuln classes, CVSS scoring, submission-ready reports. Free.">
+<meta name="twitter:image" content="https://bughunter.fun/og.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --bg-panel: #0d0d0d;
+    --bg-elevated: #111;
+    --border: #1c1c1c;
+    --border-bright: #2a2a2a;
+    --text: #e8e8e8;
+    --text-dim: #888;
+    --text-muted: #555;
+    --amber: #ffb627;
+    --amber-soft: #ffc752;
+    --amber-glow: rgba(255,182,39,0.15);
+    --recon: #5fa8ff;
+    --hunt: #ff7a4a;
+    --validate: #b87aff;
+    --report: #5fd97a;
+    --critical: #ff4a5f;
+    --mono: 'JetBrains Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+    z-index: 0;
+  }
+  @media (max-width: 600px) { body::before { background-size: 32px 32px; } }
+
+  main, header, footer { position: relative; z-index: 1; }
+
+  ::selection { background: var(--amber); color: #000; }
+
+  /* ============ NAV ============ */
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(10,10,10,0.85);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner {
+    max-width: 1400px; margin: 0 auto;
+    padding: 18px 32px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .logo {
+    font-weight: 700; color: var(--amber);
+    font-size: 17px; letter-spacing: -0.01em;
+    text-decoration: none;
+    display: flex; align-items: center; gap: 2px;
+  }
+  .logo .dim { color: var(--text-dim); font-weight: 400; }
+  .logo .cursor-mark {
+    width: 9px; height: 16px;
+    background: var(--amber);
+    margin-left: 4px;
+    animation: blink 1.05s steps(1) infinite;
+  }
+  .nav-links { display: flex; gap: 28px; align-items: center; }
+  .nav-links a {
+    color: var(--text-dim); text-decoration: none;
+    font-size: 13px; letter-spacing: 0.02em;
+    transition: color 150ms;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .nav-links a:hover { color: var(--amber); }
+  .nav-cta {
+    background: var(--amber); color: #000 !important;
+    padding: 8px 16px; border-radius: 4px;
+    font-weight: 600; font-size: 12px !important;
+    letter-spacing: 0.05em !important; text-transform: uppercase;
+  }
+  .nav-cta:hover { color: #000 !important; background: var(--amber-soft); }
+  @media (max-width: 800px) {
+    .nav-inner { padding: 14px 20px; }
+    .nav-links { gap: 14px; }
+    .nav-links a:not(.nav-cta) { display: none; }
+  }
+
+  /* ============ HERO ============ */
+  .hero {
+    max-width: 1400px; margin: 0 auto;
+    padding: 80px 32px 120px;
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 64px; align-items: center;
+    min-height: 78vh;
+  }
+  @media (max-width: 1024px) {
+    .hero { grid-template-columns: 1fr; gap: 48px; padding: 60px 24px 80px; }
+  }
+  @media (max-width: 600px) {
+    .hero { padding: 40px 20px 60px; gap: 36px; }
+    h1.hero-title { font-size: 32px; line-height: 1.1; }
+    .hero-sub { font-size: 14px; }
+    .pre-headline { font-size: 10px; padding: 5px 10px; }
+    .hero-ctas { flex-direction: column; align-items: stretch; }
+    .btn { justify-content: center; padding: 14px 20px; font-size: 12px; }
+    .micro-proof { font-size: 11px; line-height: 1.8; }
+    .micro-proof .sep { margin: 0 6px; }
+  }
+  .hero-left { max-width: 600px; }
+  .pre-headline {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-size: 11px; color: var(--amber);
+    letter-spacing: 0.25em; text-transform: uppercase;
+    margin-bottom: 28px;
+    padding: 6px 12px;
+    border: 1px solid rgba(255,182,39,0.25); border-radius: 3px;
+    background: rgba(255,182,39,0.04);
+  }
+  .pre-headline::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 8px var(--amber);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  h1.hero-title {
+    font-size: clamp(36px, 4.2vw, 64px);
+    font-weight: 700; line-height: 1.05;
+    letter-spacing: -0.035em;
+    margin-bottom: 24px; color: #fff;
+  }
+  h1.hero-title .accent { color: var(--amber); }
+
+  .hero-sub {
+    font-size: clamp(15px, 1.15vw, 17px);
+    color: var(--text-dim); line-height: 1.65;
+    margin-bottom: 36px; max-width: 520px;
+  }
+
+  .hero-ctas { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 14px 24px; border-radius: 4px;
+    font-family: var(--mono); font-size: 13px; font-weight: 600;
+    letter-spacing: 0.05em; text-decoration: none; text-transform: uppercase;
+    cursor: pointer; border: 1px solid transparent;
+    transition: all 150ms;
+  }
+  .btn-primary { background: var(--amber); color: #000; border-color: var(--amber); }
+  .btn-primary:hover { background: var(--amber-soft); box-shadow: 0 0 30px var(--amber-glow); }
+  .btn-secondary { background: transparent; color: var(--text); border-color: var(--border-bright); }
+  .btn-secondary:hover { border-color: var(--amber); color: var(--amber); }
+
+  .micro-proof { font-size: 12px; color: var(--text-muted); letter-spacing: 0.02em; line-height: 1.6; }
+  .micro-proof .sep { margin: 0 8px; opacity: 0.5; }
+  .micro-proof .stat { color: var(--text-dim); }
+
+  /* ============ TERMINAL ============ */
+  .terminal-wrapper { position: relative; width: 100%; }
+  .terminal {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-bright);
+    border-radius: 8px;
+    padding: 20px 24px;
+    font-size: clamp(11px, 0.95vw, 14px);
+    line-height: 1.85;
+    box-shadow:
+      0 30px 80px rgba(0,0,0,0.5),
+      0 0 60px rgba(255,182,39,0.04),
+      inset 0 1px 0 rgba(255,255,255,0.02);
+    position: relative; overflow: hidden;
+    min-height: 460px; max-height: 520px;
+  }
+  @media (max-width: 600px) {
+    .terminal {
+      padding: 16px 18px;
+      font-size: 10.5px;
+      min-height: 380px;
+      max-height: 420px;
+      line-height: 1.7;
+    }
+    .terminal-label { font-size: 9px; }
+    .term-overlay { font-size: 20px; padding: 16px; }
+    .report-payoff { font-size: 14px; }
+    .mini-report-card { padding: 14px; }
+    .mini-report-title { font-size: 12px; }
+    .platforms-line { font-size: 9px; letter-spacing: 0.15em; }
+    .status-badge { font-size: 8px; top: 16px; right: 16px; padding: 3px 8px; }
+  }
+  .terminal-header {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 18px; padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .terminal-dot { width: 10px; height: 10px; border-radius: 50%; background: #1f1f1f; }
+  .terminal-label {
+    margin-left: auto; font-size: 10px; color: var(--text-muted);
+    letter-spacing: 0.2em; text-transform: uppercase;
+  }
+  .terminal-content { white-space: pre-wrap; min-height: 380px; }
+  .terminal-line {
+    opacity: 0; transform: translateY(3px);
+    transition: opacity 180ms ease-out, transform 180ms ease-out;
+    white-space: pre;
+  }
+  .terminal-line.visible { opacity: 1; transform: translateY(0); }
+
+  .prompt { color: var(--amber); font-weight: 600; }
+  .amber { color: var(--amber); }
+  .tag-recon { color: var(--recon); }
+  .tag-hunt { color: var(--hunt); }
+  .tag-validate { color: var(--validate); }
+  .tag-report { color: var(--report); }
+  .tag-success { color: var(--report); font-weight: 600; }
+  .dim { color: var(--text-muted); }
+
+  .cursor {
+    display: inline-block; width: 0.55em; height: 1.1em;
+    background: var(--amber); vertical-align: text-bottom;
+    margin-left: 2px;
+    animation: blink 1.05s steps(1) infinite;
+    box-shadow: 0 0 6px var(--amber-glow);
+  }
+  @keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+
+  .term-overlay {
+    position: absolute; inset: 0;
+    background: rgba(13,13,13,0.96);
+    display: flex; align-items: center; justify-content: center;
+    text-align: center; padding: 24px;
+    font-size: clamp(20px, 2vw, 32px);
+    font-weight: 500; letter-spacing: -0.02em;
+    color: #f0f0f0;
+    opacity: 0; transition: opacity 350ms ease-out;
+    z-index: 3;
+  }
+  .term-overlay.visible { opacity: 1; }
+  .term-overlay .accent { color: var(--amber); }
+
+  .term-report {
+    position: absolute; inset: 0;
+    background: rgba(13,13,13,0.98);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 24px;
+    opacity: 0; transition: opacity 400ms ease-out;
+    z-index: 4;
+  }
+  .term-report.visible { opacity: 1; }
+  .report-payoff {
+    font-size: clamp(15px, 1.4vw, 20px); color: #f0f0f0;
+    margin-bottom: 20px; text-align: center;
+    font-weight: 500; letter-spacing: -0.01em;
+  }
+  .report-payoff .accent { color: var(--amber); }
+  .mini-report-card {
+    width: 90%; max-width: 360px;
+    background: var(--bg); border: 1px solid var(--border-bright);
+    border-radius: 6px; padding: 18px; margin-bottom: 18px;
+  }
+  .mini-report-meta {
+    display: flex; justify-content: space-between;
+    margin-bottom: 12px; font-size: 9px; color: var(--text-muted);
+    letter-spacing: 0.15em; text-transform: uppercase;
+  }
+  .severity-pill {
+    background: var(--amber); color: #000;
+    padding: 2px 8px; border-radius: 3px; font-weight: 700;
+  }
+  .mini-report-title {
+    font-size: 13px; color: #f0f0f0; margin-bottom: 12px; font-weight: 500;
+  }
+  .mini-report-blur {
+    font-size: 10px; line-height: 1.6; color: #777;
+    filter: blur(4px); user-select: none;
+  }
+  .mini-report-blur span { display: block; }
+  .platforms-line {
+    font-size: clamp(10px, 0.9vw, 12px); color: #999;
+    letter-spacing: 0.25em;
+  }
+  .status-badge {
+    position: absolute; top: 22px; right: 24px;
+    font-size: 10px; color: var(--amber);
+    letter-spacing: 0.2em; text-transform: uppercase;
+    opacity: 0; transition: opacity 250ms ease-out; z-index: 2;
+    padding: 4px 10px;
+    border: 1px solid rgba(255,182,39,0.3); border-radius: 3px;
+    background: rgba(255,182,39,0.04);
+  }
+  .status-badge.visible { opacity: 1; }
+
+  /* ============ SECTION SHARED ============ */
+  .section {
+    max-width: 1400px; margin: 0 auto;
+    padding: 80px 32px;
+    border-top: 1px solid var(--border);
+  }
+  @media (max-width: 700px) { .section { padding: 56px 20px; } }
+  @media (max-width: 480px) { .section { padding: 48px 16px; } }
+
+  .section-header { margin-bottom: 56px; max-width: 720px; }
+  @media (max-width: 600px) { .section-header { margin-bottom: 36px; } }
+  .section-eyebrow {
+    font-size: 11px; color: var(--amber);
+    letter-spacing: 0.25em; text-transform: uppercase;
+    margin-bottom: 16px;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .section-eyebrow::before {
+    content: '▸'; color: var(--amber); opacity: 0.7;
+  }
+  .section-title {
+    font-size: clamp(28px, 3vw, 44px);
+    font-weight: 700; line-height: 1.1;
+    letter-spacing: -0.025em; color: #fff;
+    margin-bottom: 16px;
+  }
+  .section-title .accent { color: var(--amber); }
+  .section-sub {
+    font-size: 15px; color: var(--text-dim); line-height: 1.65;
+  }
+
+  /* ============ 01 HOW IT WORKS ============ */
+  .steps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  @media (max-width: 900px) { .steps-grid { grid-template-columns: 1fr; } }
+  .step-card {
+    background: var(--bg-panel); border: 1px solid var(--border-bright);
+    border-radius: 8px; padding: 28px;
+    transition: border-color 200ms, transform 200ms;
+  }
+  .step-card:hover { border-color: rgba(255,182,39,0.4); transform: translateY(-2px); }
+  .step-number {
+    font-size: 11px; color: var(--amber);
+    letter-spacing: 0.25em; text-transform: uppercase;
+    margin-bottom: 16px; font-weight: 600;
+  }
+  .step-title {
+    font-size: 18px; font-weight: 600; color: #fff;
+    margin-bottom: 8px; letter-spacing: -0.015em;
+  }
+  .step-desc {
+    font-size: 13px; color: var(--text-dim);
+    line-height: 1.55; margin-bottom: 18px;
+  }
+  .code-block {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 4px; padding: 12px 14px;
+    font-size: 12px; color: var(--amber);
+    font-family: var(--mono);
+    overflow-x: auto; white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  @media (max-width: 600px) {
+    .code-block { font-size: 11px; padding: 10px 12px; }
+    .step-card { padding: 22px; }
+    .step-title { font-size: 16px; }
+    .step-desc { font-size: 12.5px; }
+  }
+  .closing-line {
+    margin-top: 48px; text-align: center;
+    font-size: 15px; color: var(--text-dim);
+    letter-spacing: 0.01em;
+  }
+
+  /* ============ 02 FIRST BUG TIMELINE ============ */
+  .timeline {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 16px; margin-bottom: 32px;
+    position: relative;
+  }
+  @media (max-width: 800px) { .timeline { grid-template-columns: repeat(2, 1fr); gap: 12px; } }
+  @media (max-width: 400px) { .timeline { grid-template-columns: 1fr; } }
+  .timeline::before {
+    content: ''; position: absolute;
+    top: 50%; left: 8%; right: 8%; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border-bright) 20%, var(--border-bright) 80%, transparent);
+    z-index: 0;
+  }
+  @media (max-width: 800px) { .timeline::before { display: none; } }
+
+  .timeline-node {
+    background: var(--bg-panel); border: 1px solid var(--border-bright);
+    border-radius: 6px; padding: 20px 16px;
+    text-align: center; position: relative; z-index: 1;
+    transition: border-color 200ms;
+  }
+  .timeline-node:hover { border-color: rgba(255,182,39,0.4); }
+  .timeline-time {
+    font-size: 13px; color: var(--amber);
+    font-weight: 600; letter-spacing: 0.1em;
+    margin-bottom: 6px;
+  }
+  .timeline-label {
+    font-size: 14px; color: var(--text); font-weight: 500;
+    margin-bottom: 4px;
+  }
+  .timeline-desc { font-size: 11px; color: var(--text-dim); line-height: 1.5; }
+
+  .timeline-footnote {
+    text-align: center; margin-top: 32px;
+    font-size: 14px; color: var(--text-dim); line-height: 1.6;
+  }
+  .timeline-footnote .accent { color: var(--amber); }
+
+  /* ============ 03 CAPABILITIES ============ */
+  .capabilities-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  @media (max-width: 1100px) { .capabilities-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .capabilities-grid { grid-template-columns: 1fr; } }
+
+  .cap-card {
+    background: var(--bg-panel); border: 1px solid var(--border-bright);
+    border-radius: 8px; padding: 24px;
+    transition: border-color 200ms, transform 200ms;
+  }
+  .cap-card:hover { border-color: rgba(255,182,39,0.4); transform: translateY(-2px); }
+  @media (max-width: 600px) {
+    .cap-card { padding: 20px; }
+    .cap-icon { width: 28px; height: 28px; margin-bottom: 12px; }
+    .cap-title { font-size: 14px; }
+    .cap-desc { font-size: 12px; }
+  }
+  .cap-icon {
+    width: 32px; height: 32px;
+    color: var(--amber); margin-bottom: 16px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cap-icon svg { width: 100%; height: 100%; }
+  .cap-title {
+    font-size: 15px; font-weight: 600; color: #fff;
+    margin-bottom: 8px; letter-spacing: -0.01em;
+  }
+  .cap-desc {
+    font-size: 12px; color: var(--text-dim); line-height: 1.55;
+  }
+
+  /* ============ 04 FAQ ============ */
+  .faq-list { max-width: 860px; margin: 0 auto; }
+  .faq-item {
+    border-top: 1px solid var(--border);
+    padding: 24px 0;
+  }
+  .faq-item:last-child { border-bottom: 1px solid var(--border); }
+  .faq-question {
+    display: flex; justify-content: space-between;
+    align-items: center; cursor: pointer;
+    font-size: 16px; font-weight: 500; color: #fff;
+    letter-spacing: -0.01em;
+    list-style: none;
+  }
+  @media (max-width: 600px) {
+    .faq-item { padding: 18px 0; }
+    .faq-question { font-size: 14px; }
+    .faq-answer { font-size: 13px; margin-top: 10px; }
+  }
+  .faq-question::-webkit-details-marker { display: none; }
+  .faq-question::after {
+    content: '+'; color: var(--amber);
+    font-size: 22px; font-weight: 300;
+    transition: transform 200ms;
+    margin-left: 16px;
+  }
+  details[open] .faq-question::after { transform: rotate(45deg); }
+  .faq-answer {
+    margin-top: 14px; font-size: 14px;
+    color: var(--text-dim); line-height: 1.7;
+    max-width: 720px;
+  }
+
+  /* ============ 05 ROADMAP + TOKEN ============ */
+  .roadmap-grid {
+    display: grid; grid-template-columns: 1.5fr 1fr;
+    gap: 32px;
+  }
+  @media (max-width: 900px) { .roadmap-grid { grid-template-columns: 1fr; } }
+
+  .roadmap-col h3 {
+    font-size: 14px; color: var(--amber);
+    letter-spacing: 0.15em; text-transform: uppercase;
+    margin-bottom: 24px; font-weight: 600;
+  }
+
+  .roadmap-phase {
+    border-left: 2px solid var(--border-bright);
+    padding: 4px 0 24px 24px;
+    position: relative;
+  }
+  .roadmap-phase::before {
+    content: ''; position: absolute;
+    left: -7px; top: 6px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--bg); border: 2px solid var(--border-bright);
+  }
+  .roadmap-phase.now::before { border-color: var(--amber); background: var(--amber); box-shadow: 0 0 10px var(--amber-glow); }
+  .roadmap-phase.next::before { border-color: var(--amber); }
+  .roadmap-phase-label {
+    font-size: 11px; color: var(--amber);
+    letter-spacing: 0.25em; text-transform: uppercase;
+    margin-bottom: 8px; font-weight: 600;
+  }
+  .roadmap-phase.later .roadmap-phase-label { color: var(--text-muted); }
+  .roadmap-phase ul { list-style: none; }
+  .roadmap-phase li {
+    font-size: 13px; color: var(--text);
+    line-height: 1.65; margin-bottom: 6px;
+    padding-left: 16px; position: relative;
+  }
+  .roadmap-phase li::before {
+    content: '·'; color: var(--amber);
+    position: absolute; left: 4px; top: 0;
+  }
+
+  .token-card {
+    background: var(--bg-panel);
+    border: 1px solid rgba(255,182,39,0.3);
+    border-radius: 8px; padding: 28px;
+    position: relative;
+  }
+  @media (max-width: 600px) {
+    .token-card { padding: 22px; }
+    .token-symbol { font-size: 20px; }
+    .token-desc { font-size: 12.5px; }
+    .roadmap-phase { padding: 4px 0 20px 20px; }
+    .roadmap-phase li { font-size: 12.5px; }
+  }
+  .token-card::before {
+    content: '⚡'; position: absolute;
+    top: 18px; right: 20px;
+    color: var(--amber); font-size: 18px;
+  }
+  .token-symbol {
+    font-size: 22px; font-weight: 700; color: var(--amber);
+    margin-bottom: 14px; letter-spacing: -0.01em;
+  }
+  .token-desc {
+    font-size: 13px; color: var(--text-dim);
+    line-height: 1.7; margin-bottom: 20px;
+  }
+  .token-meta {
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+    font-size: 11px; color: var(--text-muted);
+    letter-spacing: 0.1em; text-transform: uppercase;
+    line-height: 1.9;
+  }
+  .token-meta .label { color: var(--text-muted); }
+  .token-meta .value { color: var(--text-dim); }
+  .token-meta .status-dev {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--amber);
+  }
+  .token-meta .status-dev::before {
+    content: ''; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--amber);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  /* ============ 06 FINAL CTA ============ */
+  .section-cta {
+    max-width: 900px; margin: 0 auto;
+    padding: 100px 32px 120px;
+    text-align: center;
+    border-top: 1px solid var(--border);
+  }
+  @media (max-width: 600px) {
+    .section-cta { padding: 60px 20px 80px; }
+    .cta-headline { font-size: 32px; }
+    .cta-sub { font-size: 14px; margin-bottom: 28px; }
+    .cta-buttons { flex-direction: column; align-items: stretch; }
+    .cta-buttons .btn { justify-content: center; }
+  }
+  .cta-headline {
+    font-size: clamp(32px, 4vw, 56px);
+    font-weight: 700; line-height: 1.05;
+    letter-spacing: -0.03em;
+    margin-bottom: 24px; color: #fff;
+  }
+  .cta-headline .accent { color: var(--amber); }
+  .cta-sub {
+    font-size: 16px; color: var(--text-dim);
+    line-height: 1.6; margin-bottom: 40px;
+    max-width: 560px; margin-left: auto; margin-right: auto;
+  }
+  .install-cmd {
+    display: inline-flex; align-items: center; gap: 12px;
+    background: var(--bg-panel); border: 1px solid var(--border-bright);
+    border-radius: 6px; padding: 14px 20px;
+    font-family: var(--mono); font-size: 13px; color: var(--text);
+    margin-bottom: 32px; cursor: pointer;
+    transition: border-color 150ms;
+    max-width: 100%; overflow-x: auto; white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  @media (max-width: 600px) {
+    .install-cmd { font-size: 11px; padding: 12px 14px; gap: 8px; }
+    .install-cmd .copy-hint { font-size: 9px; }
+  }
+  .install-cmd:hover { border-color: var(--amber); }
+  .install-cmd .prompt-mark { color: var(--amber); }
+  .install-cmd .copy-hint {
+    font-size: 10px; color: var(--text-muted);
+    letter-spacing: 0.15em; text-transform: uppercase;
+    margin-left: 8px;
+  }
+  .cta-buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+  /* ============ FOOTER ============ */
+  footer { border-top: 1px solid var(--border); padding: 32px; }
+  @media (max-width: 600px) { footer { padding: 24px 20px; } }
+
+  .footer-inner {
+    max-width: 1400px; margin: 0 auto;
+    display: flex; justify-content: space-between;
+    align-items: center; gap: 24px; flex-wrap: wrap;
+  }
+  @media (max-width: 600px) {
+    .footer-inner { flex-direction: column; align-items: flex-start; gap: 16px; }
+    .footer-left { font-size: 11px; line-height: 1.8; }
+    .footer-left .sep { margin: 0 6px; }
+    .footer-links a { font-size: 11px; }
+  }
+  .footer-left { font-size: 12px; color: var(--text-muted); }
+  .footer-left .sep { margin: 0 10px; opacity: 0.5; }
+  .footer-links { display: flex; gap: 20px; }
+  .footer-links a {
+    color: var(--text-dim); text-decoration: none;
+    font-size: 12px; letter-spacing: 0.05em;
+    transition: color 150ms;
+  }
+  .footer-links a:hover { color: var(--amber); }
+  .footer-disclaimer {
+    max-width: 1400px; margin: 16px auto 0;
+    padding-top: 16px; border-top: 1px solid var(--border);
+    font-size: 11px; color: var(--text-muted);
+    letter-spacing: 0.02em;
+    display: flex; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px;
+  }
+  @media (max-width: 600px) {
+    .footer-disclaimer { font-size: 10px; flex-direction: column; gap: 8px; }
+  }
+
+  /* ============ SOUND TOGGLE ============ */
+  .sound-toggle {
+    position: fixed; bottom: 20px; right: 20px; z-index: 100;
+    background: rgba(20,20,20,0.9); border: 1px solid var(--border-bright);
+    color: var(--text-dim); width: 40px; height: 40px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 14px;
+    transition: all 200ms;
+    backdrop-filter: blur(8px);
+  }
+  .sound-toggle:hover { border-color: var(--amber); color: var(--amber); }
+  @media (max-width: 600px) {
+    .sound-toggle { width: 36px; height: 36px; bottom: 16px; right: 16px; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="/" class="logo">bughunter<span class="dim">.fun</span><span class="cursor-mark"></span></a>
+    <nav class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#capabilities">Capabilities</a>
+      <a href="#faq">FAQ</a>
+      <a href="#roadmap">Roadmap</a>
+      <a href="https://github.com/shuvonsec/claude-bug-bounty" target="_blank" class="nav-cta">GitHub →</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <!-- ============ HERO ============ -->
+  <section class="hero">
+    <div class="hero-left">
+      <div class="pre-headline">Open Source · Claude Code Plugin · Free</div>
+
+      <h1 class="hero-title">
+        AI that <span class="accent">hunts bugs.</span><br>
+        Writes the report.<br>
+        You collect.
+      </h1>
+
+      <p class="hero-sub">
+        Open-source Claude Code plugin. Recon, twenty vuln classes, CVSS scoring, and a submission-ready report for HackerOne, Bugcrowd, Intigriti, and Immunefi. Runs in your terminal.
+      </p>
+
+      <div class="hero-ctas">
+        <a href="https://github.com/shuvonsec/claude-bug-bounty" target="_blank" class="btn btn-primary">Get on GitHub →</a>
+        <a href="#how" class="btn btn-secondary">See how it works</a>
+      </div>
+
+      <div class="micro-proof">
+        <span class="stat">2k+ stars</span>
+        <span class="sep">·</span>
+        <span class="stat">360+ forks</span>
+        <span class="sep">·</span>
+        <span class="stat">MIT licensed</span>
+      </div>
+    </div>
+
+    <div class="terminal-wrapper">
+      <div class="terminal">
+        <div class="terminal-header">
+          <div class="terminal-dot"></div>
+          <div class="terminal-dot"></div>
+          <div class="terminal-dot"></div>
+          <div class="terminal-label">bughunter ~ live</div>
+        </div>
+        <div class="terminal-content" id="terminal-content"></div>
+
+        <div class="status-badge" id="status-badge"></div>
+        <div class="term-overlay" id="term-overlay"></div>
+        <div class="term-report" id="term-report">
+          <div class="report-payoff">cvss scored. <span class="accent">ready to submit.</span></div>
+          <div class="mini-report-card">
+            <div class="mini-report-meta">
+              <span>vuln-2026-pkce</span>
+              <span class="severity-pill">HIGH · 8.2</span>
+            </div>
+            <div class="mini-report-title">PKCE Bypass in OAuth Callback</div>
+            <div class="mini-report-blur">
+              <span>███ ████████ ████ ███ █████████ ████ ████</span>
+              <span>████ ████ ██ ███████ ███████ ████ ██████</span>
+              <span>█████ ████████ ██████ ████ ██ ████ █████</span>
+              <span>██████ ███ ████████ █████ ████ ██████ ██</span>
+            </div>
+          </div>
+          <div class="platforms-line">H1 · BUGCROWD · INTIGRITI · IMMUNEFI</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 01 HOW IT WORKS ============ -->
+  <section class="section" id="how">
+    <div class="section-header">
+      <div class="section-eyebrow">01_HOW_IT_WORKS</div>
+      <h2 class="section-title">Three steps. <span class="accent">One command.</span> A report.</h2>
+      <p class="section-sub">No dashboards. No signup. No SaaS bill. You run it inside Claude Code, point it at a target, and walk away.</p>
+    </div>
+
+    <div class="steps-grid">
+      <div class="step-card">
+        <div class="step-number">Step 01 — Install</div>
+        <div class="step-title">One command inside Claude Code</div>
+        <p class="step-desc">Clone the repo, run the installer, you are ready. No SaaS signup. No keys to share.</p>
+        <div class="code-block">git clone https://github.com/shuvonsec/claude-bug-bounty &amp;&amp; cd claude-bug-bounty &amp;&amp; ./install.sh</div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-number">Step 02 — Point</div>
+        <div class="step-title">Drop in a domain or program</div>
+        <p class="step-desc">Hand it a target. The tool pulls in-scope assets from HackerOne, Bugcrowd, Intigriti, YWH, and Immunefi.</p>
+        <div class="code-block">hunt example.com</div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-number">Step 03 — Collect</div>
+        <div class="step-title">Get a submission-ready report</div>
+        <p class="step-desc">Recon, scan, validate, write. CVSS scored. H1, Bugcrowd, Intigriti, or Immunefi format.</p>
+        <div class="code-block">✓ report.md ready</div>
+      </div>
+    </div>
+
+    <p class="closing-line">That is the entire workflow.</p>
+  </section>
+
+  <!-- ============ 02 FIRST BUG ============ -->
+  <section class="section" id="first-bug">
+    <div class="section-header">
+      <div class="section-eyebrow">02_YOUR_FIRST_BUG</div>
+      <h2 class="section-title">First finding in <span class="accent">ten minutes.</span></h2>
+      <p class="section-sub">From a clean Claude Code install to a report sitting in your H1 inbox.</p>
+    </div>
+
+    <div class="timeline">
+      <div class="timeline-node">
+        <div class="timeline-time">00:00</div>
+        <div class="timeline-label">Install</div>
+        <div class="timeline-desc">Claude Code + plugin command</div>
+      </div>
+      <div class="timeline-node">
+        <div class="timeline-time">02:00</div>
+        <div class="timeline-label">Pick target</div>
+        <div class="timeline-desc">From your H1 or Bugcrowd dashboard</div>
+      </div>
+      <div class="timeline-node">
+        <div class="timeline-time">03:00</div>
+        <div class="timeline-label">Run hunt</div>
+        <div class="timeline-desc">Walk away. Come back to a report.</div>
+      </div>
+      <div class="timeline-node">
+        <div class="timeline-time">10:00</div>
+        <div class="timeline-label">Submit</div>
+        <div class="timeline-desc">Review the report, paste, submit.</div>
+      </div>
+    </div>
+
+    <p class="timeline-footnote">
+      Most of that time is the tool running.<br>
+      Your hands-on time is <span class="accent">under three minutes.</span>
+    </p>
+  </section>
+
+  <!-- ============ 03 CAPABILITIES ============ -->
+  <section class="section" id="capabilities">
+    <div class="section-header">
+      <div class="section-eyebrow">03_CAPABILITIES</div>
+      <h2 class="section-title">What it actually does.</h2>
+      <p class="section-sub">Eight technical capabilities. No fluff. Every line is a feature that ships today.</p>
+    </div>
+
+    <div class="capabilities-grid">
+      <div class="cap-card">
+        <div class="cap-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>
+        </div>
+        <div class="cap-title">Recon pipeline</div>
+        <p class="cap-desc">Subdomain enum, DNS resolution, live host detection, URL crawling. Pulls in-scope assets via bbscope.</p>
+      </div>
+
+      <div class="cap-card">
+        <div class="cap-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+        </div>
+        <div class="cap-title">Twenty vuln classes</div>
+        <p class="cap-desc">IDOR, SSRF, XSS, SQLi, RCE, OAuth, race conditions, GraphQL, SAML/SSO, CI/CD, and 10 more.</p>
+      </div>
+
+      <div class="cap-card">
+        <div class="cap-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+        </div>
+        <div class="cap-title">Auth-aware hunting</div>
+        <p class="cap-desc">Set session once with --cookie, --bearer, or env vars. Every downstream tool carries it.</p>
+      </div>
+
+      <div class="cap-card">
+        <div class="cap-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L4 6v6c0 5 3.5 9.5 8 10 4.5-.5 8-5 8-10V6l-8-4z"/></svg>
+        </div>
+        <div class="cap-title">CVSS 4.0 scoring</div>
+        <p class="cap-desc">Built-in calculator. H1 uses 3.1, every other platform uses 4.0. Enforced automatically.</p>
+      </div>
+
+      <div class="cap-card">
+        <div class="cap-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
+        </div>
+        <div class="cap-title">Submission-ready reports</div>
+        <p class="cap-desc">Templates for H1, Bugcrowd, Intigriti, Immunefi. Burp Suite style HTML also supported.</p>
+      </div>
+
+      <div class="cap-card">
+        <div class="cap-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9c2.5 0 4.74 1.02 6.36 2.64"/><path d="M21 3v6h-6"/></svg>
+        </div>
+        <div class="cap-title">Hunt memory</div>
+        <p class="cap-desc">Persistent across sessions. Remembers every endpoint tested, feeds it back on the next run.</p>
+      </div>
+
+      <div class="cap-card">
+        <div class="cap-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+        </div>
+        <div class="cap-title">Validation gates</div>
+        <p class="cap-desc">7-question gate + 4 validation gates. Auto-kills informational findings before submission.</p>
+      </div>
+
+      <div class="cap-card">
+        <div class="cap-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        </div>
+        <div class="cap-title">MCP integrations</div>
+        <p class="cap-desc">Burp MCP for live browser traffic. HackerOne MCP for program intel. Missing tools are skipped, not errors.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 04 FAQ ============ -->
+  <section class="section" id="faq">
+    <div class="section-header">
+      <div class="section-eyebrow">04_FAQ</div>
+      <h2 class="section-title">Questions, answered.</h2>
+    </div>
+
+    <div class="faq-list">
+      <details class="faq-item">
+        <summary class="faq-question">Is it really free?</summary>
+        <p class="faq-answer">The open-source plugin on GitHub is free and will stay free. You only pay for your own Claude Code usage, which is the standard Anthropic API cost. No subscription, no signup, no credit card on this site.</p>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-question">What does it cost to run a hunt?</summary>
+        <p class="faq-answer">Depends on target size and scan depth. A typical small-to-medium target hunt sits in the low single-digit dollars of Claude API usage. Bigger enterprise scopes go higher. You control the budget by scoping the target.</p>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-question">Does it work with my existing Burp setup?</summary>
+        <p class="faq-answer">Yes. There is a Burp MCP integration. The tool reads your live browser traffic and uses it for auth-aware testing.</p>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-question">Will this get me banned from a program?</summary>
+        <p class="faq-answer">The tool respects scope and rate limits. Validation gates kill informational findings before submission. You are still responsible for staying inside program rules. Always read the program scope before running.</p>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-question">Does it submit reports automatically?</summary>
+        <p class="faq-answer">No. It writes the report and saves it locally. You review and submit yourself. That is by design.</p>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-question">Can I contribute?</summary>
+        <p class="faq-answer">Yes. The repo is MIT-licensed. PRs welcome. Roadmap, open issues, and contributor guide are all on GitHub.</p>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-question">What about the $BUG token?</summary>
+        <p class="faq-answer">The open-source tool is free regardless of the token. The token is for the hosted version of the autonomous agent that ships next. See the roadmap below.</p>
+      </details>
+    </div>
+  </section>
+
+  <!-- ============ 05 ROADMAP + TOKEN ============ -->
+  <section class="section" id="roadmap">
+    <div class="section-header">
+      <div class="section-eyebrow">05_ROADMAP_AND_TOKEN</div>
+      <h2 class="section-title">Where this is <span class="accent">going.</span></h2>
+      <p class="section-sub">No dates. No quarters. Just direction.</p>
+    </div>
+
+    <div class="roadmap-grid">
+      <div class="roadmap-col">
+        <h3>What's next</h3>
+
+        <div class="roadmap-phase now">
+          <div class="roadmap-phase-label">Now · Live</div>
+          <ul>
+            <li>Open-source Claude Code plugin</li>
+            <li>Manual hunt via hunt &lt;target&gt; command</li>
+            <li>Twenty vuln classes, four platform report formats</li>
+            <li>Persistent hunt memory across sessions</li>
+          </ul>
+        </div>
+
+        <div class="roadmap-phase next">
+          <div class="roadmap-phase-label">Next</div>
+          <ul>
+            <li>Autonomous hunt agent. Set scope, walk away, review the queued report.</li>
+            <li>End-to-end recon to validated submission. You approve, you submit.</li>
+          </ul>
+        </div>
+
+        <div class="roadmap-phase later">
+          <div class="roadmap-phase-label">Later</div>
+          <ul>
+            <li>Hosted version with team workspaces</li>
+            <li>Token-gated premium runs for high-volume hunters</li>
+            <li>Webhook delivery to H1 and Bugcrowd workflow</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="roadmap-col">
+        <h3>About $BUG</h3>
+        <div class="token-card">
+          <div class="token-symbol">$BUG</div>
+          <p class="token-desc">
+            Utility token for the hosted version of BugHunter.Fun. The open-source tool on GitHub is free and always will be. The token gates access to the hosted autonomous agent and team workspaces when those ship.
+          </p>
+          <div class="token-meta">
+            <div><span class="label">Contract:</span> <span class="value">[REDACTED]</span></div>
+            <div><span class="label">Chain:</span> <span class="value">Solana</span></div>
+            <div><span class="label">Status:</span> <span class="status-dev">Hosted version in development</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 06 FINAL CTA ============ -->
+  <section class="section-cta">
+    <h2 class="cta-headline">
+      Skip the grunt work.<br>
+      <span class="accent">Start collecting.</span>
+    </h2>
+    <p class="cta-sub">
+      Open source. Free. Runs in your terminal. Submission-ready reports for the four biggest bug bounty platforms.
+    </p>
+
+    <div class="install-cmd" onclick="copyInstallCmd(this)" title="Click to copy">
+      <span class="prompt-mark">$</span>
+      <span>git clone https://github.com/shuvonsec/claude-bug-bounty &amp;&amp; cd claude-bug-bounty &amp;&amp; ./install.sh</span>
+      <span class="copy-hint" id="copy-hint">Click to copy</span>
+    </div>
+
+    <div class="cta-buttons">
+      <a href="https://github.com/shuvonsec/claude-bug-bounty" target="_blank" class="btn btn-primary">Get on GitHub →</a>
+      <a href="https://github.com/shuvonsec/claude-bug-bounty#installation" target="_blank" class="btn btn-secondary">Read the quickstart</a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-left">
+      bughunter<span style="color:var(--text-muted);opacity:0.6">.fun</span>
+      <span class="sep">·</span>
+      <span>MIT licensed</span>
+      <span class="sep">·</span>
+      <span>Built by Shuvonsec</span>
+    </div>
+    <div class="footer-links">
+      <a href="https://github.com/shuvonsec/claude-bug-bounty" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://x.com/shuvonsec" target="_blank" rel="noopener">X</a>
+    </div>
+  </div>
+  <div class="footer-disclaimer">
+    <span>For authorized security testing only. Always operate within program scope.</span>
+    <span>[SYS_SHUTDOWN]</span>
+  </div>
+</footer>
+
+<button class="sound-toggle" id="sound-toggle" onclick="toggleSound()" title="Toggle sound">○</button>
+
+<script>
+  /* ============ AUDIO ============ */
+  let audioCtx = null;
+  let soundEnabled = false;
+  let ambientNodes = null;
+
+  function initAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+    }
+  }
+
+  function playClick(volume = 0.025) {
+    if (!soundEnabled || !audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.frequency.value = 1400 + Math.random() * 600;
+    osc.type = 'square';
+    gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.025);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(); osc.stop(audioCtx.currentTime + 0.03);
+  }
+
+  function playPing() {
+    if (!soundEnabled || !audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.frequency.setValueAtTime(660, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(990, audioCtx.currentTime + 0.12);
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.07, audioCtx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(); osc.stop(audioCtx.currentTime + 0.4);
+  }
+
+  function playSuccess() {
+    if (!soundEnabled || !audioCtx) return;
+    [523.25, 659.25, 880].forEach((freq, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.frequency.value = freq; osc.type = 'sine';
+      const start = audioCtx.currentTime + i * 0.09;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.05, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.5);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(start); osc.stop(start + 0.5);
+    });
+  }
+
+  function startAmbient() {
+    if (!soundEnabled || !audioCtx || ambientNodes) return;
+    const osc1 = audioCtx.createOscillator();
+    const osc2 = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const filter = audioCtx.createBiquadFilter();
+    osc1.frequency.value = 55; osc2.frequency.value = 82.4;
+    osc1.type = 'sine'; osc2.type = 'sine';
+    filter.type = 'lowpass'; filter.frequency.value = 320;
+    gain.gain.setValueAtTime(0, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.012, audioCtx.currentTime + 1.2);
+    osc1.connect(filter); osc2.connect(filter);
+    filter.connect(gain); gain.connect(audioCtx.destination);
+    osc1.start(); osc2.start();
+    ambientNodes = { osc1, osc2, gain };
+  }
+
+  function stopAmbient() {
+    if (ambientNodes && audioCtx) {
+      const { osc1, osc2, gain } = ambientNodes;
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+      setTimeout(() => { try { osc1.stop(); osc2.stop(); } catch (e) {} }, 700);
+      ambientNodes = null;
+    }
+  }
+
+  function toggleSound() {
+    soundEnabled = !soundEnabled;
+    initAudio();
+    const btn = document.getElementById('sound-toggle');
+    btn.textContent = soundEnabled ? '♪' : '○';
+    btn.style.color = soundEnabled ? 'var(--amber)' : '';
+    btn.style.borderColor = soundEnabled ? 'var(--amber)' : '';
+    if (soundEnabled) startAmbient(); else stopAmbient();
+  }
+
+  /* ============ ANIMATION ============ */
+  let timeouts = [];
+  function schedule(fn, delay) { const id = setTimeout(fn, delay); timeouts.push(id); return id; }
+  function clearScheduled() { timeouts.forEach(t => clearTimeout(t)); timeouts = []; }
+
+  const $ = id => document.getElementById(id);
+  function setOverlay(html) { $('term-overlay').innerHTML = html; $('term-overlay').classList.add('visible'); }
+  function hideOverlay() { $('term-overlay').classList.remove('visible'); }
+  function setStatus(label) { $('status-badge').innerHTML = `▸ ${label}`; $('status-badge').classList.add('visible'); }
+  function hideStatus() { $('status-badge').classList.remove('visible'); }
+  function showReport() { $('term-report').classList.add('visible'); }
+  function hideReport() { $('term-report').classList.remove('visible'); }
+  function clearTerminal() { $('terminal-content').innerHTML = ''; }
+
+  function typeCommand(html, charDelay = 55) {
+    return new Promise(resolve => {
+      const container = $('terminal-content');
+      const line = document.createElement('div');
+      line.className = 'terminal-line visible';
+      container.appendChild(line);
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const plain = tmp.textContent;
+      let i = 0;
+      function step() {
+        if (i < plain.length) {
+          line.innerHTML = '<span class="prompt">$</span> ' + plain.substring(2, i + 1) + '<span class="cursor"></span>';
+          if (i % 2 === 0) playClick(0.02);
+          i++;
+          schedule(step, charDelay + (Math.random() * 25 - 12));
+        } else { line.innerHTML = html; resolve(); }
+      }
+      step();
+    });
+  }
+
+  function addLine(html) {
+    const container = $('terminal-content');
+    const line = document.createElement('div');
+    line.className = 'terminal-line';
+    line.innerHTML = html;
+    container.appendChild(line);
+    requestAnimationFrame(() => line.classList.add('visible'));
+    playClick(0.015);
+  }
+
+  function playLoop() {
+    clearScheduled();
+    clearTerminal(); hideStatus(); hideReport();
+
+    schedule(() => { setOverlay('writing bug bounty reports takes hours.'); startAmbient(); }, 200);
+    schedule(() => setOverlay('<span class="accent">not anymore.</span>'), 3000);
+    schedule(() => hideOverlay(), 6000);
+    schedule(() => typeCommand('<span class="prompt">$</span> hunt example.com', 60), 6500);
+
+    schedule(() => setStatus('RECON'), 13000);
+    schedule(() => addLine('<span class="tag-recon">[recon]</span>    enumerating subdomains... <span class="amber">47</span> hosts'), 13200);
+    schedule(() => addLine('<span class="tag-recon">[recon]</span>    crawling URLs... <span class="amber">1,284</span> endpoints'), 14500);
+    schedule(() => addLine('<span class="tag-recon">[recon]</span>    fingerprinting tech stack... <span class="dim">done</span>'), 15800);
+
+    schedule(() => setStatus('HUNT'), 17000);
+    schedule(() => addLine('<span class="tag-hunt">[hunt]</span>     testing idor on /api/users/{id}'), 17200);
+    schedule(() => addLine('<span class="tag-hunt">[hunt]</span>     testing oauth flows'), 18600);
+    schedule(() => { addLine('<span class="tag-hunt">[hunt]</span>     <span class="amber">PKCE bypass detected ▸ /auth/callback</span>'); playPing(); }, 20000);
+
+    schedule(() => setStatus('VALIDATE'), 22200);
+    schedule(() => addLine('<span class="tag-validate">[validate]</span> running 7-question gate'), 22400);
+    schedule(() => addLine('<span class="tag-validate">[validate]</span> cvss 4.0 score: <span class="amber">8.2 (high)</span>'), 23700);
+
+    schedule(() => setStatus('REPORT'), 25600);
+    schedule(() => addLine('<span class="tag-report">[report]</span>   writing H1 submission'), 25800);
+    schedule(() => addLine('<span class="tag-report">[report]</span>   adding reproduction steps'), 27000);
+    schedule(() => addLine('<span class="tag-report">[report]</span>   attaching cvss breakdown'), 28200);
+
+    schedule(() => setStatus('DONE'), 29800);
+    schedule(() => { addLine('<span class="tag-success">✓ report.md ready in 4m 12s</span>'); playSuccess(); }, 30000);
+
+    schedule(() => { hideStatus(); showReport(); }, 33000);
+    schedule(() => { hideReport(); playLoop(); }, 40000);
+  }
+
+  window.addEventListener('load', () => setTimeout(playLoop, 600));
+
+  /* ============ COPY ============ */
+  function copyInstallCmd(el) {
+    const cmd = 'git clone https://github.com/shuvonsec/claude-bug-bounty && cd claude-bug-bounty && ./install.sh';
+    navigator.clipboard.writeText(cmd).then(() => {
+      const hint = document.getElementById('copy-hint');
+      const original = hint.textContent;
+      hint.textContent = '✓ Copied'; hint.style.color = 'var(--amber)';
+      setTimeout(() => { hint.textContent = original; hint.style.color = ''; }, 1800);
+    }).catch(() => {});
+  }
+</script>
+
+</body>
+</html>

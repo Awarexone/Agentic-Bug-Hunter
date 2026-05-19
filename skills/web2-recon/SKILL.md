@@ -143,6 +143,12 @@ cat /tmp/urls.txt | gf sqli | tee /tmp/sqli-candidates.txt
 cat /tmp/urls.txt | gf redirect | tee /tmp/redirect-candidates.txt
 cat /tmp/urls.txt | gf lfi | tee /tmp/lfi-candidates.txt
 cat /tmp/urls.txt | gf rce | tee /tmp/rce-candidates.txt
+
+# User-controlled CSS surface (themes, profile pages, HTML email renderers,
+# rich-text editors, PDF generators). gf has no pattern for this — grep manually:
+cat /tmp/urls.txt | grep -iE "theme|profile|signature|customize|email|invoice|pdf|render|markdown" \
+  | tee /tmp/css-injection-candidates.txt
+# → if any hit, run web2-vuln-classes **CSS Injection**
 ```
 
 ---

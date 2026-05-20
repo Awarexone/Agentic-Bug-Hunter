@@ -280,6 +280,7 @@ curl -sI https://target.com | grep -iE "server|x-powered-by|x-aspnet|x-runtime|x
 | Next.js | SSRF via Server Actions + `/_next/data/` / `/_next/static/chunks/` → web2-vuln-classes "Error Disclosure / Debug Endpoints" | Open redirect via redirect() |
 | GraphQL | Introspection → auth bypass on mutations | IDOR via node(id:) |
 | WordPress | Plugin SQLi | REST API auth bypass |
+| SPA frameworks (React / Vue / Svelte / Angular) | DOM XSS sinks via state/router → web2-vuln-classes section 3 "postMessage Testing" for cross-frame entry points | Client-side route auth bypass (role check only in JS) |
 
 ---
 

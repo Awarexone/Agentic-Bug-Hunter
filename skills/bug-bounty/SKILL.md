@@ -406,6 +406,8 @@ grep -rn "tx\.origin\|delegatecall\|selfdestruct\|block\.timestamp" --include="*
 # JavaScript/TypeScript -- prototype pollution, postMessage, RCE sinks
 grep -rn "__proto__\|constructor\[" --include="*.js" --include="*.ts" | grep -v node_modules
 grep -rn "postMessage\|addEventListener.*message" --include="*.js" | grep -v node_modules
+# ↑ If listeners found, verify origin-check robustness with attacker page —
+#   see web2-vuln-classes section 3 "postMessage Testing"
 grep -rn "child_process\|execSync\|spawn(" --include="*.js" | grep -v node_modules
 
 # Python -- pickle, yaml.load, eval, shell injection

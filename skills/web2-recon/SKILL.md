@@ -276,7 +276,7 @@ curl -sI https://target.com | grep -iE "server|x-powered-by|x-aspnet|x-runtime|x
 | Laravel | Mass assignment ($fillable) | IDOR (Eloquent, no ownership) |
 | Express (Node.js) | Prototype pollution | Path traversal |
 | Spring Boot | Actuator endpoints (/actuator/env) | SSTI (Thymeleaf) |
-| ASP.NET | ViewState deserialization | Open redirect (ReturnUrl) |
+| ASP.NET | ViewState deserialization (if encrypted, also test padding-oracle path → web2-vuln-classes section 21) | Open redirect (ReturnUrl) |
 | Next.js | SSRF via Server Actions | Open redirect via redirect() |
 | GraphQL | Introspection → auth bypass on mutations | IDOR via node(id:) |
 | WordPress | Plugin SQLi | REST API auth bypass |

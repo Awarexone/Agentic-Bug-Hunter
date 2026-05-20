@@ -37,3 +37,31 @@ venv/
 # Tool output
 *.out
 nmap-output/
+
+# Personal hunt notes (target-specific markdown — never push)
+docs/*Bug Bounty*.md
+docs/*hunt*.md
+docs/Optus*.md
+docs/dcard*.md
+docs/taipower*.md
+
+# Hunt memory data (target-specific records — keep local only)
+memory/journal.jsonl
+memory/patterns.jsonl
+memory/audit.jsonl
+memory/targets/
+
+# Target-specific scope lists
+targets/
+
+# Target-specific hunt scripts (private — keep local only)
+tools/dcard_*
+tools/optus_*
+tools/taipower_*
+
+# External reference material (third-party content — not for distribution)
+HITCON/
+WebSecurityTestingGuide/
+
+# Claude Code worktree state (worktrees live under .claude/worktrees/)
+.claude/worktrees/

@@ -273,6 +273,8 @@ token = f"{header}.{payload}."
 hashcat -a 0 -m 16500 jwt.txt ~/wordlists/rockyou.txt
 ```
 
+> **Non-JWT encrypted session cookies / ViewState / opaque auth blobs?** If decoded length is a multiple of 8 or 16 and a 1-byte flip returns HTTP 500, test for CBC padding oracle — see web2-vuln-classes section 23 (Padding Oracle & Crypto Misuse) for PadBuster recipe and ViewState-to-RCE chain.
+
 ### OAuth Attacks
 ```bash
 # Missing PKCE test

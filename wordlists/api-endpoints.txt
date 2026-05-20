@@ -283,3 +283,16 @@ v2/logger.json
 v2/items
 v2/pub
 openapi.json
+api/jwks.json
+api/register
+api/schema.json
+api/setup
+api/signin
+api/signup
+api/system/info
+api/upload
+api/uploads
+api/files
+api/files/upload
+api/admin/users
+api/.env

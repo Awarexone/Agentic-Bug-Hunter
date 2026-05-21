@@ -1,138 +1,88 @@
 ---
-description: Run full recon pipeline on a target — subdomain enum (Chaos API + subfinder), live host discovery (dnsx + httpx), URL crawl (katana + waybackurls + gau), gf pattern classification, nuclei scan. Outputs to recon/<target>/ directory. Usage: /recon target.com
+description: Run the full recon pipeline by invoking tools/recon_engine.sh — subdomain enum (subfinder + amass + crt.sh + wayback), httpx live host probing with tech detection, nmap port scan, gau URL collection, JS analysis, ffuf directory fuzzing, parameter discovery, config exposure check, CI/CD workflow scan. Outputs to recon/<target>/. Handles FQDN, IP, CIDR, and file-of-hosts targets automatically. Usage: /recon target.com
 ---
 
 # /recon
 
-Run the full recon pipeline on a target and produce a prioritized attack surface.
+Run the full recon pipeline on a target. **Always invoke the production script directly** — do not re-implement the steps inline. The methodology below is reference material; the script is the entry point.
 
-## What This Does
-
-1. Enumerates subdomains (Chaos API + subfinder + assetfinder)
-2. Resolves DNS and finds live hosts (dnsx + httpx with status/title/tech)
-3. Crawls URLs (katana deep crawl + waybackurls + gau historical)
-4. Classifies URLs by bug class (gf patterns)
-5. Runs nuclei for known CVEs and misconfigs
-6. Outputs prioritized attack surface summary
-
-## Usage
-
-```
-/recon target.com
-/recon 10.0.0.0/24                # CIDR — skips subdomain enum, runs nmap sweep
-/recon path/to/scope.txt          # Domain list — skips subdomain enum, uses file contents
-```
-
-The domain-list form is for programs without wildcard scope: pre-resolved hosts go in a text file (one per line, `#` comments allowed) and recon jumps straight to live-host probing + URL crawl + nuclei against just those entries.
-
-Or with specific focus:
-```
-/recon target.com --focus api
-/recon target.com --focus auth
-/recon target.com --fast     (skip historical URLs)
-```
-
-## Steps
-
-### Step 1: Subdomain Enumeration
+## Run This (the only required step)
 
 ```bash
-TARGET="$1"
-mkdir -p recon/$TARGET
+# Domain (full subdomain enum + crawl + fuzz):
+bash tools/recon_engine.sh target.com
 
-# Chaos API (ProjectDiscovery — most comprehensive)
-curl -s "https://dns.projectdiscovery.io/dns/$TARGET/subdomains" \
-  -H "Authorization: $CHAOS_API_KEY" \
-  | jq -r '.[]' > recon/$TARGET/subdomains.txt
+# CIDR — skips subdomain enum, runs nmap host sweep:
+bash tools/recon_engine.sh 10.0.0.0/24
 
-# subfinder + assetfinder
-subfinder -d $TARGET -silent | anew recon/$TARGET/subdomains.txt
-assetfinder --subs-only $TARGET | anew recon/$TARGET/subdomains.txt
+# Single IP — scope-locked, no subdomain enum:
+bash tools/recon_engine.sh 192.0.2.10
 
-echo "[+] Subdomains: $(wc -l < recon/$TARGET/subdomains.txt)"
+# Domain list (programs without wildcard scope) — pre-resolved hosts in a file:
+bash tools/recon_engine.sh path/to/scope.txt
+
+# Quick mode (skip amass + reduce ffuf coverage):
+bash tools/recon_engine.sh target.com --quick
 ```
 
-### Step 2: Live Host Discovery
+The script auto-detects target type:
+- Path to a readable file → loads it as a host list (one per line, `#` comments OK) and **skips subdomain enumeration entirely**.
+- `x.x.x.x/y` → CIDR sweep (max /24, scope-locked).
+- `x.x.x.x` → single IP, scope-locked.
+- Anything else → treated as a domain; full enum runs.
+
+Output lands in `recon/<target>/` (or `recon/<file-basename>/` for list mode):
+
+```
+recon/<target>/
+├── subdomains/all.txt
+├── live/urls.txt
+├── urls/all.txt
+├── candidates/{xss,ssrf,idor,sqli,redirect,lfi}.txt
+├── api-endpoints.txt
+├── nuclei/findings.txt
+└── cicd/summary.txt        (if CI/CD workflows detected)
+```
+
+## Troubleshooting
+
+### "/recon path/to/file.txt still runs subdomain enumeration"
+
+You're on an older revision of this command file where the model re-implemented the pipeline inline and never invoked the production script. Pull latest, or run the script directly:
 
 ```bash
-# DNS resolve + HTTP probe with tech detection
-cat recon/$TARGET/subdomains.txt \
-  | dnsx -silent \
-  | httpx -silent -status-code -title -tech-detect \
-  | tee recon/$TARGET/live-hosts.txt
-
-echo "[+] Live hosts: $(wc -l < recon/$TARGET/live-hosts.txt)"
+bash tools/recon_engine.sh path/to/file.txt
 ```
 
-### Step 3: URL Crawl
+You should see `[*] Domain-list target — loading <file> (skipping subdomain enum)` near the start.
+
+### "/recon loops / doesn't actually run anything"
+
+Same root cause as the hunt-loop bug. Run the bash directly:
 
 ```bash
-# Active crawl
-cat recon/$TARGET/live-hosts.txt | awk '{print $1}' \
-  | katana -d 3 -jc -kf all -silent \
-  | anew recon/$TARGET/urls.txt
-
-# Historical URLs
-echo $TARGET | waybackurls | anew recon/$TARGET/urls.txt
-gau $TARGET --subs | anew recon/$TARGET/urls.txt
-
-echo "[+] Total URLs: $(wc -l < recon/$TARGET/urls.txt)"
+bash tools/recon_engine.sh target.com
 ```
 
-### Step 4: Classify URLs
+Or in your prompt: "Run `bash tools/recon_engine.sh target.com` and report the output. Do not re-implement the steps."
+
+### "Missing tools"
 
 ```bash
-# Bug class classification
-cat recon/$TARGET/urls.txt | gf xss       > recon/$TARGET/xss-candidates.txt
-cat recon/$TARGET/urls.txt | gf ssrf      > recon/$TARGET/ssrf-candidates.txt
-cat recon/$TARGET/urls.txt | gf idor      > recon/$TARGET/idor-candidates.txt
-cat recon/$TARGET/urls.txt | gf sqli      > recon/$TARGET/sqli-candidates.txt
-cat recon/$TARGET/urls.txt | gf redirect  > recon/$TARGET/redirect-candidates.txt
-cat recon/$TARGET/urls.txt | gf lfi       > recon/$TARGET/lfi-candidates.txt
-
-# API endpoints
-cat recon/$TARGET/urls.txt | grep -E "/api/|/v1/|/v2/|/graphql|/rest/" \
-  > recon/$TARGET/api-endpoints.txt
-
-echo "[+] IDOR candidates: $(wc -l < recon/$TARGET/idor-candidates.txt)"
-echo "[+] SSRF candidates: $(wc -l < recon/$TARGET/ssrf-candidates.txt)"
-echo "[+] API endpoints:   $(wc -l < recon/$TARGET/api-endpoints.txt)"
+bash tools/install_tools.sh
 ```
 
-### Step 5: Nuclei Scan
+Recon needs: `subfinder`, `dnsx`, `httpx` (ProjectDiscovery — not the Python CLI), `katana`, `gau`, `nuclei`, `ffuf`, `nmap`, `gf`, `anew`. The installer handles all of them.
 
-```bash
-nuclei -l recon/$TARGET/live-hosts.txt \
-  -t ~/nuclei-templates/ \
-  -severity critical,high,medium \
-  -o recon/$TARGET/nuclei.txt
+## After Recon
 
-echo "[+] Nuclei findings: $(wc -l < recon/$TARGET/nuclei.txt)"
-```
+1. Review `recon/<target>/live/urls.txt` — open interesting ones in a browser.
+2. Check `recon/<target>/nuclei/findings.txt` — any high/critical?
+3. Review `recon/<target>/api-endpoints.txt` — start IDOR testing.
+4. `grep -E "admin|jenkins|grafana|gitlab" recon/<target>/live/urls.txt` — admin panels.
+5. Run `/hunt target.com` to start active vulnerability testing on the recon output.
 
-## Output
-
-After running, you will have in `recon/<target>/`:
-```
-subdomains.txt          # All discovered subdomains
-live-hosts.txt          # Live hosts with status/title/tech
-urls.txt                # All crawled URLs
-api-endpoints.txt       # API-specific paths
-idor-candidates.txt     # URLs with ID parameters
-ssrf-candidates.txt     # URLs with URL parameters
-xss-candidates.txt      # URLs with reflection candidates
-nuclei.txt              # Known CVE/misconfig findings
-```
-
-## What to Do Next
-
-1. Review `live-hosts.txt` — open interesting ones in browser
-2. Check `nuclei.txt` — any high/critical findings?
-3. Review `api-endpoints.txt` — start IDOR testing
-4. Check for admin panels: grep live-hosts for `/admin`, `/jenkins`, `/grafana`
-5. Run `/hunt target.com` to start active vulnerability testing
-
-## 5-Minute Rule
+## 5-Minute Kill Signal
 
 If after running this pipeline:
 - All hosts return 403 or static pages
@@ -140,4 +90,23 @@ If after running this pipeline:
 - No interesting parameters in URLs
 - nuclei returns 0 medium/high findings
 
-**→ Move on to a different target.**
+**→ Move on to a different target.** Don't sink hours into a dead surface.
+
+---
+
+# Reference: What the script does (informational)
+
+The pipeline in `tools/recon_engine.sh` runs these phases (numbers may shift; check the script source):
+
+1. **Subdomain enumeration** — subfinder + Chaos API (if `$CHAOS_API_KEY` set) + amass + crt.sh + wayback.
+2. **Live host discovery** — dnsx resolve, then httpx with status/title/tech-detect.
+3. **Port scan** — nmap top-1000 on live hosts (CIDR mode runs a wider sweep).
+4. **URL crawl** — katana deep crawl + waybackurls + gau historical.
+5. **gf classification** — xss, ssrf, idor, sqli, redirect, lfi candidate files.
+6. **JS analysis** — LinkFinder / SecretFinder on every JS bundle.
+7. **ffuf directory fuzzing** — uses `wordlists/common.txt` (run `python3 tools/hunt.py --setup-wordlists` once if missing).
+8. **Parameter discovery** — Arjun / x8 against high-value endpoints.
+9. **Config exposure** — `.git/`, `.env`, `wp-config.php`, `.DS_Store`, swagger.json, etc.
+10. **CI/CD scan** — sisakulint against any GitHub Actions workflows discovered.
+
+For the IDOR / SSRF / GraphQL / SSTI / etc. active-testing playbooks, see `/hunt` and its methodology section.

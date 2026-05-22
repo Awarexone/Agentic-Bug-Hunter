@@ -400,6 +400,89 @@
     letter-spacing: 0.01em;
   }
 
+  /* ============ PROMPTS SECTION ============ */
+  .prompts-intro {
+    text-align: center; margin-bottom: 40px;
+    font-size: 14px; color: var(--text-dim); line-height: 1.7;
+  }
+  .prompts-intro .accent { color: var(--amber); }
+
+  .prompt-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-bright);
+    border-radius: 8px;
+    margin-bottom: 18px;
+    overflow: hidden;
+    transition: border-color 200ms;
+  }
+  .prompt-card:hover { border-color: rgba(255,182,39,0.4); }
+  .prompt-card.featured { border-color: rgba(255,182,39,0.5); }
+  .prompt-card.featured:hover { border-color: var(--amber); }
+
+  .prompt-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,0.01);
+    gap: 16px; flex-wrap: wrap;
+  }
+  .prompt-label {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 12px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--amber);
+    font-weight: 600;
+  }
+  .prompt-label .tag {
+    font-size: 9px; padding: 2px 7px;
+    background: rgba(255,182,39,0.1);
+    border: 1px solid rgba(255,182,39,0.3);
+    border-radius: 3px; color: var(--amber);
+    letter-spacing: 0.15em;
+  }
+  .prompt-desc {
+    font-size: 11px; color: var(--text-dim);
+    letter-spacing: 0.02em; text-transform: none;
+    font-weight: 400;
+  }
+  .prompt-copy {
+    background: transparent;
+    border: 1px solid var(--border-bright);
+    color: var(--text-dim);
+    padding: 6px 12px; border-radius: 3px;
+    font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.15em; text-transform: uppercase;
+    cursor: pointer; transition: all 150ms;
+    white-space: nowrap;
+  }
+  .prompt-copy:hover { border-color: var(--amber); color: var(--amber); }
+  .prompt-copy.copied { border-color: var(--amber); color: var(--amber); background: rgba(255,182,39,0.05); }
+
+  .prompt-body {
+    padding: 18px 20px;
+    font-family: var(--mono); font-size: 12.5px;
+    line-height: 1.7; color: var(--text);
+    white-space: pre-wrap; word-break: break-word;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  @media (max-width: 600px) {
+    .prompt-head { padding: 12px 14px; }
+    .prompt-body { padding: 14px; font-size: 11.5px; line-height: 1.65; }
+    .prompt-label { font-size: 10px; }
+    .prompt-desc { display: none; }
+    .prompt-copy { padding: 5px 9px; font-size: 9px; }
+  }
+
+  .prompts-cli {
+    display: inline-flex; align-items: center; gap: 8px;
+    margin: 28px 0 8px;
+    background: var(--bg); border: 1px solid var(--border-bright);
+    border-radius: 4px; padding: 10px 16px;
+    font-family: var(--mono); font-size: 13px;
+    color: var(--amber);
+  }
+  .prompts-cli .dim { color: var(--text-muted); }
+
   /* ============ 02 FIRST BUG TIMELINE ============ */
   .timeline {
     display: grid; grid-template-columns: repeat(4, 1fr);
@@ -704,6 +787,7 @@
     <a href="/" class="logo">bughunter<span class="dim">.fun</span><span class="cursor-mark"></span></a>
     <nav class="nav-links">
       <a href="#how">How it works</a>
+      <a href="#prompts">Prompts</a>
       <a href="#capabilities">Capabilities</a>
       <a href="#faq">FAQ</a>
       <a href="#roadmap">Roadmap</a>
@@ -808,6 +892,173 @@
     </div>
 
     <p class="closing-line">That is the entire workflow.</p>
+  </section>
+
+  <!-- ============ 01b PROMPTS ============ -->
+  <section class="section" id="prompts">
+    <div class="section-header">
+      <div class="section-eyebrow">01B_JUST_PASTE_THIS</div>
+      <h2 class="section-title">No slash commands required. <span class="accent">Just ask Claude.</span></h2>
+      <p class="section-sub">Open <span style="color:var(--amber)">claude</span> in your terminal and paste any of these. The first one installs the toolkit. The rest are the hunt loop in plain English — Claude picks the right tools, agents, and gates.</p>
+    </div>
+
+    <p class="prompts-intro">
+      Don't have it yet? <span class="accent">Paste the install prompt first.</span> Claude will clone the repo, run the installers, surface any missing dependencies, and confirm when you're ready to hunt.
+    </p>
+
+    <div class="prompts-cli">
+      <span class="dim">$</span>
+      <span>claude</span>
+    </div>
+
+    <!-- INSTALL -->
+    <div class="prompt-card featured">
+      <div class="prompt-head">
+        <div class="prompt-label">
+          <span class="tag">01</span> Install
+          <span class="prompt-desc">— Claude clones, installs, verifies, reports any failures</span>
+        </div>
+        <button class="prompt-copy" onclick="copyPrompt(this)">Copy ↗</button>
+      </div>
+      <div class="prompt-body">Help me install the Claude Bug Bounty toolkit from
+https://github.com/shuvonsec/claude-bug-bounty into ~/tools/.
+
+Steps:
+1. git clone the repo into ~/tools/claude-bug-bounty
+2. cd into it and run ./install_tools.sh   (scanners: subfinder, httpx, nuclei, gau, katana, ffuf, dnsx, nmap)
+3. then run ./install.sh                   (registers the AI skills + 23 slash commands into ~/.claude/)
+4. verify by listing the new commands (/recon, /hunt, /validate, /report, /autopilot)
+   and confirming the bug-bounty + web2-recon + report-writing skills are available
+5. if anything fails (Go missing, Python pkg, brew formula), tell me exactly which tool
+   broke and the one-line fix — don't silently skip it
+
+I'm on macOS / Linux. Use brew or apt as needed. Don't sudo unless I approve.</div>
+    </div>
+
+    <!-- RECON -->
+    <div class="prompt-card">
+      <div class="prompt-head">
+        <div class="prompt-label">
+          <span class="tag">02</span> Recon
+          <span class="prompt-desc">— subdomains, live hosts, URLs, tech, nuclei sweep</span>
+        </div>
+        <button class="prompt-copy" onclick="copyPrompt(this)">Copy ↗</button>
+      </div>
+      <div class="prompt-body">Run recon on target.com — subdomain enum, live host probing, URL crawling,
+tech fingerprinting, and a focused nuclei sweep. Save everything under
+recon/target.com/. Skip any external tool that isn't installed and tell me
+what to install to close the gap.</div>
+    </div>
+
+    <!-- HUNT -->
+    <div class="prompt-card">
+      <div class="prompt-head">
+        <div class="prompt-label">
+          <span class="tag">03</span> Hunt
+          <span class="prompt-desc">— prioritized vuln testing, with safety pauses</span>
+        </div>
+        <button class="prompt-copy" onclick="copyPrompt(this)">Copy ↗</button>
+      </div>
+      <div class="prompt-body">Hunt target.com using the recon data already in recon/target.com/.
+Prioritize the high-value classes first: IDOR/BOLA, auth bypass, SSRF,
+mass assignment, OAuth/OIDC, business logic. Skip anything informational.
+Pause before any active POST/PUT/DELETE so I can approve.</div>
+    </div>
+
+    <!-- VALIDATE -->
+    <div class="prompt-card">
+      <div class="prompt-head">
+        <div class="prompt-label">
+          <span class="tag">04</span> Validate
+          <span class="prompt-desc">— 7-Question Gate + 4 validation gates before you submit</span>
+        </div>
+        <button class="prompt-copy" onclick="copyPrompt(this)">Copy ↗</button>
+      </div>
+      <div class="prompt-body">I think I found a [VULN_CLASS] on [ENDPOINT/PARAM]. Walk it through the
+7-Question Gate and the 4 validation gates from skills/triage-validation/.
+If it can't clearly pass all 7, kill it — I'd rather drop a maybe than
+tank my N/A ratio on the platform.</div>
+    </div>
+
+    <!-- REPORT -->
+    <div class="prompt-card">
+      <div class="prompt-head">
+        <div class="prompt-label">
+          <span class="tag">05</span> Report
+          <span class="prompt-desc">— impact-first writeup for H1 / Bugcrowd / Intigriti / Immunefi</span>
+        </div>
+        <button class="prompt-copy" onclick="copyPrompt(this)">Copy ↗</button>
+      </div>
+      <div class="prompt-body">Write a submission-ready report for the finding I just validated.
+Platform: [HackerOne / Bugcrowd / Intigriti / Immunefi].
+Use the impact-first template: title formula, one-line impact statement,
+exact repro steps, request/response PoC, CVSS 3.1 vector + score,
+suggested fix. Human tone — no AI-slop hedging like "could potentially".</div>
+    </div>
+
+    <!-- AUTOPILOT -->
+    <div class="prompt-card">
+      <div class="prompt-head">
+        <div class="prompt-label">
+          <span class="tag">06</span> Autopilot
+          <span class="prompt-desc">— full loop end-to-end, pauses at every gate</span>
+        </div>
+        <button class="prompt-copy" onclick="copyPrompt(this)">Copy ↗</button>
+      </div>
+      <div class="prompt-body">Run autopilot on target.com in --normal mode. Take it end-to-end:
+scope check → recon → attack-surface ranking → hunt → validate → report.
+Pause at each gate so I can sanity-check before you spend more credits.
+Log everything to hunt-memory so I can resume later.</div>
+    </div>
+
+    <!-- WEB3 -->
+    <div class="prompt-card">
+      <div class="prompt-head">
+        <div class="prompt-label">
+          <span class="tag">07</span> Smart Contract
+          <span class="prompt-desc">— 10 DeFi bug classes + Foundry PoCs</span>
+        </div>
+        <button class="prompt-copy" onclick="copyPrompt(this)">Copy ↗</button>
+      </div>
+      <div class="prompt-body">Audit the Solidity contract at [path/to/Contract.sol]. Walk all 10 DeFi
+bug classes from skills/web3-audit: reentrancy, oracle manipulation,
+access control, accounting desync, flash loan, signature replay, ERC4626
+share inflation, off-by-one, incomplete code paths, proxy/upgrade.
+For any finding, drop a Foundry PoC using the template in that skill.</div>
+    </div>
+
+    <!-- TOKEN -->
+    <div class="prompt-card">
+      <div class="prompt-head">
+        <div class="prompt-label">
+          <span class="tag">08</span> Token / Meme-Coin
+          <span class="prompt-desc">— rug-pull signal scan, EVM + Solana</span>
+        </div>
+        <button class="prompt-copy" onclick="copyPrompt(this)">Copy ↗</button>
+      </div>
+      <div class="prompt-body">Scan this token for rug-pull signals: [CHAIN] [contract-address].
+Check mint authority, freeze authority, LP lock status, transfer-tax
+manipulation, honeypot patterns, bonding-curve exploits, and
+proxy/admin keys. Tell me straight: ape, watch, or avoid.</div>
+    </div>
+
+    <!-- SCOPE -->
+    <div class="prompt-card">
+      <div class="prompt-head">
+        <div class="prompt-label">
+          <span class="tag">09</span> Scope check
+          <span class="prompt-desc">— verify before you send a single request</span>
+        </div>
+        <button class="prompt-copy" onclick="copyPrompt(this)">Copy ↗</button>
+      </div>
+      <div class="prompt-body">Is [asset.example.com] in scope for the [program-name] bug bounty
+program on [HackerOne / Bugcrowd / Intigriti / Immunefi]? Pull the live
+policy, check in-scope / out-of-scope lists, flag any caveats
+(no automated scanners, no DoS, prod-only, etc.) before I send a
+single request.</div>
+    </div>
+
+    <p class="closing-line">Replace the brackets. Hit enter. Hunt.</p>
   </section>
 
   <!-- ============ 02 FIRST BUG ============ -->
@@ -1040,9 +1291,13 @@
       <span class="copy-hint" id="copy-hint">Click to copy</span>
     </div>
 
+    <p style="font-size:12px;color:var(--text-muted);letter-spacing:0.15em;text-transform:uppercase;margin:8px 0 24px;">
+      — or just <a href="#prompts" style="color:var(--amber);text-decoration:none;">paste the install prompt</a> into <span style="color:var(--amber)">claude</span> and let it install itself —
+    </p>
+
     <div class="cta-buttons">
       <a href="https://github.com/shuvonsec/claude-bug-bounty" target="_blank" class="btn btn-primary">Get on GitHub →</a>
-      <a href="https://github.com/shuvonsec/claude-bug-bounty#installation" target="_blank" class="btn btn-secondary">Read the quickstart</a>
+      <a href="#prompts" class="btn btn-secondary">See the prompts</a>
     </div>
   </section>
 
@@ -1250,6 +1505,23 @@
       const original = hint.textContent;
       hint.textContent = '✓ Copied'; hint.style.color = 'var(--amber)';
       setTimeout(() => { hint.textContent = original; hint.style.color = ''; }, 1800);
+    }).catch(() => {});
+  }
+
+  function copyPrompt(btn) {
+    const card = btn.closest('.prompt-card');
+    if (!card) return;
+    const body = card.querySelector('.prompt-body');
+    if (!body) return;
+    const text = body.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const original = btn.textContent;
+      btn.textContent = '✓ Copied';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = original;
+        btn.classList.remove('copied');
+      }, 1800);
     }).catch(() => {});
   }
 </script>

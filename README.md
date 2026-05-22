@@ -79,7 +79,29 @@ Most hunters waste hours on things that shouldn't take that long. Here's the shi
 
 > **Prerequisite:** You need [Claude Code](https://claude.ai/claude-code) installed and a Claude **Pro** or **Max** plan (or an Anthropic API key with credit). Claude Code itself is free to install, but the underlying model usage requires a paid plan or API billing — the free Claude.ai web account does not include Claude Code access.
 
-**Step 1 — Install tools + skills**
+### Way 1 — Just ask Claude to install it (recommended)
+
+Open your terminal, run `claude`, and paste this prompt. Claude does the rest:
+
+```text
+Help me install the Claude Bug Bounty toolkit from
+https://github.com/shuvonsec/claude-bug-bounty into ~/tools/.
+
+Steps:
+1. git clone the repo into ~/tools/claude-bug-bounty
+2. cd into it and run ./install_tools.sh   (scanners: subfinder, httpx, nuclei, gau, katana, ffuf, dnsx, nmap)
+3. then run ./install.sh                   (registers the AI skills + 23 slash commands into ~/.claude/)
+4. verify the install by listing the new commands (/recon, /hunt, /validate, /report, /autopilot)
+   and confirming the bug-bounty + web2-recon + report-writing skills are available
+5. if anything fails (Go missing, Python pkg, brew formula), tell me exactly which tool
+   broke and the one-line fix — don't silently skip it
+
+I'm on macOS / Linux. Use brew or apt as needed. Don't sudo unless I approve.
+```
+
+That's it. Claude reads the repo, runs the installers, surfaces any failures, and tells you when you're ready to hunt.
+
+### Way 2 — Manual install (if you prefer to drive)
 
 ```bash
 git clone https://github.com/shuvonsec/claude-bug-bounty.git
@@ -88,26 +110,105 @@ chmod +x install_tools.sh && ./install_tools.sh   # installs scanning tools (sub
 chmod +x install.sh && ./install.sh               # installs AI skills + commands into Claude Code
 ```
 
-**Step 2 — Start hunting**
+<br>
 
-```bash
-claude                          # open Claude Code in your terminal
+### Start hunting — paste-ready prompts
 
-/recon target.com               # step 1: map the target (subdomains, live pages, URLs)
-/hunt target.com                # step 2: test for vulnerabilities
-/validate                       # step 3: make sure the finding is real before writing it up
-/report                         # step 4: generate a professional submission report
+Open `claude` in your terminal and paste any of these. They work as natural-language prompts (no slash commands needed) and let Claude pick the right tools, agents, and gates for the job.
+
+**Recon** — map the target
+
+```text
+Run recon on target.com — subdomain enum, live host probing, URL crawling,
+tech fingerprinting, and a focused nuclei sweep. Save everything under
+recon/target.com/. Skip any external tool that isn't installed and tell me
+what to install to close the gap.
 ```
 
-**That's the core loop.** Four commands, full workflow.
+**Hunt** — test for bugs
 
-**Step 3 — Go autonomous**
-
-```bash
-/autopilot target.com --normal  # AI does the whole thing, pauses for your review at the end
-/pickup target.com              # continue where you left off on a previous target
-/intel target.com               # get CVEs + disclosed reports relevant to this target
+```text
+Hunt target.com using the recon data already in recon/target.com/.
+Prioritize the high-value classes first: IDOR/BOLA, auth bypass, SSRF,
+mass assignment, OAuth/OIDC, business logic. Skip anything informational.
+Pause before any active POST/PUT/DELETE so I can approve.
 ```
+
+**Validate** — pre-report gate
+
+```text
+I think I found a [VULN_CLASS] on [ENDPOINT/PARAM]. Walk it through the
+7-Question Gate and the 4 validation gates from skills/triage-validation/.
+If it can't clearly pass all 7, kill it — I'd rather drop a maybe than
+tank my N/A ratio on the platform.
+```
+
+**Report** — submission-ready writeup
+
+```text
+Write a submission-ready report for the finding I just validated.
+Platform: [HackerOne / Bugcrowd / Intigriti / Immunefi].
+Use the impact-first template: title formula, one-line impact statement,
+exact repro steps, request/response PoC, CVSS 3.1 vector + score,
+suggested fix. Human tone — no AI-slop hedging like "could potentially".
+```
+
+**Autopilot** — full loop, hands off
+
+```text
+Run autopilot on target.com in --normal mode. Take it end-to-end:
+scope check → recon → attack-surface ranking → hunt → validate → report.
+Pause at each gate so I can sanity-check before you spend more credits.
+Log everything to hunt-memory so I can resume later.
+```
+
+**Pickup** — resume a previous hunt
+
+```text
+Pick up where I left off on target.com. Read hunt-memory/, show me
+untested endpoints from last session, and start with the highest-ranked
+ones I haven't touched. Don't re-run recon unless it's older than 7 days.
+```
+
+**Smart contract audit (web3)**
+
+```text
+Audit the Solidity contract at [path/to/Contract.sol]. Walk all 10 DeFi
+bug classes from skills/web3-audit: reentrancy, oracle manipulation,
+access control, accounting desync, flash loan, signature replay, ERC4626
+share inflation, off-by-one, incomplete code paths, proxy/upgrade.
+For any finding, drop a Foundry PoC using the template in that skill.
+```
+
+**Meme-coin / token rug-pull scan**
+
+```text
+Scan this token for rug-pull signals: [CHAIN] [contract-address].
+Check mint authority, freeze authority, LP lock status, transfer-tax
+manipulation, honeypot patterns, bonding-curve exploits, and
+proxy/admin keys. Tell me straight: ape, watch, or avoid.
+```
+
+**Scope check** — before you touch anything
+
+```text
+Is [asset.example.com] in scope for the [program-name] bug bounty
+program on [HackerOne/Bugcrowd/Intigriti/Immunefi]? Pull the live
+policy, check in-scope / out-of-scope lists, flag any caveats
+(no automated scanners, no DoS, prod-only, etc.) before I send a
+single request.
+```
+
+**Intel** — what's already known about this target
+
+```text
+Pull intel on target.com: relevant CVEs in their tech stack, disclosed
+HackerOne / Bugcrowd reports against them or sibling products, recent
+patches in their public repos, and any GitHub org I should be watching
+for commit leaks.
+```
+
+> **Tip:** Each prompt is also wired to a slash command (`/recon`, `/hunt`, `/validate`, `/report`, `/autopilot`, `/pickup`, `/web3-audit`, `/token-scan`, `/scope`, `/intel`). Use whichever feels faster — prompts give you control, slash commands are muscle memory.
 
 <br>
 
@@ -328,7 +429,19 @@ sudo apt install golang python3 nodejs jq
 
 You also need [Claude Code](https://claude.ai/claude-code) installed and a **Claude Pro or Max plan** (or an Anthropic API key with credit). The free Claude.ai web account does not include Claude Code access — that's the model billing, not the CLI.
 
-### Install
+### Install — two ways
+
+**A. Let Claude install it for you.** Open `claude` in your terminal and paste:
+
+```text
+Help me install the Claude Bug Bounty toolkit from
+https://github.com/shuvonsec/claude-bug-bounty into ~/tools/. Clone the repo,
+run ./install_tools.sh, then ./install.sh. Verify the /recon /hunt /validate
+/report commands and the bug-bounty skill are registered. If anything breaks
+(Go, Python, brew/apt), tell me which tool and the exact one-line fix.
+```
+
+**B. Drive it yourself:**
 
 ```bash
 git clone https://github.com/shuvonsec/claude-bug-bounty.git

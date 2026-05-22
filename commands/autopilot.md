@@ -47,17 +47,23 @@ without losing findings.
 
 ## What This Does
 
-Runs the full hunt cycle without stopping for approval at each step:
+`/autopilot` is **the same pipeline as running `/scope → /recon → /surface → /hunt → /validate → /report` back-to-back, but driven by one agent loop instead of you re-prompting at each step.** Same scripts. Same outputs. No new capabilities — just less typing and built-in checkpoints.
 
 ```
-1. SCOPE     Load and confirm program scope
-2. RECON     Run recon (or use cached if < 7 days old)
-3. RANK      Prioritize attack surface (recon-ranker agent)
-4. HUNT      Test P1 endpoints systematically
-5. VALIDATE  7-Question Gate on findings
-6. REPORT    Draft reports for validated findings
-7. CHECKPOINT  Present to human for review
+1. SCOPE     Load and confirm program scope                       (≡ /scope)
+2. RECON     bash tools/recon_engine.sh <target>                  (≡ /recon, reuses cache if < 7 days old)
+3. RANK      Prioritize attack surface (recon-ranker agent)       (≡ /surface)
+4. HUNT      python3 tools/hunt.py --target <target> --scan-only  (≡ /hunt)
+5. VALIDATE  7-Question Gate on findings                          (≡ /validate)
+6. REPORT    Draft reports for validated findings                 (≡ /report — never auto-submits)
+7. CHECKPOINT  Present to human for review                        (frequency depends on mode flag)
 ```
+
+### When to pick `/autopilot` vs running the steps yourself
+
+- **Use the manual chain** (`/recon` → `/hunt` → `/validate` → `/report`) when you want full control between steps, when you're exploring a new bug class, or when you're on a weaker / free model that wanders. You can stop after any phase and inspect output.
+- **Use `/autopilot`** when you trust the target surface, want to burn through scope quickly, and only need to look up when something interesting fires. The checkpoint mode controls how often it stops.
+- **Output equivalence**: an `/autopilot` run on `target.com` produces the same `recon/<target>/` and `findings/<target>/` directories as running `/recon target.com` then `/hunt target.com` manually.
 
 ## Safety Guarantees
 

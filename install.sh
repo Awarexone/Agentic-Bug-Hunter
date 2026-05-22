@@ -82,10 +82,15 @@ if [[ "$MODE" == "claude" ]] || [[ "$MODE" == "both" ]]; then
         echo "  claude config edit"
         echo ""
         echo "Then add to the mcpServers section:"
-        cat "${REPO_ROOT}/mcp/burp-mcp-client/config.json" | grep -A 10 '"burp"'
+        echo '    "burp": {'
+        echo '      "command": "java",'
+        echo '      "args": ["-jar", "/path/to/mcp-proxy-all.jar", "--sse-url", "http://127.0.0.1:9876"]'
+        echo '    }'
         echo ""
-        echo "And set your Burp API key:"
-        echo "  export BURP_API_KEY=\"your-api-key-here\""
+        echo "Replace /path/to/mcp-proxy-all.jar with the jar extracted from:"
+        echo "  Burp Suite > Extensions > MCP tab > Extract proxy jar"
+        echo ""
+        echo "See mcp/burp-mcp-client/README.md for full setup instructions."
         echo ""
     fi
 
@@ -163,9 +168,8 @@ mcp = existing.setdefault("mcp", {})
 if add_burp:
     mcp["burp"] = {
         "type": "local",
-        "command": ["npx", "-y", "@portswigger/burp-mcp"],
-        "enabled": True,
-        "environment": {"BURP_API_KEY": "{env:BURP_API_KEY}"}
+        "command": ["java", "-jar", "/path/to/mcp-proxy-all.jar", "--sse-url", "http://127.0.0.1:9876"],
+        "enabled": True
     }
 
 if add_caido:
@@ -195,8 +199,8 @@ PYEOF
 
         if [[ "$add_burp" =~ ^[Yy]$ ]]; then
             echo ""
-            echo "  Burp — set your API key:"
-            echo "    export BURP_API_KEY=\"your-api-key-here\""
+            echo "  Burp — replace /path/to/mcp-proxy-all.jar in opencode.json with the jar"
+            echo "  extracted from: Burp Suite > Extensions > MCP tab > Extract proxy jar"
         fi
         if [[ "$add_caido" =~ ^[Yy]$ ]]; then
             echo ""

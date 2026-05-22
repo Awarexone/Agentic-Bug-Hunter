@@ -3,11 +3,14 @@
   "mcp": {
     "burp": {
       "type": "local",
-      "command": ["npx", "-y", "@portswigger/burp-mcp"],
       "enabled": true,
-      "environment": {
-        "BURP_API_KEY": "{env:BURP_API_KEY}"
-      }
+      "command": [
+        "java",
+        "-jar",
+        "/path/to/mcp-proxy.jar",
+        "--sse-url",
+        "http://127.0.0.1:9876"
+      ]
     }
   }
 }

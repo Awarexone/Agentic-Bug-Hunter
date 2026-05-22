@@ -123,11 +123,8 @@ OpenCode MCP servers are configured under the `mcp` key in your `opencode.json` 
   "mcp": {
     "burp": {
       "type": "local",
-      "command": ["npx", "-y", "@portswigger/burp-mcp"],
-      "enabled": true,
-      "environment": {
-        "BURP_API_KEY": "{env:BURP_API_KEY}"
-      }
+      "command": ["java", "-jar", "/path/to/mcp-proxy-all.jar", "--sse-url", "http://127.0.0.1:9876"],
+      "enabled": true
     }
   }
 }
@@ -213,8 +210,8 @@ Same as Claude Code version. See main README.md for:
 
 ### MCP servers not connecting
 1. Check `opencode.json` (or `~/.config/opencode/config.json`) syntax — ensure `mcp` key uses `command` array + `environment` (not `args`/`env`)
-2. Verify API keys are exported in your shell: `echo $BURP_API_KEY`
-3. Test MCP server manually: `npx -y @portswigger/burp-mcp`
+2. Verify Java is in your PATH: `java --version`
+3. Test the proxy jar manually: `java -jar /path/to/mcp-proxy-all.jar --sse-url http://127.0.0.1:9876`
 4. List servers and auth status: `opencode mcp list`
 
 ## Contributing

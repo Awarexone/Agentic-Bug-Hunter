@@ -114,13 +114,11 @@ case "$ARCH" in
     aarch64) ARCH="arm64" ;;
     armv6l)  ARCH="armv6" ;;
 esac
-SISAKULINT_LATEST=$(curl -sI https://github.com/sisaku-security/sisakulint/releases/latest \
-    | awk -F'/tag/v' '/[Ll]ocation:/ {print $2; exit}' \
-    | tr -d '\r')
+SISAKULINT_LATEST=$(curl -sI https://github.com/sisaku-security/sisakulint/releases/latest | grep -i '^location:' | grep -Eo 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
 SISAKULINT_LATEST="${SISAKULINT_LATEST#v}"
 SISAKULINT_CURRENT=""
 if command -v sisakulint &>/dev/null; then
-    SISAKULINT_CURRENT=$(sisakulint -version 2>&1 | awk '/[0-9]+\.[0-9]+\.[0-9]+/ {print $0; exit}')
+    SISAKULINT_CURRENT=$(sisakulint -version 2>&1 | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
 fi
 if [ -n "$SISAKULINT_CURRENT" ] && [ "$SISAKULINT_CURRENT" = "$SISAKULINT_LATEST" ]; then
     log_ok "sisakulint v${SISAKULINT_CURRENT} already up to date ($(command -v sisakulint))"

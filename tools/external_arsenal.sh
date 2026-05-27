@@ -77,6 +77,12 @@ ARSENAL_TOOLS=(
   "byp4xx|bypass|GOBIN=\$HOME/go/bin go install github.com/lobuhi/byp4xx@latest|github.com/lobuhi/byp4xx"
   "whatwaf|bypass|pipx install whatwaf|github.com/Ekultek/WhatWaf"
   "unwaf|bypass|GOBIN=\$HOME/go/bin go install github.com/mmarting/unwaf@latest|github.com/mmarting/unwaf"
+  # ── Credential attack / password spray ──────────────────────────────────
+  "hashcat|cred|brew install hashcat|hashcat.net/hashcat"
+  "cewler|cred|pipx install cewler|github.com/roys/cewler"
+  "cupp|cred|pipx install cupp|github.com/Mebus/cupp"
+  "trevorspray|cred|pipx install trevorspray|github.com/blacklanternsecurity/TREVORspray"
+  "kerbrute|cred|GOBIN=\$HOME/go/bin go install github.com/ropnop/kerbrute@latest|github.com/ropnop/kerbrute"
   # ── JWT / auth ──────────────────────────────────────────────────────────
   "jwt_tool|jwt|pipx install jwt-tool|github.com/ticarpi/jwt_tool"
   # ── Bug bounty scope tooling ────────────────────────────────────────────

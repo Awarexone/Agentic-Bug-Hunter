@@ -2,15 +2,17 @@
 # =============================================================================
 # Bug Bounty Tool Installer
 # Installs all required tools via Homebrew and Go
-# Usage: ./install_tools.sh [--with-cicd-scanner]
+# Usage: ./install_tools.sh [--with-cicd-scanner] [--with-credential-attack]
 # =============================================================================
 
 set -euo pipefail
 
 INSTALL_CICD_SCANNER=false
+INSTALL_CREDENTIAL_ATTACK=false
 for arg in "$@"; do
     case "$arg" in
         --with-cicd-scanner) INSTALL_CICD_SCANNER=true ;;
+        --with-credential-attack) INSTALL_CREDENTIAL_ATTACK=true ;;
     esac
 done
 
@@ -161,6 +163,83 @@ else
     log_warn "cicd_scanner skipped (use --with-cicd-scanner to install)"
 fi
 
+# Credential-attack tools (optional: --with-credential-attack)
+# Default off — adds ~500MB and pulls ~8 Python/Go deps.
+# Reference: docs/CREDENTIAL_ATTACK_REFERENCES.md
+if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
+    echo ""
+    echo "[*] Installing credential-attack tools..."
+
+    # --- Homebrew ---
+    if command -v hashcat &>/dev/null; then
+        log_ok "hashcat already installed"
+    else
+        brew install hashcat 2>/dev/null && log_ok "hashcat installed" \
+            || log_err "hashcat failed to install via brew"
+    fi
+
+    # --- pipx (isolated Python venvs) ---
+    if ! command -v pipx &>/dev/null; then
+        brew install pipx && pipx ensurepath
+        log_warn "pipx installed — restart shell or 'source ~/.zshrc' for PATH"
+    fi
+    PIPX_CRED_TOOLS=("cewler" "cupp" "trevorspray" "theHarvester")
+    for tool in "${PIPX_CRED_TOOLS[@]}"; do
+        if command -v "$tool" &>/dev/null; then
+            log_ok "$tool already installed"
+        else
+            pipx install "$tool" 2>/dev/null && log_ok "$tool installed" \
+                || log_warn "$tool: pipx install failed — try manually"
+        fi
+    done
+
+    # --- Go (kerbrute — not in brew) ---
+    if command -v kerbrute &>/dev/null; then
+        log_ok "kerbrute already installed"
+    else
+        go install github.com/ropnop/kerbrute@latest 2>/dev/null \
+            && log_ok "kerbrute installed" \
+            || log_err "kerbrute failed to install"
+    fi
+
+    # --- Git clone (tools without brew/pip packages) ---
+    EXT_DIR="${HOME}/.local/share/bug-bounty/credential-attack"
+    mkdir -p "$EXT_DIR"
+    GIT_TOOLS=(
+        "https://github.com/LandGrey/pydictor.git"
+        "https://github.com/m8sec/CrossLinked.git"
+        "https://github.com/urbanadventurer/username-anarchy.git"
+        "https://github.com/knavesec/CredMaster.git"
+    )
+    for repo in "${GIT_TOOLS[@]}"; do
+        name=$(basename "$repo" .git)
+        if [ -d "$EXT_DIR/$name" ]; then
+            (cd "$EXT_DIR/$name" && git pull -q) && log_ok "$name updated at $EXT_DIR/$name"
+        else
+            git clone -q "$repo" "$EXT_DIR/$name" && log_ok "$name cloned to $EXT_DIR/$name"
+        fi
+    done
+
+    # --- SecLists hint (not auto-installed; ~750MB) ---
+    if [ ! -d "/usr/share/seclists" ] && [ ! -d "$HOME/SecLists" ]; then
+        log_warn "SecLists not found. Clone with:"
+        log_warn "  git clone https://github.com/danielmiessler/SecLists.git ~/SecLists"
+    fi
+
+    # --- Hashcat rules ---
+    RULES_DIR="$EXT_DIR/rules"
+    mkdir -p "$RULES_DIR"
+    if [ -f "$RULES_DIR/OneRuleToRuleThemAll.rule" ]; then
+        log_ok "OneRuleToRuleThemAll.rule already present"
+    else
+        curl -sL https://raw.githubusercontent.com/NotSoSecure/password_cracking_rules/master/OneRuleToRuleThemAll.rule \
+            -o "$RULES_DIR/OneRuleToRuleThemAll.rule" \
+            && log_ok "OneRuleToRuleThemAll.rule downloaded to $RULES_DIR"
+    fi
+else
+    log_warn "credential-attack tools skipped (use --with-credential-attack to install)"
+fi
+
 # Update nuclei templates
 echo ""
 echo "[*] Updating nuclei templates..."
@@ -184,6 +263,9 @@ echo "[*] Installation Verification"
 echo "============================================="
 
 ALL_TOOLS=(subfinder httpx nuclei ffuf nmap amass gau dalfox subjack sisakulint)
+if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
+    ALL_TOOLS+=(hashcat cewler cupp trevorspray theHarvester kerbrute)
+fi
 INSTALLED=0
 MISSING=0
 

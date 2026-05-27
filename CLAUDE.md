@@ -90,6 +90,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 - `wordlists/REFERENCES.md` — pointers to SecLists / OneListForAll / fuzz4bounty / PayloadsAllTheThings
 - `skills/security-arsenal/REFERENCES.md` — methodology, writeup archives, dorks, key-verification, AI-security skill repos
 - `skills/security-arsenal/METHODOLOGY_CHEATSHEET.md` — per-vuln quick-check tables distilled from HowToHunt + HolyTips + AllAboutBugBounty + KingOfBugBountyTips
+- `docs/CREDENTIAL_ATTACK_REFERENCES.md` — credential-attack 攻擊面 / 工具盤點 / 法律紅線（搭配 `./install_tools.sh --with-credential-attack`）
 
 ### MCP Integrations (in `mcp/`)
 

@@ -298,6 +298,77 @@ After spray:
 
 ---
 
+## TOOL LADDER & ALTERNATIVES
+
+When our default tool fails or you want to swap, here's the practical ladder. Tools marked ❌ were deliberately rejected — don't try them as drop-in subs.
+
+### Stage 1 — Wordlist crawl
+
+| Tool | Status | Why |
+|---|---|---|
+| **cewler** | ✓ Primary | Python rewrite of CeWL; Scrapy-backed; faster on JS-heavy sites |
+| CeWL | ⚠ Backup | Ruby; not in brew on macOS; older but more battle-tested. Use only if cewler fails on a specific site |
+| dirtywords | Alternative | Newer, BB-focused; try if cewler misses dynamic content |
+| getjswords | Complement | Pulls words from JS bundles specifically — useful when target has rich SPA |
+
+### Stage 1 — Wordlist mutation
+
+| Tool | Status | Why |
+|---|---|---|
+| **hashcat top10_2025.rule / best66.rule / OneRuleToRuleThemAll** | ✓ Primary | Industry standard, modes selectable in `/wordlist-gen` |
+| pydictor (`-extend`) | Reserved for Stage 3 | Best with OSINT inputs (birthdays/names); overlaps hashcat on raw words |
+| wister | ❌ Dropped | Variant logic overlaps pydictor; no clear advantage |
+| Mentalist | ❌ Dropped | GUI-only — not scriptable for CI |
+| rsmangler | Minor alt | Simple prefix/suffix mutation; less complete than hashcat rules |
+
+### Stage 2 — Breach corpus / ranking
+
+| Tool | Status | Why |
+|---|---|---|
+| **HIBP Pwned Passwords (k-anonymity)** | ✓ Primary | Free, no API key, hash-prefix only — safe legal posture |
+| HIBP Breach API v3 | Optional ($3.50/mo) | Per-email leak lookup; useful for high-priority account triage |
+| DeHashed / Intelligence Security | ❌ NOT for spray | Contains plaintext passwords from real breaches. **Using plaintext breach credentials against live accounts is illegal in most jurisdictions even with BB scope.** Use only for reading, never for login attempts |
+| weakpass.com (28GB dump) | Offline cracking only | Too large for spray; usable for hash cracking after a hit |
+| SecLists Passwords/ | Generic fallback | Use ONLY when target has no website to crawl from |
+
+### Stage 3 — OSINT employees
+
+| Tool | Status | Why |
+|---|---|---|
+| **theHarvester** | ✓ Primary | Multi-source (search engines + CT logs + DNS), free, ~43 sources available |
+| **CrossLinked** | ✓ Opt-in via `--with-linkedin` | Google/Bing dorks against LinkedIn — no LinkedIn auth needed |
+| **username-anarchy** | ✓ Primary | Expands names into 30+ username formats |
+| LinkedInDumper | ❌ Dropped | Requires LinkedIn account auth — OPSEC cost, account ban risk |
+| NameSpi | Alternative | Combines LinkedIn + Hunter.io — useful if you have Hunter.io |
+| Hunter.io | Optional (paid) | Best email-format inference (`{first}.{last}@`); valuable for high-value targets |
+| Kerbrute | Internal-network only | Validates AD usernames via Kerberos pre-auth — useless against external BB targets |
+
+### Stage 4 — Spray engines
+
+| Tool | Status | Why |
+|---|---|---|
+| **Built-in http-form / oauth modules** | ✓ Primary | Pure Python urllib; under our full control; auditable JSONL |
+| **TREVORspray** (`o365`, `okta`) | ✓ Primary for enterprise SSO | Most complete O365/Okta engine; built-in SSH proxy rotation; mature |
+| CredMaster | Alternative | AWS FireProx IP rotation — useful if program rate-limits per-IP heavily |
+| MSOLSpray | ❌ Dropped | TREVORspray already covers O365 with better tooling |
+| Spray365 | ❌ Dropped | Only M365; TREVORspray + CredMaster covers spray needs |
+| SprayingToolkit | Alternative | Lync / S4B / OWA niche — try only if you hit those specific targets |
+
+### Decision shortcuts
+
+- **Modern SaaS target** (Twilio, Stripe, GitLab): start with `cewler` + `hashcat top10_2025` + `theHarvester` (no LinkedIn) + `/spray http-form`
+- **Enterprise with Azure/M365**: `cewler` + `theHarvester` + `--with-linkedin` + `/spray o365`
+- **Mobile API target**: `cewler` (depth 1, JS bundles often have the wordlist) + `/spray oauth`
+- **Internal network pentest** (out of scope for BB but for completeness): add `kerbrute userenum` before spray
+
+### Legal red lines (non-negotiable)
+
+1. **Never use plaintext breach passwords against live accounts** — even if you have DeHashed access. HIBP hash-prefix is the only legally clean leak-source.
+2. **Stop on first valid creds** — don't keep grinding for multiple hits; that's testing, not lulz.
+3. **Notify the program if lockouts happened** — proactive disclosure with audit timestamps.
+
+---
+
 ## DEEP DIVE
 
 For the underlying tools' own docs:

@@ -23,7 +23,7 @@ ARSENAL_TOOLS=(
   "amass|recon|GOBIN=\$HOME/go/bin go install github.com/owasp-amass/amass/v4/...@master|github.com/owasp-amass/amass"
   "assetfinder|recon|GOBIN=\$HOME/go/bin go install github.com/tomnomnom/assetfinder@latest|github.com/tomnomnom/assetfinder"
   "bbot|recon|pipx install bbot|github.com/blacklanternsecurity/bbot"
-  "theHarvester|recon|pipx install theHarvester|github.com/laramies/theHarvester"
+  "theHarvester|recon|brew install theharvester|github.com/laramies/theHarvester"
   "dnsrecon|recon|pipx install dnsrecon|github.com/darkoperator/dnsrecon"
   "massdns|recon|brew install massdns|github.com/blechschmidt/massdns"
   "puredns|recon|GOBIN=\$HOME/go/bin go install github.com/d3mondev/puredns/v2@latest|github.com/d3mondev/puredns"

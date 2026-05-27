@@ -173,17 +173,20 @@ if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
     log_warn "First run may take 10–20 min: brew auto-update + downloads ~500MB."
     log_warn "Output below comes from brew/pipx/go/curl directly — slow lines are normal."
 
-    # --- Homebrew ---
-    if command -v hashcat &>/dev/null; then
-        log_ok "hashcat already installed"
-    else
-        echo "    [*] Installing hashcat via brew (large download: OpenCL deps + binaries)..."
-        if brew install hashcat; then
-            log_ok "hashcat installed"
+    # --- Homebrew (theHarvester moved here: PyPI package has no CLI entry-point) ---
+    BREW_CRED_TOOLS=("hashcat" "theharvester")
+    for tool in "${BREW_CRED_TOOLS[@]}"; do
+        if command -v "$tool" &>/dev/null || command -v "theHarvester" &>/dev/null; then
+            log_ok "$tool already installed"
         else
-            log_err "hashcat failed to install via brew"
+            echo "    [*] Installing $tool via brew..."
+            if brew install "$tool"; then
+                log_ok "$tool installed"
+            else
+                log_err "$tool failed to install via brew"
+            fi
         fi
-    fi
+    done
 
     # --- pipx (isolated Python venvs) ---
     if ! command -v pipx &>/dev/null; then
@@ -191,7 +194,7 @@ if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
         brew install pipx && pipx ensurepath
         log_warn "pipx installed — restart shell or 'source ~/.zshrc' for PATH"
     fi
-    PIPX_CRED_TOOLS=("cewler" "cupp" "trevorspray" "theHarvester")
+    PIPX_CRED_TOOLS=("cewler" "cupp" "trevorspray")
     for tool in "${PIPX_CRED_TOOLS[@]}"; do
         if command -v "$tool" &>/dev/null; then
             log_ok "$tool already installed"
@@ -293,7 +296,7 @@ echo "============================================="
 
 ALL_TOOLS=(subfinder httpx nuclei ffuf nmap amass gau dalfox subjack sisakulint)
 if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
-    ALL_TOOLS+=(hashcat cewler cupp trevorspray theHarvester kerbrute)
+    ALL_TOOLS+=(hashcat theHarvester cewler cupp trevorspray kerbrute)
 fi
 INSTALLED=0
 MISSING=0

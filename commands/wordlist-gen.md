@@ -12,13 +12,16 @@ Generate a company-specific password wordlist by crawling the target website and
 /wordlist-gen target.com
 /wordlist-gen target.com --depth 3
 /wordlist-gen target.com --mode aggressive       # 52k rules, for offline cracking only
+/wordlist-gen target.com --filter loose          # keep raw cewler tokens (CSS/URL slugs)
 /wordlist-gen target.com --min-len 6 --rate 3    # slower, longer-min crawl
 ```
 
 ## Pipeline
 
 1. **cewler** crawls `https://<target>` (depth 2 by default, lowercase, polite rate limit) → `from-website.txt`
-2. Awk dedup + length filter (5–20 chars, printable ASCII) → `cleaned.txt`
+2. Awk dedup + filter → `cleaned.txt`
+   - **strict** (default): start with letter, alphanum only, max 14 chars, drops 10+ char mixed tokens (kills API key examples, CSS colors, URL slugs)
+   - **loose**: only length + printable filter (cewler raw)
 3. **hashcat --stdout -r <rules>** applies password mutations (l33t, case, year suffix, exclamation, digit append) → `ranked.txt`
 
 ## Modes

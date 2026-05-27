@@ -10,20 +10,29 @@
 #
 # Usage:
 #   tools/wordlist_engine.sh <target>
-#   tools/wordlist_engine.sh <target> --depth 3 --min-len 6 --mode aggressive
+#   tools/wordlist_engine.sh <target> --depth 3 --mode aggressive
+#   tools/wordlist_engine.sh <target> --filter loose   # keep noisy raw tokens
 #
-# Modes:
+# Modes (rule set):
 #   minimal      top10_2025.rule       ~10 rules  — fastest, for cautious spray
 #   balanced     best66.rule           ~66 rules  — default
 #   aggressive   OneRuleToRuleThemAll  52k rules  — offline cracking, NOT spray
+#
+# Filter (Step 2 cleanup, default strict):
+#   strict   alphanum-only, max 14 chars, drops random-looking 10+ char tokens.
+#            Designed for API-heavy sites (Twilio, Stripe) where docs leak
+#            example tokens / CSS selectors / URL slugs as raw "words".
+#   loose    only length + printable-ASCII filter (cewler's raw output minus
+#            obvious garbage).
 # =============================================================================
 
 set -euo pipefail
 
 DEPTH=2
 MIN_LEN=5
-MAX_LEN=20
+MAX_LEN=14
 MODE="balanced"
+FILTER="strict"
 RATE=5
 USER_AGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Bug-Bounty-Research"
 TARGET=""
@@ -34,6 +43,7 @@ while [[ $# -gt 0 ]]; do
         --min-len) MIN_LEN="$2"; shift 2 ;;
         --max-len) MAX_LEN="$2"; shift 2 ;;
         --mode)    MODE="$2"; shift 2 ;;
+        --filter)  FILTER="$2"; shift 2 ;;
         --rate)    RATE="$2"; shift 2 ;;
         -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*) echo "Unknown flag: $1" >&2; exit 1 ;;
@@ -42,7 +52,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$TARGET" ]; then
-    echo "Usage: $0 <target> [--depth N] [--min-len N] [--mode minimal|balanced|aggressive]" >&2
+    echo "Usage: $0 <target> [--depth N] [--mode minimal|balanced|aggressive] [--filter strict|loose]" >&2
+    exit 1
+fi
+
+if [ "$FILTER" != "strict" ] && [ "$FILTER" != "loose" ]; then
+    echo "Unknown filter: $FILTER (use: strict|loose)" >&2
     exit 1
 fi
 
@@ -117,10 +132,21 @@ RAW_COUNT=$(wc -l < "$RAW" | tr -d ' ')
 log_ok "Crawled $RAW_COUNT raw words"
 
 # Step 2: dedup + clean
-log_ok "Step 2/3: dedup + length filter ($MIN_LEN-$MAX_LEN chars, printable ASCII)"
-awk -v min="$MIN_LEN" -v max="$MAX_LEN" \
-    'length($0) >= min && length($0) <= max && /^[[:print:]]+$/' \
-    "$RAW" | sort -u > "$CLEAN"
+log_ok "Step 2/3: dedup + filter ($FILTER mode, $MIN_LEN-$MAX_LEN chars)"
+if [ "$FILTER" = "strict" ]; then
+    # Keep only: start with letter, alphanum only, no random-looking 10+char mixed tokens
+    # Drops: #hex, CSS selectors, snake_case, URL slugs, raw API key examples, pure digits
+    awk -v min="$MIN_LEN" -v max="$MAX_LEN" '
+        length($0) >= min && length($0) <= max \
+        && /^[a-z][a-z0-9]*$/ \
+        && !(length($0) >= 10 && /[0-9]/ && /[a-z]/)
+    ' "$RAW" | sort -u > "$CLEAN"
+else
+    # Loose: just length + printable filter (original behavior, lots of noise on API-doc-heavy sites)
+    awk -v min="$MIN_LEN" -v max="$MAX_LEN" \
+        'length($0) >= min && length($0) <= max && /^[[:print:]]+$/' \
+        "$RAW" | sort -u > "$CLEAN"
+fi
 CLEAN_COUNT=$(wc -l < "$CLEAN" | tr -d ' ')
 log_ok "Cleaned -> $CLEAN_COUNT unique words"
 

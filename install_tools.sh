@@ -170,16 +170,24 @@ if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
     echo ""
     echo "[*] Installing credential-attack tools..."
 
+    log_warn "First run may take 10–20 min: brew auto-update + downloads ~500MB."
+    log_warn "Output below comes from brew/pipx/go/curl directly — slow lines are normal."
+
     # --- Homebrew ---
     if command -v hashcat &>/dev/null; then
         log_ok "hashcat already installed"
     else
-        brew install hashcat 2>/dev/null && log_ok "hashcat installed" \
-            || log_err "hashcat failed to install via brew"
+        echo "    [*] Installing hashcat via brew (large download: OpenCL deps + binaries)..."
+        if brew install hashcat; then
+            log_ok "hashcat installed"
+        else
+            log_err "hashcat failed to install via brew"
+        fi
     fi
 
     # --- pipx (isolated Python venvs) ---
     if ! command -v pipx &>/dev/null; then
+        echo "    [*] Installing pipx via brew..."
         brew install pipx && pipx ensurepath
         log_warn "pipx installed — restart shell or 'source ~/.zshrc' for PATH"
     fi
@@ -188,8 +196,12 @@ if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
         if command -v "$tool" &>/dev/null; then
             log_ok "$tool already installed"
         else
-            pipx install "$tool" 2>/dev/null && log_ok "$tool installed" \
-                || log_warn "$tool: pipx install failed — try manually"
+            echo "    [*] Installing $tool via pipx..."
+            if pipx install "$tool"; then
+                log_ok "$tool installed"
+            else
+                log_warn "$tool: pipx install failed — try manually"
+            fi
         fi
     done
 
@@ -197,9 +209,12 @@ if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
     if command -v kerbrute &>/dev/null; then
         log_ok "kerbrute already installed"
     else
-        go install github.com/ropnop/kerbrute@latest 2>/dev/null \
-            && log_ok "kerbrute installed" \
-            || log_err "kerbrute failed to install"
+        echo "    [*] Installing kerbrute via go..."
+        if go install github.com/ropnop/kerbrute@latest; then
+            log_ok "kerbrute installed"
+        else
+            log_err "kerbrute failed to install"
+        fi
     fi
 
     # --- Git clone (tools without brew/pip packages) ---
@@ -214,9 +229,19 @@ if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
     for repo in "${GIT_TOOLS[@]}"; do
         name=$(basename "$repo" .git)
         if [ -d "$EXT_DIR/$name" ]; then
-            (cd "$EXT_DIR/$name" && git pull -q) && log_ok "$name updated at $EXT_DIR/$name"
+            echo "    [*] Updating $name (git pull)..."
+            if (cd "$EXT_DIR/$name" && git pull --quiet); then
+                log_ok "$name updated at $EXT_DIR/$name"
+            else
+                log_warn "$name: git pull failed"
+            fi
         else
-            git clone -q "$repo" "$EXT_DIR/$name" && log_ok "$name cloned to $EXT_DIR/$name"
+            echo "    [*] Cloning $name..."
+            if git clone --quiet "$repo" "$EXT_DIR/$name"; then
+                log_ok "$name cloned to $EXT_DIR/$name"
+            else
+                log_err "$name: git clone failed"
+            fi
         fi
     done
 
@@ -232,9 +257,13 @@ if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
     if [ -f "$RULES_DIR/OneRuleToRuleThemAll.rule" ]; then
         log_ok "OneRuleToRuleThemAll.rule already present"
     else
-        curl -sL https://raw.githubusercontent.com/NotSoSecure/password_cracking_rules/master/OneRuleToRuleThemAll.rule \
-            -o "$RULES_DIR/OneRuleToRuleThemAll.rule" \
-            && log_ok "OneRuleToRuleThemAll.rule downloaded to $RULES_DIR"
+        echo "    [*] Downloading OneRuleToRuleThemAll.rule..."
+        if curl -fsSL https://raw.githubusercontent.com/NotSoSecure/password_cracking_rules/master/OneRuleToRuleThemAll.rule \
+            -o "$RULES_DIR/OneRuleToRuleThemAll.rule"; then
+            log_ok "OneRuleToRuleThemAll.rule downloaded to $RULES_DIR"
+        else
+            log_warn "OneRuleToRuleThemAll.rule download failed"
+        fi
     fi
 else
     log_warn "credential-attack tools skipped (use --with-credential-attack to install)"

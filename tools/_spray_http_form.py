@@ -80,11 +80,22 @@ def audit(record: dict) -> None:
         f.write(json.dumps(record) + "\n")
 
 
+def _build_opener():
+    """Build a urllib opener that uses our SSL context AND doesn't follow redirects."""
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k): return None
+    return urllib.request.build_opener(
+        NoRedirect,
+        urllib.request.HTTPSHandler(context=SSL_CTX),
+    )
+
+
 def fetch_csrf(url: str, regex: str) -> str | None:
     """GET the form URL and extract CSRF token via regex (group 1)."""
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    opener = _build_opener()
     try:
-        with urllib.request.urlopen(req, timeout=15, context=SSL_CTX) as resp:
+        with opener.open(req, timeout=15) as resp:
             body = resp.read().decode("utf-8", errors="replace")
         m = re.search(regex, body)
         if not m:
@@ -95,11 +106,26 @@ def fetch_csrf(url: str, regex: str) -> str | None:
         return None
 
 
+def substitute(template: str, user: str, password: str, csrf: str | None) -> str:
+    """Replace placeholders ({USER}/{USERNAME}, {PASS}/{PASSWORD}, {CSRF}).
+
+    Uses str.replace not str.format — won't crash on unknown placeholders
+    (they remain literal in the output, which the user will see in the request)."""
+    subs = {
+        "{USER}": user, "{USERNAME}": user,
+        "{PASS}": password, "{PASSWORD}": password,
+        "{CSRF}": csrf or "",
+    }
+    for k, v in subs.items():
+        template = template.replace(k, v)
+    return template
+
+
 def attempt(url: str, post_data_tpl: str, user: str, password: str,
             csrf_token: str | None, success_re: re.Pattern | None,
             fail_re: re.Pattern | None) -> dict:
     """Return result dict: {status_code, redirect_to, looks_like_success, duration_ms}."""
-    body = post_data_tpl.format(USER=user, PASS=password, CSRF=csrf_token or "")
+    body = substitute(post_data_tpl, user, password, csrf_token)
     body_bytes = body.encode("utf-8")
     req = urllib.request.Request(
         url,
@@ -112,17 +138,14 @@ def attempt(url: str, post_data_tpl: str, user: str, password: str,
         method="POST",
     )
 
-    # Custom opener that DOES NOT follow redirects (we want to see 3xx)
-    class NoRedirect(urllib.request.HTTPRedirectHandler):
-        def redirect_request(self, *a, **k): return None
-    opener = urllib.request.build_opener(NoRedirect)
+    opener = _build_opener()
 
     start = time.time()
     status = 0
     redirect_to = None
     resp_body = ""
     try:
-        with opener.open(req, timeout=15, context=SSL_CTX) as resp:
+        with opener.open(req, timeout=15) as resp:
             status = resp.status
             resp_body = resp.read(8192).decode("utf-8", errors="replace")
     except urllib.error.HTTPError as e:

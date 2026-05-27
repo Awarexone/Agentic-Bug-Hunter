@@ -1,6 +1,6 @@
 ---
 name: credential-attack
-description: Password spray methodology for bug bounty — when to do it vs web-vuln hunting, the wordlist-gen + breach-check + osint-employees + spray pipeline, mode selection (http-form / oauth / o365 / okta), rate-limit + lockout tactics, BBP legal guardrails, success detection, and the spray → authenticated /hunt chain pattern. Use when assessing whether credential attack is worth running on a target, picking the right mode, or recovering from common pitfalls. Detailed tool reference is in docs/CREDENTIAL_ATTACK_REFERENCES.md.
+description: Password spray methodology for bug bounty — when to do it vs web-vuln hunting, the wordlist-gen + breach-check + osint-employees + spray pipeline, mode selection (http-form / oauth / o365 / okta), rate-limit + lockout tactics, BBP legal guardrails, success detection, and the spray → authenticated /hunt chain pattern. Use when assessing whether credential attack is worth running on a target, picking the right mode, or recovering from common pitfalls.
 ---
 
 # CREDENTIAL ATTACK PIPELINE
@@ -299,10 +299,6 @@ After spray:
 ---
 
 ## DEEP DIVE
-
-For the tool-by-tool reference (every option, every alternative tool, why we picked the 10 we did):
-
-- `docs/CREDENTIAL_ATTACK_REFERENCES.md` — full curated reference with install notes, references to TREVORspray docs, CredMaster FireProx rotation, OneRuleToRuleThemAll history, theHarvester source list.
 
 For the underlying tools' own docs:
 - `tools/wordlist_engine.sh -h`

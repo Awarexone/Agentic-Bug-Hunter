@@ -163,5 +163,4 @@ You produce structured outputs, not narratives. Stats first, prose only when sur
 ## Related
 
 - Skill: `credential-attack` — methodology + pitfalls reference
-- Doc: `docs/CREDENTIAL_ATTACK_REFERENCES.md` — full tool ladder
 - Tools: `wordlist_engine.sh`, `osint_employees.sh`, `breach_checker.py`, `spray_orchestrator.sh`

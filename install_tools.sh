@@ -165,7 +165,6 @@ fi
 
 # Credential-attack tools (optional: --with-credential-attack)
 # Default off — adds ~500MB and pulls ~8 Python/Go deps.
-# Reference: docs/CREDENTIAL_ATTACK_REFERENCES.md
 if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
     echo ""
     echo "[*] Installing credential-attack tools..."

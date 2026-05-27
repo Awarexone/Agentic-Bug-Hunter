@@ -51,6 +51,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `/wordlist-gen` | `/wordlist-gen <target>` — company-specific password wordlist (cewler + hashcat); requires `--with-credential-attack` |
 | `/osint-employees` | `/osint-employees <target>` — employee names + emails (theHarvester + username-anarchy, opt-in LinkedIn); requires `--with-credential-attack` |
 | `/breach-check` | `/breach-check <wordlist>` — HIBP k-anonymity rank wordlist by real-world breach count |
+| `/spray` | `/spray <url> --mode http-form\|oauth\|o365\|okta --users <f> --passes <f>` — password spray with hard guards (typed-host confirm, lockout warn, audit log) |
 
 ### Agents (8 specialized agents)
 
@@ -90,6 +91,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 - `tools/wordlist_engine.sh` — company-specific password wordlist generator (cewler + hashcat rules); requires `--with-credential-attack`
 - `tools/osint_employees.sh` — employee names + email patterns for spray prep (theHarvester + username-anarchy, opt-in CrossLinked); requires `--with-credential-attack`
 - `tools/breach_checker.py` — HIBP k-anonymity wordlist enrichment; ranks passwords by breach count (no API key, free)
+- `tools/spray_orchestrator.sh` — password spray with typed-hostname guard + lockout warning + audit log; modes: http-form / oauth / o365 / okta (TREVOR); requires `--with-credential-attack` for TREVOR modes
 
 ### External tool references
 

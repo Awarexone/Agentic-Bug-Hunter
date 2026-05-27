@@ -225,7 +225,6 @@ if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
     mkdir -p "$EXT_DIR"
     GIT_TOOLS=(
         "https://github.com/LandGrey/pydictor.git"
-        "https://github.com/m8sec/CrossLinked.git"
         "https://github.com/urbanadventurer/username-anarchy.git"
         "https://github.com/knavesec/CredMaster.git"
     )
@@ -248,16 +247,14 @@ if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
         fi
     done
 
-    # --- CrossLinked Python deps (lxml excluded — fails to build on Python 3.13;
-    # bs4 falls back to html.parser without it) ---
-    if [ -f "$EXT_DIR/CrossLinked/requirements.txt" ]; then
-        echo "    [*] Installing CrossLinked Python deps (excl. lxml)..."
-        if grep -v "^lxml" "$EXT_DIR/CrossLinked/requirements.txt" \
-            | pip3 install --user --quiet -r /dev/stdin 2>&1 | tail -1; then
-            log_ok "CrossLinked deps installed"
-        else
-            log_warn "CrossLinked deps install had issues — run 'python3 $EXT_DIR/CrossLinked/crosslinked.py -h' to verify"
-        fi
+    # --- CrossLinked via pipx (avoids PEP 668 pip3 --user breakage on macOS + Python 3.13) ---
+    echo "    [*] Installing CrossLinked via pipx..."
+    if _have pipx && pipx install crosslinked --quiet 2>/dev/null; then
+        log_ok "CrossLinked installed via pipx"
+    elif _have pipx && pipx upgrade crosslinked --quiet 2>/dev/null; then
+        log_ok "CrossLinked upgraded via pipx"
+    else
+        log_warn "CrossLinked pipx install failed — run 'pipx install crosslinked' manually"
     fi
 
     # --- SecLists hint (not auto-installed; ~750MB) ---

@@ -65,7 +65,7 @@ MISSING=()
 _have theHarvester || MISSING+=("theHarvester")
 [ -f "$EXT_DIR/username-anarchy/username-anarchy" ] || MISSING+=("username-anarchy")
 if [ "$WITH_LINKEDIN" = true ]; then
-    [ -f "$EXT_DIR/CrossLinked/crosslinked.py" ] || MISSING+=("CrossLinked")
+    _have crosslinked || MISSING+=("CrossLinked (run: pipx install crosslinked)")
 fi
 if [ "$WITH_SOCIAL" = true ]; then
     [ -f "$EXT_DIR/pydictor/pydictor.py" ] || MISSING+=("pydictor")
@@ -136,7 +136,7 @@ log_ok "Derived $NAME_COUNT_BEFORE names from email patterns"
 if [ "$WITH_LINKEDIN" = true ]; then
     log_ok "Step 3: CrossLinked LinkedIn search for '$COMPANY'"
     CL_OUT="$OUT_DIR/crosslinked_names"
-    if python3 "$EXT_DIR/CrossLinked/crosslinked.py" \
+    if crosslinked \
             -f '{first} {last}' \
             -o "$CL_OUT" \
             "$COMPANY" 2>&1 | tail -5; then

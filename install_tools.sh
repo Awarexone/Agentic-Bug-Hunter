@@ -248,6 +248,18 @@ if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
         fi
     done
 
+    # --- CrossLinked Python deps (lxml excluded — fails to build on Python 3.13;
+    # bs4 falls back to html.parser without it) ---
+    if [ -f "$EXT_DIR/CrossLinked/requirements.txt" ]; then
+        echo "    [*] Installing CrossLinked Python deps (excl. lxml)..."
+        if grep -v "^lxml" "$EXT_DIR/CrossLinked/requirements.txt" \
+            | pip3 install --user --quiet -r /dev/stdin 2>&1 | tail -1; then
+            log_ok "CrossLinked deps installed"
+        else
+            log_warn "CrossLinked deps install had issues — run 'python3 $EXT_DIR/CrossLinked/crosslinked.py -h' to verify"
+        fi
+    fi
+
     # --- SecLists hint (not auto-installed; ~750MB) ---
     if [ ! -d "/usr/share/seclists" ] && [ ! -d "$HOME/SecLists" ]; then
         log_warn "SecLists not found. Clone with:"

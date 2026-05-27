@@ -13,7 +13,8 @@ Rank a password wordlist by HaveIBeenPwned breach count. Used between `/wordlist
 /breach-check ranked.txt --with-counts                              # also dump TSV
 /breach-check ranked.txt --max-count 1000000                        # drop generic passwords (>1M)
 /breach-check ranked.txt --min-count 1                              # only keep proven-real passwords
-/breach-check ranked.txt --limit 5000                               # test/preview first 5k
+/breach-check ranked.txt --limit 5000                               # test/preview first 5k (lex-sorted slice)
+/breach-check ranked.txt --limit 5000 --shuffle                     # random 5k sample (avoid ASCII-sort bias)
 ```
 
 ## What this does

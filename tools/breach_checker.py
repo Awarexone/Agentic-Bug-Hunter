@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 import argparse
 import hashlib
+import random
 import sys
 import time
 import urllib.error
@@ -135,6 +136,10 @@ def main() -> int:
                    help="Parallel HIBP requests (default: 20; HIBP allows ~25/sec)")
     p.add_argument("--limit", type=int, default=None,
                    help="Process only first N unique passwords (testing/preview)")
+    p.add_argument("--shuffle", action="store_true",
+                   help="Shuffle wordlist before --limit (avoids ASCII-sort bias on samples)")
+    p.add_argument("--seed", type=int, default=None,
+                   help="Seed for --shuffle (default: non-deterministic)")
     p.add_argument("--with-counts", action="store_true",
                    help="Also write <output>-counts.tsv with breach counts")
     args = p.parse_args()
@@ -149,6 +154,10 @@ def main() -> int:
         passwords = list(dict.fromkeys(
             line.strip() for line in f if line.strip()
         ))
+
+    if args.shuffle:
+        rng = random.Random(args.seed)
+        rng.shuffle(passwords)
 
     if args.limit:
         passwords = passwords[: args.limit]

@@ -39,6 +39,13 @@ if ! command -v go &>/dev/null; then
     brew install go
 fi
 
+# Ensure Go bin is in PATH early so go install binaries are visible
+GOPATH="$(go env GOPATH 2>/dev/null || true)"
+GOPATH="${GOPATH:-$HOME/go}"
+if [[ ":$PATH:" != *":$GOPATH/bin:"* ]]; then
+    export PATH="$PATH:$GOPATH/bin"
+fi
+
 # Tools to install via Homebrew
 BREW_TOOLS=(
     "nmap"
@@ -105,11 +112,13 @@ case "$ARCH" in
     aarch64) ARCH="arm64" ;;
     armv6l)  ARCH="armv6" ;;
 esac
-SISAKULINT_LATEST=$(curl -sI https://github.com/sisaku-security/sisakulint/releases/latest | grep -i '^location:' | grep -oP 'v[\d.]+' || true)
+SISAKULINT_LATEST=$(curl -sI https://github.com/sisaku-security/sisakulint/releases/latest \
+    | awk -F'/tag/v' '/[Ll]ocation:/ {print $2; exit}' \
+    | tr -d '\r')
 SISAKULINT_LATEST="${SISAKULINT_LATEST#v}"
 SISAKULINT_CURRENT=""
 if command -v sisakulint &>/dev/null; then
-    SISAKULINT_CURRENT=$(sisakulint -version 2>&1 | grep -oP '[\d]+\.[\d]+\.[\d]+' || true)
+    SISAKULINT_CURRENT=$(sisakulint -version 2>&1 | awk '/[0-9]+\.[0-9]+\.[0-9]+/ {print $0; exit}')
 fi
 if [ -n "$SISAKULINT_CURRENT" ] && [ "$SISAKULINT_CURRENT" = "$SISAKULINT_LATEST" ]; then
     log_ok "sisakulint v${SISAKULINT_CURRENT} already up to date ($(command -v sisakulint))"
@@ -170,11 +179,10 @@ if command -v nuclei &>/dev/null; then
 fi
 
 # Ensure Go bin is in PATH
-GOPATH="${GOPATH:-$HOME/go}"
 if [[ ":$PATH:" != *":$GOPATH/bin:"* ]]; then
     log_warn "Add Go bin to your PATH:"
     echo "    export PATH=\$PATH:$GOPATH/bin"
-    echo "    # Add to ~/.zshrc for persistence"
+    echo "    # Add to ~/.zshrc"
 fi
 
 # Verification
@@ -195,7 +203,7 @@ for tool in "${ALL_TOOLS[@]}"; do
         log_err "$tool: NOT FOUND"
         ((++MISSING))
     fi
-done
+ done
 
 echo ""
 echo "============================================="

@@ -274,10 +274,10 @@ curl -sI https://target.com | grep -iE "server|x-powered-by|x-aspnet|x-runtime|x
 | Django | IDOR (ModelViewSet, no object perms) | SSTI (mark_safe) |
 | Flask | SSTI (render_template_string) | SSRF (requests lib) |
 | Laravel | Mass assignment ($fillable) | IDOR (Eloquent, no ownership) |
-| Express (Node.js) | Prototype pollution | Path traversal |
-| Spring Boot | Actuator endpoints (/actuator/env) | SSTI (Thymeleaf) |
+| Express (Node.js) | Prototype pollution | Path traversal + debug surface (`/_debug`, `/__debug__`) → web2-vuln-classes "Error Disclosure / Debug Endpoints" |
+| Spring Boot | Actuator endpoints → web2-vuln-classes "Error Disclosure / Debug Endpoints" for full surface | SSTI (Thymeleaf) |
 | ASP.NET | ViewState deserialization | Open redirect (ReturnUrl) |
-| Next.js | SSRF via Server Actions | Open redirect via redirect() |
+| Next.js | SSRF via Server Actions + `/_next/data/` / `/_next/static/chunks/` → web2-vuln-classes "Error Disclosure / Debug Endpoints" | Open redirect via redirect() |
 | GraphQL | Introspection → auth bypass on mutations | IDOR via node(id:) |
 | WordPress | Plugin SQLi | REST API auth bypass |
 

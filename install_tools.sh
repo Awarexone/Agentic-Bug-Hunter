@@ -2,15 +2,17 @@
 # =============================================================================
 # Bug Bounty Tool Installer
 # Installs all required tools via Homebrew and Go
-# Usage: ./install_tools.sh [--with-cicd-scanner]
+# Usage: ./install_tools.sh [--with-cicd-scanner] [--with-credential-attack]
 # =============================================================================
 
 set -euo pipefail
 
 INSTALL_CICD_SCANNER=false
+INSTALL_CREDENTIAL_ATTACK=false
 for arg in "$@"; do
     case "$arg" in
         --with-cicd-scanner) INSTALL_CICD_SCANNER=true ;;
+        --with-credential-attack) INSTALL_CREDENTIAL_ATTACK=true ;;
     esac
 done
 
@@ -170,6 +172,123 @@ else
     log_warn "cicd_scanner skipped (use --with-cicd-scanner to install)"
 fi
 
+# Credential-attack tools (optional: --with-credential-attack)
+# Default off — adds ~500MB and pulls ~8 Python/Go deps.
+if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
+    echo ""
+    echo "[*] Installing credential-attack tools..."
+
+    log_warn "First run may take 10–20 min: brew auto-update + downloads ~500MB."
+    log_warn "Output below comes from brew/pipx/go/curl directly — slow lines are normal."
+
+    # --- Homebrew (theHarvester moved here: PyPI package has no CLI entry-point) ---
+    BREW_CRED_TOOLS=("hashcat" "theharvester")
+    for tool in "${BREW_CRED_TOOLS[@]}"; do
+        if command -v "$tool" &>/dev/null || command -v "theHarvester" &>/dev/null; then
+            log_ok "$tool already installed"
+        else
+            echo "    [*] Installing $tool via brew..."
+            if brew install "$tool"; then
+                log_ok "$tool installed"
+            else
+                log_err "$tool failed to install via brew"
+            fi
+        fi
+    done
+
+    # --- pipx (isolated Python venvs) ---
+    if ! command -v pipx &>/dev/null; then
+        echo "    [*] Installing pipx via brew..."
+        brew install pipx && pipx ensurepath
+        log_warn "pipx installed — restart shell or 'source ~/.zshrc' for PATH"
+    fi
+    PIPX_CRED_TOOLS=("cewler" "cupp" "trevorspray")
+    for tool in "${PIPX_CRED_TOOLS[@]}"; do
+        if command -v "$tool" &>/dev/null; then
+            log_ok "$tool already installed"
+        else
+            echo "    [*] Installing $tool via pipx..."
+            if pipx install "$tool"; then
+                log_ok "$tool installed"
+            else
+                log_warn "$tool: pipx install failed — try manually"
+            fi
+        fi
+    done
+
+    # --- Go (kerbrute — not in brew) ---
+    if command -v kerbrute &>/dev/null; then
+        log_ok "kerbrute already installed"
+    else
+        echo "    [*] Installing kerbrute via go..."
+        if go install github.com/ropnop/kerbrute@latest; then
+            log_ok "kerbrute installed"
+        else
+            log_err "kerbrute failed to install"
+        fi
+    fi
+
+    # --- Git clone (tools without brew/pip packages) ---
+    EXT_DIR="${HOME}/.local/share/bug-bounty/credential-attack"
+    mkdir -p "$EXT_DIR"
+    GIT_TOOLS=(
+        "https://github.com/LandGrey/pydictor.git"
+        "https://github.com/urbanadventurer/username-anarchy.git"
+        "https://github.com/knavesec/CredMaster.git"
+    )
+    for repo in "${GIT_TOOLS[@]}"; do
+        name=$(basename "$repo" .git)
+        if [ -d "$EXT_DIR/$name" ]; then
+            echo "    [*] Updating $name (git pull)..."
+            if (cd "$EXT_DIR/$name" && git pull --quiet); then
+                log_ok "$name updated at $EXT_DIR/$name"
+            else
+                log_warn "$name: git pull failed"
+            fi
+        else
+            echo "    [*] Cloning $name..."
+            if git clone --quiet "$repo" "$EXT_DIR/$name"; then
+                log_ok "$name cloned to $EXT_DIR/$name"
+            else
+                log_err "$name: git clone failed"
+            fi
+        fi
+    done
+
+    # --- CrossLinked via pipx (avoids PEP 668 pip3 --user breakage on macOS + Python 3.13) ---
+    echo "    [*] Installing CrossLinked via pipx..."
+    if _have pipx && pipx install crosslinked --quiet 2>/dev/null; then
+        log_ok "CrossLinked installed via pipx"
+    elif _have pipx && pipx upgrade crosslinked --quiet 2>/dev/null; then
+        log_ok "CrossLinked upgraded via pipx"
+    else
+        log_warn "CrossLinked pipx install failed — run 'pipx install crosslinked' manually"
+    fi
+
+    # --- SecLists hint (not auto-installed; ~750MB) ---
+    if [ ! -d "/usr/share/seclists" ] && [ ! -d "$HOME/SecLists" ]; then
+        log_warn "SecLists not found. Clone with:"
+        log_warn "  git clone https://github.com/danielmiessler/SecLists.git ~/SecLists"
+    fi
+
+    # --- Hashcat rules ---
+    RULES_DIR="$EXT_DIR/rules"
+    mkdir -p "$RULES_DIR"
+    if [ -f "$RULES_DIR/OneRuleToRuleThemAll.rule" ]; then
+        log_ok "OneRuleToRuleThemAll.rule already present"
+    else
+        echo "    [*] Downloading OneRuleToRuleThemAll.rule..."
+        if curl -fsSL https://raw.githubusercontent.com/NotSoSecure/password_cracking_rules/master/OneRuleToRuleThemAll.rule \
+            -o "$RULES_DIR/OneRuleToRuleThemAll.rule"; then
+            log_ok "OneRuleToRuleThemAll.rule downloaded to $RULES_DIR"
+        else
+            log_warn "OneRuleToRuleThemAll.rule download failed"
+        fi
+    fi
+else
+    log_warn "credential-attack tools skipped (use --with-credential-attack to install)"
+fi
+
 # Update nuclei templates
 echo ""
 echo "[*] Updating nuclei templates..."
@@ -192,6 +311,9 @@ echo "[*] Installation Verification"
 echo "============================================="
 
 ALL_TOOLS=(subfinder httpx nuclei ffuf nmap amass gau dalfox subjack sisakulint)
+if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
+    ALL_TOOLS+=(hashcat theHarvester cewler cupp trevorspray kerbrute)
+fi
 INSTALLED=0
 MISSING=0
 

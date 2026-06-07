@@ -286,18 +286,8 @@ fi
 # ── Check 3: XSS ────────────────────────────────────────────────────────
 if ! skip_has xss; then
     log_info "Check 3: XSS (dalfox + URL dedup + global timeout)"
-    PARAMS_FILE="$RECON_DIR/urls/with_params.txt"
-    if tool_ok dalfox && [ -s "$PARAMS_FILE" ]; then
-LIVE_COUNT=$(wc -l < "$LIVE_URLS" 2>/dev/null || echo 0)
-log_info "Scanning $LIVE_COUNT live hosts"
-
-# ============================================================
-# Check 1: XSS (Cross-Site Scripting)
-# ============================================================
-log_info "Check 1: XSS Detection"
-
-# Dalfox — automated XSS scanner (with global timeout + URL dedup)
-if command -v dalfox &>/dev/null && [ -s "$PARAM_URLS" ]; then
+    PARAM_URLS="$RECON_DIR/urls/with_params.txt"
+    if command -v dalfox &>/dev/null && [ -s "$PARAM_URLS" ]; then
     DAL_LIMIT=$([ "$QUICK_MODE" = "--quick" ] && echo 30 || echo 100)
     DAL_MAX_TIME=$([ "$QUICK_MODE" = "--quick" ] && echo 300 || echo 900)
     # Deduplicate by base-URL + sorted param keys to avoid scanning the same

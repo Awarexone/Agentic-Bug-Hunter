@@ -65,3 +65,7 @@ WebSecurityTestingGuide/
 
 # Claude Code worktree state (worktrees live under .claude/worktrees/)
 .claude/worktrees/
+
+# hey.bild.de session creds (never commit)
+recon/bild.de/.hey-auth
+recon/bild.de/hey-results/

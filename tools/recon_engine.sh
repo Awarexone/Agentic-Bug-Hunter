@@ -402,7 +402,7 @@ fi
 echo ""
 log_info "Phase 6: Directory Fuzzing"
 
-WORDLIST_DIR="$BASE_DIR/tools/wordlists"
+WORDLIST_DIR="$BASE_DIR/wordlists"
 
 if command -v ffuf &>/dev/null && [ -s "$RECON_DIR/live/urls.txt" ]; then
     # Select wordlist

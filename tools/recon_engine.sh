@@ -146,6 +146,41 @@ echo "============================================="
 echo ""
 
 # ============================================================
+# DNS wildcard pre-check — surfaces wildcard zones BEFORE Phase 1
+# brute-forces 5,000+ candidates that all collapse to a single IP.
+# Three random labels are queried under the apex; if 2+ resolve, the
+# zone has a wildcard A record. Persists `subdomains/wildcard_dns.json`
+# so a downstream pass can filter brute-forced subs whose A record
+# matches `WILDCARD_DNS_IP`, saving 10+ min of dead-host probing on
+# CDN-fronted brands and parked-domain marketing zones.
+# Skipped for IP/CIDR/list targets (no apex to dork) and when `dig`
+# isn't on PATH.
+# ============================================================
+_detect_dns_wildcard() {
+    local apex="$1" hits=0 r1 r2 r3
+    [ -z "$apex" ] && return
+    [[ "$apex" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+ ]] && return
+    if ! command -v dig &>/dev/null; then return; fi
+    r1=$(dig +short +time=2 +tries=1 "bb-no-such-$RANDOM-$RANDOM.$apex" A 2>/dev/null | head -1)
+    r2=$(dig +short +time=2 +tries=1 "bb-no-such-$RANDOM-$RANDOM.$apex" A 2>/dev/null | head -1)
+    r3=$(dig +short +time=2 +tries=1 "bb-no-such-$RANDOM-$RANDOM.$apex" A 2>/dev/null | head -1)
+    [ -n "$r1" ] && hits=$((hits+1))
+    [ -n "$r2" ] && hits=$((hits+1))
+    [ -n "$r3" ] && hits=$((hits+1))
+    if [ "$hits" -ge 2 ]; then
+        export WILDCARD_DNS=1
+        export WILDCARD_DNS_IP="$r1"
+        log_warn "DNS wildcard detected on $apex (random labels resolved to $r1) — brute-forced subs will collapse to wildcard_ip"
+        cat > "$RECON_DIR/subdomains/wildcard_dns.json" <<EOF
+{"target":"$apex","wildcard":true,"wildcard_ip":"${WILDCARD_DNS_IP:-}","detected_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","note":"random labels resolved — brute-forced subs that resolve to wildcard_ip should be filtered before httpx live-probe to avoid wasted dirsearch on dead hosts."}
+EOF
+    fi
+}
+if [ "${TARGET_TYPE:-domain}" = "domain" ]; then
+    _detect_dns_wildcard "$TARGET"
+fi
+
+# ============================================================
 # Phase 1: Subdomain Enumeration (or Host Discovery for IP/CIDR)
 # ============================================================
 log_info "Phase 1: Subdomain Enumeration"

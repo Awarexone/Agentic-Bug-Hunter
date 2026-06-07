@@ -1315,6 +1315,22 @@ IF DROP: What would need to change for this to become viable?"""
                     verdict = v
                 break
 
+        # Persist the full Q1-Q7 worksheet to brain/gate_workings.md when
+        # auto_triage_and_exploit() has primed `_gate_workings_path`. The
+        # streamed model output is unchanged (operators can still watch
+        # live), but keeping the audit trail in a dedicated, greppable
+        # file means a 25-candidate triage run no longer dumps 25KB+ of
+        # LLM transcript into the per-target log.
+        try:
+            wf = getattr(self, "_gate_workings_path", None)
+            if wf:
+                with open(wf, "a") as fh:
+                    fh.write(f"\n## {datetime.now().isoformat(timespec='seconds')} — VERDICT={verdict}\n")
+                    fh.write(f"FINDING: {finding_description[:400]}\n\n")
+                    fh.write(result.strip() + "\n\n---\n")
+        except Exception:
+            pass
+
         return verdict, result
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1890,6 +1906,20 @@ Based on this:
             return []
 
         print(f"{CYAN}[Brain] {len(all_findings)} filtered finding candidates — triaging...{NC}")
+
+        # Point gate-cycle persistence at this triage run so all 7-question
+        # worksheets land in brain/gate_workings.md. Created on first run;
+        # appended to on subsequent ones. Header carries the target name so
+        # the same file remains readable across re-runs.
+        gate_path = findings_path / "brain" / "gate_workings.md"
+        gate_path.parent.mkdir(parents=True, exist_ok=True)
+        if not gate_path.exists():
+            gate_path.write_text(
+                f"# 7-Question Gate Workings — {target}\n"
+                f"Auto-appended by brain.triage_finding() during "
+                f"auto_triage_and_exploit().\n\n"
+            )
+        self._gate_workings_path = str(gate_path)
 
         triage_summary = []
         for cat, line in all_findings:

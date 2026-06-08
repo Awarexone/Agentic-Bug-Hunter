@@ -11,12 +11,13 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `skills/bug-bounty/` | Master workflow — recon to report, all vuln classes, LLM testing, chains |
 | `skills/bb-methodology/` | **Hunting mindset + 5-phase non-linear workflow + tool routing + session discipline** |
 | `skills/web2-recon/` | Subdomain enum, live host discovery, URL crawling, nuclei |
-| `skills/web2-vuln-classes/` | 18 bug classes with bypass tables (SSRF, open redirect, file upload, Agentic AI) |
+| `skills/web2-vuln-classes/` | 21 bug classes with bypass tables (SSRF, open redirect, file upload, Agentic AI) |
 | `skills/security-arsenal/` | Payloads, bypass tables, gf patterns, always-rejected list |
 | `skills/web3-audit/` | 10 smart contract bug classes, Foundry PoC template, pre-dive kill signals |
 | `skills/meme-coin-audit/` | Meme coin rug pull detection, token authority checks, bonding curve exploits, LP attacks |
 | `skills/report-writing/` | H1/Bugcrowd/Intigriti/Immunefi report templates, CVSS 3.1, human tone |
 | `skills/triage-validation/` | 7-Question Gate, 4 gates, never-submit list, conditionally valid table |
+| `skills/credential-attack/` | Password spray methodology — when/why, 4-stage pipeline, mode selection, lockout tactics, legal guardrails, pitfalls learned from live tests |
 
 ### Commands (21 slash commands)
 
@@ -48,8 +49,12 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `/bypass-403` | `/bypass-403 <url>` — try header/method/encoding tricks against a 403/401 |
 | `/arsenal` | `/arsenal [tool]` — list installed external tools or get an install hint |
 | `/scan-cves` | `/scan-cves <host>` — focused nuclei CVE sweep (high/critical) + optional log4j-scan |
+| `/wordlist-gen` | `/wordlist-gen <target>` — company-specific password wordlist (cewler + hashcat); requires `--with-credential-attack` |
+| `/osint-employees` | `/osint-employees <target>` — employee names + emails (theHarvester + username-anarchy, opt-in LinkedIn); requires `--with-credential-attack` |
+| `/breach-check` | `/breach-check <wordlist>` — HIBP k-anonymity rank wordlist by real-world breach count |
+| `/spray` | `/spray <url> --mode http-form\|oauth\|o365\|okta --users <f> --passes <f>` — password spray with hard guards (typed-host confirm, lockout warn, audit log) |
 
-### Agents (8 specialized agents)
+### Agents (9 specialized agents)
 
 - `recon-agent` — subdomain enum + live host discovery
 - `report-writer` — generates H1/Bugcrowd/Immunefi reports
@@ -59,6 +64,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 - `autopilot` — autonomous hunt loop (scope→recon→rank→hunt→validate→report)
 - `recon-ranker` — attack surface ranking from recon output + memory
 - `token-auditor` — fast meme coin/token rug pull and security analysis
+- `credential-hunter` — orchestrates wordlist-gen + osint-employees + breach-check; HARD STOPS at spray for human go/no-go
 
 ### Rules (always active)
 
@@ -84,6 +90,10 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 - `tools/external_arsenal.sh` — installed-tool registry (~50 tools); other scripts source this for `_have <tool>`
 - `tools/cicd_scanner.sh` — GitHub Actions workflow scanner (sisakulint wrapper, remote scan)
 - `tools/token_scanner.py` — automated token red flag scanner (EVM + Solana)
+- `tools/wordlist_engine.sh` — company-specific password wordlist generator (cewler + hashcat rules); requires `--with-credential-attack`
+- `tools/osint_employees.sh` — employee names + email patterns for spray prep (theHarvester + username-anarchy, opt-in CrossLinked); requires `--with-credential-attack`
+- `tools/breach_checker.py` — HIBP k-anonymity wordlist enrichment; ranks passwords by breach count (no API key, free)
+- `tools/spray_orchestrator.sh` — password spray with typed-hostname guard + lockout warning + audit log; modes: http-form / oauth / o365 / okta (TREVOR); requires `--with-credential-attack` for TREVOR modes
 
 ### External tool references
 

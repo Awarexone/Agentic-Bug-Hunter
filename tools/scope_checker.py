@@ -8,6 +8,7 @@ Uses anchored suffix matching (not raw fnmatch) to prevent subdomain confusion:
 
 Known limitation: IP addresses and CIDR ranges are NOT supported (returns False + warning).
 """
+from __future__ import annotations  # PEP 604 union syntax on Python 3.9 (system /usr/bin/python3)
 
 import sys
 import argparse

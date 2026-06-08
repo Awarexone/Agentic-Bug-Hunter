@@ -154,6 +154,34 @@ DORK_CATEGORIES = {
         'site:{target} filetype:pdf "internal use only"',
     ],
 
+    "microsoft365": [
+        # Tenant enumeration via federation / SAML metadata + indexed
+        # SharePoint sites, Power BI dashboards, OneDrive shares
+        'site:login.microsoftonline.com "{target}"',
+        'site:outlook.office365.com "{target}"',
+        'site:{target} inurl:/.well-known/openid-configuration',
+        'site:{target} inurl:/_layouts',           # SharePoint
+        'site:{target} inurl:/sites/',             # SharePoint sites
+        '"{target}" site:onedrive.live.com',
+        '"{target}" site:1drv.ms',
+        '"{target}" site:app.powerbi.com',
+    ],
+
+    "compliance": [
+        # Leaked audit / DPA / runbook / IR docs (commonly indexed once
+        # uploaded to public extranets by mistake)
+        'site:{target} filetype:pdf "iso 27001"',
+        'site:{target} filetype:pdf "soc 2"',
+        'site:{target} filetype:pdf "PCI DSS"',
+        'site:{target} filetype:pdf "vulnerability assessment"',
+        'site:{target} filetype:pdf "penetration test"',
+        'site:{target} filetype:pdf "data protection agreement"',
+        'site:{target} filetype:pdf "DPA" "personal data"',
+        'site:{target} filetype:pdf "non-disclosure"',
+        'site:{target} filetype:pdf "runbook"',
+        'site:{target} filetype:pdf "incident response"',
+    ],
+
     "all": []  # Filled dynamically below
 }
 
@@ -300,6 +328,8 @@ CATEGORIES:
   leaks        — Pastebin, GitHub, Notion leaks
   github       — GitHub code search dorks
   juicy        — Backup files, SQL dumps, confidential PDFs
+  microsoft365 — M365 tenant enum, SharePoint, Power BI, OneDrive shares
+  compliance   — Leaked ISO 27001 / SOC 2 / PCI / DPA / runbook / IR PDFs
   all          — Run ALL categories
         """
     )

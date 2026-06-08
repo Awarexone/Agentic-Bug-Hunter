@@ -359,7 +359,7 @@ curl -s "https://hackerone.com/graphql" \
 - [ ] CORS misconfig (test `Origin: https://evil.com` + credentials)
 - [ ] S3/cloud buckets
 - [ ] GraphQL introspection enabled
-- [ ] Spring actuators (`/actuator/env`, `/actuator/heapdump`)
+- [ ] Spring actuators (`/actuator/env`, `/actuator/heapdump`) — for full framework debug surface + triggering techniques → web2-vuln-classes "Error Disclosure / Debug Endpoints"
 - [ ] Firebase open read (`https://TARGET.firebaseio.com/.json`)
 
 ## Technology Fingerprinting
@@ -372,6 +372,8 @@ curl -s "https://hackerone.com/graphql" \
 | Response: `wp-json`/`wp-content` | WordPress |
 | Response: `{"errors":[{"message":` | GraphQL |
 | Header: `X-Powered-By: Next.js` | Next.js |
+
+> **After any stack is identified:** immediately check its debug surface — probe the framework-specific paths from web2-vuln-classes "Error Disclosure / Debug Endpoints", then grep all 4xx/5xx response bodies for the framework regex patterns there before moving to Phase 3.
 
 ## Framework Quick Wins
 
@@ -404,6 +406,8 @@ grep -rn "tx\.origin\|delegatecall\|selfdestruct\|block\.timestamp" --include="*
 # JavaScript/TypeScript -- prototype pollution, postMessage, RCE sinks
 grep -rn "__proto__\|constructor\[" --include="*.js" --include="*.ts" | grep -v node_modules
 grep -rn "postMessage\|addEventListener.*message" --include="*.js" | grep -v node_modules
+# ↑ If listeners found, verify origin-check robustness with attacker page —
+#   see web2-vuln-classes section 3 "postMessage Testing"
 grep -rn "child_process\|execSync\|spawn(" --include="*.js" | grep -v node_modules
 
 # Python -- pickle, yaml.load, eval, shell injection
@@ -481,6 +485,8 @@ HIGHEST PRIORITY (crown jewel x easiest entry):
 ## Interesting Leads (not confirmed bugs yet)
 - [14:22] /api/v2/invoices/{id} -- no auth check visible in source, testing...
 
+> **Before closing any 4xx/5xx:** grep the response body for the 8 framework trace patterns in web2-vuln-classes "Error Disclosure / Debug Endpoints". A 502 body containing a Node.js stack trace is not a dead end — it is a chain entry point.
+
 ## Dead Ends (don't revisit)
 - /admin -> IP restricted, confirmed by trying 15+ bypass headers
 
@@ -501,6 +507,7 @@ HIGHEST PRIORITY (crown jewel x easiest entry):
 - **api/api-v2**: Enumerate with kiterunner, check older unprotected versions
 - **auth/sso**: OAuth misconfigs, open redirect in `redirect_uri`
 - **upload/cdn**: CORS, path traversal, stored XSS
+- **403/blocked sensitive paths** (`/.env 403`, `/.git 403`, `/admin 403`): pivot to "Error Disclosure / Debug Endpoints" triggering techniques — malformed input on adjacent API endpoints (`/api/user/abc`, `{"id": null}`, `?page=9999999999`) to elicit framework stack traces without needing direct path access.
 
 ## CVE-Seeded Audit Approach
 1. **Build a CVE eval set** -- collect 5-10 prior CVEs for the target codebase

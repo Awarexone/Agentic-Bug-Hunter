@@ -42,6 +42,13 @@ done
 OUT_DIR="${CLOUD_OUT_DIR:-$(pwd)/findings/cloud/$(date +%Y%m%d_%H%M%S)}"
 mkdir -p "$OUT_DIR"
 
+# shellcheck source=banner.sh
+. "$SCRIPT_DIR/banner.sh"
+print_banner "Cloud Recon · S3 · Azure · GCP" "${KEYWORD:-$CF_TARGET}" \
+    "S3 sweep|s3scanner across AWS/DO/Linode/Wasabi" \
+    "Multi-cloud OSINT|cloud_enum across AWS/Azure/GCP" \
+    "CF bypass|CloudFail — origin IP via DNS history"
+
 # ── S3 buckets across providers ─────────────────────────────────────────────
 if [ -n "$KEYWORD" ] && _have s3scanner; then
   log "s3scanner on keyword '$KEYWORD'..."

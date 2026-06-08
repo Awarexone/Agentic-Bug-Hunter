@@ -304,6 +304,20 @@ if [[ ":$PATH:" != *":$GOPATH/bin:"* ]]; then
     echo "    # Add to ~/.zshrc"
 fi
 
+# Python runtime/test dependencies used by helper tools.
+echo ""
+echo "[*] Installing Python dependencies..."
+if command -v python3 &>/dev/null && [ -f requirements.txt ]; then
+    if python3 -m pip install -r requirements.txt; then
+        log_ok "Python dependencies installed"
+    else
+        log_warn "Python dependencies could not be installed automatically"
+        log_warn "Run manually when network is available: python3 -m pip install -r requirements.txt"
+    fi
+else
+    log_warn "python3 or requirements.txt not found — skipping Python dependencies"
+fi
+
 # Verification
 echo ""
 echo "============================================="

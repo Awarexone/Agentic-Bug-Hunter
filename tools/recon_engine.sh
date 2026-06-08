@@ -45,6 +45,14 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 THREADS=20
 RATE_LIMIT=50  # requests per second
 
+# shellcheck source=tools/banner.sh
+. "$(dirname "$0")/banner.sh"
+print_banner "Recon Engine · Bug Bounty" "$TARGET" \
+    "Subdomain enum|subfinder · amass · crt.sh · wayback" \
+    "Live probe|httpx + dnsx with tech fingerprinting" \
+    "URL crawl|katana · gau · waybackurls" \
+    "Templates|nuclei sweep (optional)"
+
 # Prefer Go tools in ~/go/bin
 export PATH="$HOME/go/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
@@ -295,7 +303,7 @@ if [ -x "$HTTPX_BIN" ] && [ -s "$RECON_DIR/subdomains/all.txt" ]; then
         -follow-redirects \
         -threads "$THREADS" \
         -rate-limit "$RATE_LIMIT" \
-        "${BB_AUTH_ARGS[@]}" \
+        ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} \
         -o "$RECON_DIR/live/httpx_full.txt" 2>/dev/null || true
 
     # Extract just the URLs for other tools
@@ -367,7 +375,7 @@ if command -v katana &>/dev/null && [ -s "$RECON_DIR/live/urls.txt" ]; then
     timeout 300 katana \
         -list "$RECON_DIR/urls/katana_targets.txt" \
         -d 3 -jc -kf all -silent \
-        "${BB_AUTH_ARGS[@]}" \
+        ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} \
         -o "$RECON_DIR/urls/katana.txt" 2>/dev/null || true
     log_done "katana: $(wc -l < "$RECON_DIR/urls/katana.txt" 2>/dev/null || echo 0) URLs"
 fi
@@ -407,7 +415,7 @@ if [ -s "$RECON_DIR/urls/js_files.txt" ]; then
     mkdir -p "$RECON_DIR/js"
 
     head -50 "$RECON_DIR/urls/js_files.txt" | while IFS= read -r js_url; do
-        curl -s --max-time 10 "${BB_AUTH_ARGS[@]}" "$js_url" 2>/dev/null | \
+        curl -s --max-time 10 ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "$js_url" 2>/dev/null | \
             sed -nE 's/.*["'"'"']([a-zA-Z0-9_/.-]*(\/[a-zA-Z0-9_/.-]+)+)["'"'"'].*/\1/p' \
             >> "$RECON_DIR/js/endpoints_raw.txt" 2>/dev/null || true
     done
@@ -418,7 +426,7 @@ if [ -s "$RECON_DIR/urls/js_files.txt" ]; then
 
         # Extract potential secrets from JS
         head -50 "$RECON_DIR/urls/js_files.txt" | while IFS= read -r js_url; do
-            curl -s --max-time 10 "${BB_AUTH_ARGS[@]}" "$js_url" 2>/dev/null | \
+            curl -s --max-time 10 ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "$js_url" 2>/dev/null | \
                 grep -oiE '(api[_-]?key|api[_-]?secret|access[_-]?token|auth[_-]?token|client[_-]?secret|password|secret[_-]?key)["\s]*[:=]["\s]*[a-zA-Z0-9_\-]{8,}' \
                 >> "$RECON_DIR/js/potential_secrets.txt" 2>/dev/null || true
         done
@@ -463,7 +471,7 @@ if command -v ffuf &>/dev/null && [ -s "$RECON_DIR/live/urls.txt" ]; then
                 -rate "$RATE_LIMIT" \
                 -sf \
                 -timeout 10 \
-                "${BB_AUTH_ARGS[@]}" \
+                ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} \
                 -o "$RECON_DIR/dirs/ffuf_${domain}.json" \
                 -of json 2>/dev/null || true
             ((FUZZ_COUNT++))
@@ -504,9 +512,9 @@ if [ -s "$RECON_DIR/live/urls.txt" ]; then
 
     while IFS= read -r base_url; do
         for path in "${CONFIG_PATHS[@]}"; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "${BB_AUTH_ARGS[@]}" "${base_url}${path}" 2>/dev/null || echo "000")
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "${base_url}${path}" 2>/dev/null || echo "000")
             if [ "$STATUS" = "200" ]; then
-                CONTENT_TYPE=$(curl -sI --max-time 5 "${BB_AUTH_ARGS[@]}" "${base_url}${path}" 2>/dev/null | grep -i content-type | head -1)
+                CONTENT_TYPE=$(curl -sI --max-time 5 ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "${base_url}${path}" 2>/dev/null | grep -i content-type | head -1)
                 # Only flag if it returns JS/JSON/text (not HTML error pages)
                 if echo "$CONTENT_TYPE" | grep -qiE '(javascript|json|text/plain)'; then
                     echo "[EXPOSED] ${base_url}${path}" >> "$RECON_DIR/exposure/config_files.txt"
@@ -603,7 +611,7 @@ if command -v nuclei &>/dev/null && [ -s "$RECON_DIR/live/urls.txt" ]; then
         -severity "$NUC_SEV" \
         -silent \
         -stats \
-        "${BB_AUTH_ARGS[@]}" \
+        ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} \
         -jsonl \
         -o "$NUCLEI_OUT/findings.jsonl" 2>/dev/null || true
 

@@ -22,6 +22,25 @@ GOOD: "An attacker can access any user's order history by changing the user_id
        orders, including their shipping address and payment method last 4 digits."
 ```
 
+## PERSISTENCE RULE
+
+Every report-writing session must leave a complete finding folder on disk. Save
+the report draft, pre-submit checklist, references, downgrade counters, and final
+submission note under `findings/<target-or-program>-<bug-class>/`. Never rely on
+terminal or tmux scrollback for content the hunter needs later.
+
+Minimum files:
+
+```text
+findings/<target-or-program>-<bug-class>/
+├── hackerone-report.md       # or bugcrowd-report.md / intigriti-report.md / immunefi-report.md
+├── submission-notes.md       # final checklist, references, caveats, next action
+└── evidence/                 # screenshots, curl output, response bodies when available
+```
+
+If `tools/validate.py` already wrote `submission-notes.md`, append/update it
+instead of creating a duplicate.
+
 ---
 
 ## TITLE FORMULA

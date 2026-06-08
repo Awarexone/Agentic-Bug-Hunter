@@ -37,6 +37,13 @@ done
 OUT_DIR="${TAKEOVER_OUT_DIR:-$(pwd)/findings/takeover/$(date +%Y%m%d_%H%M%S)}"
 mkdir -p "$OUT_DIR"
 
+# shellcheck source=banner.sh
+. "$SCRIPT_DIR/banner.sh"
+print_banner "Subdomain Takeover Scanner" "$INPUT" \
+    "dnsReaper|broad fingerprint set, JSON candidates" \
+    "subjack|fast Go fallback scanner" \
+    "Verify|CNAME chain + service signature match"
+
 # Strategy 1: dnsReaper (best signal, broadest fingerprint set)
 if _have dnsreaper; then
   log "dnsReaper on $(wc -l < "$INPUT" | tr -d ' ') subdomains..."

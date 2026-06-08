@@ -5,7 +5,7 @@ This is safety-critical code: 100% coverage required.
 
 import pytest
 
-from scope_checker import ScopeChecker
+from scope_checker import ScopeChecker, main as scope_main
 
 
 class TestWildcardMatch:
@@ -175,3 +175,62 @@ class TestFilterFile:
         in_count, out_count = sc.filter_file(str(url_file))
         assert in_count == 0
         assert out_count == 0
+
+
+class TestScopeCheckerCli:
+
+    def test_cli_asset_in_scope(self, capsys):
+        rc = scope_main([
+            "https://api.target.com/v1",
+            "--domain", "target.com",
+            "--domain", "*.target.com",
+        ])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "IN SCOPE" in out
+
+    def test_cli_asset_out_of_scope(self, capsys):
+        rc = scope_main([
+            "https://evil-target.com",
+            "--domain", "target.com",
+            "--domain", "*.target.com",
+        ])
+        out = capsys.readouterr().out
+        assert rc == 2
+        assert "OUT OF SCOPE" in out
+
+    def test_cli_filter_file(self, tmp_path, capsys):
+        input_file = tmp_path / "urls.txt"
+        output_file = tmp_path / "in_scope.txt"
+        input_file.write_text(
+            "https://api.target.com/v1\n"
+            "https://evil.com/bad\n"
+            "https://sub.target.com/ok\n"
+        )
+
+        rc = scope_main([
+            "--domain", "target.com,*.target.com",
+            "--input-file", str(input_file),
+            "--output", str(output_file),
+        ])
+        out = capsys.readouterr().out
+
+        assert rc == 0
+        assert "2 in scope, 1 out of scope" in out
+        assert output_file.read_text().splitlines() == [
+            "https://api.target.com/v1",
+            "https://sub.target.com/ok",
+        ]
+
+    def test_cli_missing_input_file_exits_cleanly(self, tmp_path, capsys):
+        missing = tmp_path / "missing.txt"
+
+        with pytest.raises(SystemExit) as exc:
+            scope_main([
+                "--domain", "target.com",
+                "--input-file", str(missing),
+            ])
+
+        err = capsys.readouterr().err
+        assert exc.value.code == 2
+        assert "No such file or directory" in err

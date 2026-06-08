@@ -43,6 +43,14 @@ done
 OUT_DIR="${CVE_OUT_DIR:-$(pwd)/findings/cve/$(date +%Y%m%d_%H%M%S)}"
 mkdir -p "$OUT_DIR"
 
+# shellcheck source=banner.sh
+. "$SCRIPT_DIR/banner.sh"
+print_banner "CVE Scanner · nuclei sweep" "$TARGET" \
+    "Update|nuclei template refresh (skip with NUCLEI_NO_UPDATE=1)" \
+    "Scan|cve/ templates filtered by high+critical severity" \
+    "Log4j|optional dedicated scanner with OOB callback" \
+    "Report|JSONL hits + summary in findings dir" 1>&2
+
 if ! _have nuclei; then
   err "nuclei required — see ./tools/external_arsenal.sh --install-hint nuclei"; exit 1
 fi

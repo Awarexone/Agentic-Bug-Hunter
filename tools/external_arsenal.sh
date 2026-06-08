@@ -145,6 +145,12 @@ _install_hint() {
 
 # Only run main when executed directly, not when sourced.
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=banner.sh
+  . "$(dirname "$0")/banner.sh"
+  print_banner "Arsenal · External Tool Registry" "" \
+      "Categories|recon · probe · crawl · fuzz · vuln · etc." \
+      "Status|green = installed, red = missing" \
+      "Install hint|run with --install-hint <tool>"
   case "${1:-}" in
     --install-hint) shift; _install_hint "${1:?tool name required}" ;;
     --have) shift; _have "${1:?tool name required}" && echo yes || { echo no; exit 1; } ;;

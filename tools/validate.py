@@ -18,6 +18,11 @@ import urllib.request
 import urllib.error
 from datetime import datetime
 
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+from tools.banner import print_banner  # noqa: E402
+
 # macOS: Python may not have system SSL certs. Use unverified context for API queries.
 _SSL_CTX = ssl.create_default_context()
 try:
@@ -561,19 +566,131 @@ Example: In `path/to/file.ts`, the `functionName` function should verify
 """
 
 
+PRE_SUBMIT_CHECKLIST = [
+    "Title follows formula: [Class] in [endpoint] allows [actor] to [impact]",
+    "First sentence states exact impact in plain English",
+    "Steps to Reproduce has exact HTTP request (copy-paste ready)",
+    "Response showing the bug is included (screenshot or JSON body)",
+    "Two test accounts used — not just one account testing itself",
+    "CVSS score calculated and included",
+    "Recommended fix is 1-2 sentences (not a lecture)",
+    "No typos in endpoint paths or parameter names",
+    "Report is < 600 words — triagers skim long reports",
+    "Severity claimed matches impact described — don't overclaim",
+    "Never used \"could potentially\" or \"may allow\"",
+    "PoC is reproducible by triager from a fresh state",
+]
+
+
+def write_submission_notes(
+    output_dir: str,
+    report_path: str,
+    info: dict,
+    gates: list[tuple[int, str, bool]],
+    all_pass: bool,
+    notes_path: str = "",
+) -> str:
+    """Persist terminal guidance that would otherwise be lost in scrollback."""
+    path = notes_path or os.path.join(output_dir, "submission-notes.md")
+    date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    gate_rows = "\n".join(
+        f"| Gate {n} | {name} | {'PASS' if passed else 'FAIL'} |"
+        for n, name, passed in gates
+    )
+    checklist = "\n".join(f"- [ ] {item}" for item in PRE_SUBMIT_CHECKLIST)
+    verdict = (
+        "All validation gates passed. The report is a submission candidate after "
+        "you fill in the exact request, response, screenshots, and fix notes."
+        if all_pass else
+        "One or more validation gates failed. Keep this as a draft until the "
+        "failed gates are resolved; do not submit it yet."
+    )
+
+    content = f"""# Submission Notes
+
+Generated: {date}
+
+## Finding
+
+- Program: {info.get('target', 'unknown')}
+- Vulnerability type: {info.get('vuln_type', 'unknown')}
+- Endpoint: {info.get('endpoint', 'unknown')}
+- Report draft: {report_path}
+- CVSS: {info.get('cvss_score', 'n/a')} — `{info.get('cvss_vector', 'n/a')}`
+
+## Validation Summary
+
+| Gate | Question | Result |
+|---|---|---|
+{gate_rows}
+
+## One Note Before Submitting
+
+{verdict}
+
+## Final Checklist Before Submitting
+
+{checklist}
+
+## References
+
+- `commands/report.md` — platform-specific report structure.
+- `skills/report-writing/SKILL.md` — impact-first templates, downgrade counters, and pre-submit checklist.
+- `skills/triage-validation/SKILL.md` — 7-Question Gate and never-submit list.
+- https://www.first.org/cvss/calculator/4.0 — verify the CVSS 4.0 vector.
+"""
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    return path
+
+
+def write_validation_json(output_dir: str, info: dict, gate_notes: dict) -> str:
+    """Persist the structured validation answers for future tmux/session pickup."""
+    path = os.path.join(output_dir, "validation.json")
+    payload = {
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "finding": {
+            "program": info.get("target"),
+            "vulnerability_type": info.get("vuln_type"),
+            "endpoint": info.get("endpoint"),
+            "impact": info.get("impact"),
+            "cvss_score": info.get("cvss_score"),
+            "cvss_vector": info.get("cvss_vector"),
+            "cvss_params": info.get("cvss_params"),
+        },
+        "gates": {
+            "is_real": {"passed": info.get("gate1_pass"), "notes": gate_notes["gate1"]},
+            "in_scope": {"passed": info.get("gate2_pass"), "notes": gate_notes["gate2"]},
+            "exploitable": {"passed": info.get("gate3_pass"), "notes": gate_notes["gate3"]},
+            "not_duplicate": {"passed": info.get("gate4_pass"), "notes": gate_notes["gate4"]},
+        },
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, sort_keys=True)
+        f.write("\n")
+    return path
+
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="Interactive bug validation assistant")
     parser.add_argument("--output",  default="", help="Output path for generated report skeleton")
+    parser.add_argument("--notes-output", default="", help="Output path for persisted submission notes")
     parser.add_argument("--program", default="", help="HackerOne program handle for dup check")
     args = parser.parse_args()
 
-    print(f"\n{BOLD}{CYAN}{'═' * 60}{RESET}")
-    print(f"{BOLD}{CYAN}  Bug Bounty Validation Assistant{RESET}")
-    print(f"{BOLD}{CYAN}{'═' * 60}{RESET}")
-    print(f"\nThis will walk you through the 4 validation gates,")
-    print(f"calculate your CVSS score, and generate a report skeleton.\n")
+    print_banner(
+        "Bug Validation Assistant",
+        target=args.program or None,
+        steps=[
+            ("Gate 1 — Real",        "is the finding reproducible / not a placebo?"),
+            ("Gate 2 — In scope",    "matches program scope + asset list"),
+            ("Gate 3 — Exploitable", "real attacker, real impact, right now"),
+            ("Gate 4 — Not dup",     "search disclosures + Hacktivity"),
+            ("CVSS + report",        "score + H1 report skeleton"),
+        ],
+    )
 
     # Collect basic info upfront
     section("Target Information")
@@ -649,15 +766,28 @@ def main():
         os.makedirs(base_dir, exist_ok=True)
         output_path = os.path.join(base_dir, "hackerone-report.md")
 
-    with open(output_path, "w") as f:
+    output_dir = os.path.dirname(os.path.abspath(output_path)) or "."
+    os.makedirs(output_dir, exist_ok=True)
+
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write(skeleton)
 
+    notes_path = write_submission_notes(output_dir, output_path, info, gates, all_pass, args.notes_output)
+    validation_path = write_validation_json(output_dir, info, {
+        "gate1": g1_notes,
+        "gate2": g2_notes,
+        "gate3": g3_notes,
+        "gate4": g4_notes,
+    })
+
     print(f"  {BOLD}{GREEN}Report skeleton generated:{RESET} {output_path}")
+    print(f"  {BOLD}{GREEN}Submission notes saved:{RESET} {notes_path}")
+    print(f"  {BOLD}{GREEN}Validation JSON saved:{RESET} {validation_path}")
     print(f"\n  {BOLD}Next steps:{RESET}")
     print(f"    1. Fill in the actual HTTP request + response in the PoC section")
     print(f"    2. Attach screenshots (naming: TARGET-VULN-TYPE-STEP-N.png)")
     print(f"    3. Replace all [bracketed] placeholders with specific details")
-    print(f"    4. Run /bug-bounty-report for the submission checklist")
+    print(f"    4. Review submission-notes.md before sending the report")
     print()
 
 

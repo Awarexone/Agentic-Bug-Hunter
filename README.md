@@ -4,7 +4,7 @@
 
 <div align="center">
 
-<img src="https://img.shields.io/badge/v4.3.0-Auth_Sessions_%2B_Arsenal-blueviolet?style=for-the-badge" alt="v4.3.0">
+<img src="https://img.shields.io/badge/v4.3.1-Bug_Fixes_%2B_Hardening-blueviolet?style=for-the-badge" alt="v4.3.1">
 
 # Claude Bug Bounty
 
@@ -20,6 +20,8 @@
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![Tests](https://img.shields.io/badge/Tests-180_passing-brightgreen.svg?style=flat-square)](tests/)
 [![Claude Code](https://img.shields.io/badge/Claude_Code-Plugin-D97706.svg?style=flat-square&logo=anthropic&logoColor=white)](https://claude.ai/claude-code)
+[![OpenCode](https://img.shields.io/badge/OpenCode-compatible-111827.svg?style=flat-square)](https://opencode.ai)
+[![Pi Agent](https://img.shields.io/badge/Pi_Agent-compatible-2563EB.svg?style=flat-square)](https://pi.dev)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](#contributing)
 
 <br>
@@ -44,7 +46,7 @@
 
 **Bug bounty hunting** is when companies pay you real money to find security vulnerabilities in their websites and apps before bad actors do. Platforms like HackerOne and Bugcrowd connect hunters with companies. Payouts range from $100 to $1,000,000+ depending on severity.
 
-**This tool** is a plugin for [Claude Code](https://claude.ai/claude-code) (Anthropic's AI coding assistant) that turns it into a professional bug bounty hunting partner. Instead of juggling 15 different tools and writing reports from scratch, you just type a command and the AI handles the rest.
+**This tool** is a plugin for [Claude Code](https://claude.ai/claude-code) (Anthropic's AI coding assistant) that turns it into a professional bug bounty hunting partner. It also ships portable Agent Skills and command prompts for OpenCode, Pi Agent, Codex-style harnesses, and shared `.agents/skills` setups. Instead of juggling 15 different tools and writing reports from scratch, you just type a command and the AI handles the rest.
 
 **In plain terms:**
 - You give it a target website
@@ -109,6 +111,32 @@ cd claude-bug-bounty
 chmod +x install_tools.sh && ./install_tools.sh   # installs scanning tools (subfinder, httpx, nuclei...)
 chmod +x install.sh && ./install.sh               # installs AI skills + commands into Claude Code
 ```
+
+If you only need the Python helpers or want to run tests:
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+### Other Agent Harnesses
+
+The installer can target the common skill/command locations used by other AI coding agents:
+
+```bash
+./install.sh --agent opencode          # ~/.config/opencode/skills + commands + agents
+./install.sh --agent pi                # ~/.pi/agent/skills + prompt templates
+./install.sh --agent codex             # ~/.codex/skills + commands
+./install.sh --agent agents            # ~/.agents/skills shared by OpenCode and Pi
+./install.sh --agent opencode --project # .opencode/ in this repo only
+./install.sh --agent pi --project       # .pi/ in this repo only
+./install.sh --agent all                # install every supported global target
+```
+
+OpenCode reads `AGENTS.md` from the project root and discovers skills in
+`.opencode/skills`, `~/.config/opencode/skills`, `.agents/skills`, and
+`~/.agents/skills`. Pi discovers skills from `.pi/skills`, `~/.pi/agent/skills`,
+`.agents/skills`, and `~/.agents/skills`, and exposes command prompts from
+`.pi/prompts` or `~/.pi/agent/prompts`.
 
 <br>
 
@@ -304,6 +332,14 @@ Thin wrappers over external tools. Each one is gated on tool presence — missin
 <br>
 
 ## What's New
+
+### v4.3.1 — Bug Fixes + Hardening (Jun 2026)
+
+- **Scope checker CLI.** `tools/scope_checker.py` now has a deterministic command-line surface for asset checks, URL filtering, and JSON output.
+- **Safer shell auth expansion.** `tools/recon_engine.sh`, `tools/vuln_scanner.sh`, and `scripts/full_hunt.sh` now use bash 3.2-safe auth array expansion so anonymous macOS runs do not abort under `set -u`.
+- **Report persistence.** `tools/validate.py` now writes `submission-notes.md` and `validation.json` alongside each report draft, and the report-writing docs require saving those artifacts.
+- **Dependency clarity.** `requirements.txt` now lists `requests` and `pytest`, and `install_tools.sh` tries to install them after the binary tooling pass.
+- **CLI reliability.** `tools/hai_probe.py` and `tools/zendesk_idor_test.py` now show `--help` even when `requests` is missing, and fail with clear dependency errors instead of tracebacks.
 
 ### v4.3.0 — Auth Sessions + Recon Arsenal (May 2026)
 

@@ -11,7 +11,8 @@ Known limitation: IP addresses and CIDR ranges are NOT supported (returns False 
 from __future__ import annotations  # PEP 604 union syntax on Python 3.9 (system /usr/bin/python3)
 
 import sys
-from fnmatch import fnmatch
+import argparse
+import json
 from urllib.parse import urlparse
 
 
@@ -154,3 +155,109 @@ def _is_ip(hostname: str) -> bool:
         except ValueError:
             return False
     return False
+
+
+def _split_patterns(values: list[str]) -> list[str]:
+    """Expand comma-separated CLI pattern args while preserving order."""
+    patterns: list[str] = []
+    for value in values:
+        for part in value.split(","):
+            part = part.strip()
+            if part:
+                patterns.append(part)
+    return patterns
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Deterministically check assets against bug bounty scope."
+    )
+    parser.add_argument("asset", nargs="?", help="URL or hostname to check")
+    parser.add_argument(
+        "--domain",
+        "-d",
+        action="append",
+        default=[],
+        help="Allowed domain pattern. Repeat or comma-separate, e.g. target.com,*.target.com",
+    )
+    parser.add_argument(
+        "--exclude-domain",
+        "-x",
+        action="append",
+        default=[],
+        help="Excluded domain pattern. Repeat or comma-separate.",
+    )
+    parser.add_argument(
+        "--exclude-class",
+        action="append",
+        default=[],
+        help="Excluded vulnerability class. Repeat or comma-separate.",
+    )
+    parser.add_argument("--vuln-class", help="Optional vulnerability class to check")
+    parser.add_argument("--input-file", help="Filter URLs from a file, one per line")
+    parser.add_argument("--output", help="Output path for filtered in-scope URLs")
+    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+    args = parser.parse_args(argv)
+
+    domains = _split_patterns(args.domain)
+    excluded_domains = _split_patterns(args.exclude_domain)
+    excluded_classes = _split_patterns(args.exclude_class)
+
+    if not domains:
+        parser.error("at least one --domain pattern is required")
+    if not args.asset and not args.input_file and not args.vuln_class:
+        parser.error("provide an asset, --input-file, or --vuln-class")
+
+    checker = ScopeChecker(domains, excluded_domains, excluded_classes)
+    result: dict[str, object] = {
+        "domains": domains,
+        "excluded_domains": excluded_domains,
+        "excluded_classes": excluded_classes,
+    }
+    exit_code = 0
+
+    if args.asset:
+        in_scope = checker.is_in_scope(args.asset)
+        result["asset"] = args.asset
+        result["in_scope"] = in_scope
+        if not in_scope:
+            exit_code = 2
+
+    if args.vuln_class:
+        allowed = checker.is_vuln_class_allowed(args.vuln_class)
+        result["vuln_class"] = args.vuln_class
+        result["vuln_class_allowed"] = allowed
+        if not allowed:
+            exit_code = 2
+
+    if args.input_file:
+        try:
+            in_count, out_count = checker.filter_file(args.input_file, args.output)
+        except OSError as exc:
+            parser.error(str(exc))
+        result["input_file"] = args.input_file
+        result["output"] = args.output or args.input_file
+        result["in_scope_count"] = in_count
+        result["out_of_scope_count"] = out_count
+
+    if args.json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        if "asset" in result:
+            verdict = "IN SCOPE" if result["in_scope"] else "OUT OF SCOPE"
+            print(f"{verdict}: {result['asset']}")
+        if "vuln_class" in result:
+            verdict = "ALLOWED" if result["vuln_class_allowed"] else "EXCLUDED"
+            print(f"{verdict}: vulnerability class {result['vuln_class']}")
+        if "input_file" in result:
+            print(
+                "Filtered URLs: "
+                f"{result['in_scope_count']} in scope, "
+                f"{result['out_of_scope_count']} out of scope -> {result['output']}"
+            )
+
+    return exit_code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

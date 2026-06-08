@@ -44,6 +44,14 @@ done
 [ -z "$MODE" ] || [ -z "$TARGET" ] && { err "mode + target required"; sed -n '12,16p' "$0"; exit 2; }
 
 mkdir -p "$OUT_DIR"
+
+# shellcheck source=banner.sh
+. "$SCRIPT_DIR/banner.sh"
+print_banner "Secrets Hunter · Leaked Credentials" "$TARGET" \
+    "Scan|trufflehog · noseyparker · gitleaks (whichever is installed)" \
+    "Verify|live-key validation against issuer APIs" \
+    "Report|findings written to scan-output dir"
+
 log "Findings → $OUT_DIR"
 
 # Pick the strongest scanner for the mode

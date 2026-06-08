@@ -1,5 +1,22 @@
 # Changelog
 
+## v4.3.1 — Bug Fixes + Hardening (Jun 2026)
+
+### Fixed
+- **`tools/vuln_scanner.sh` parse failure** — removed the broken duplicate XSS merge block and restored a single dalfox path against `urls/with_params.txt`.
+- **macOS bash 3.2 auth crashes** — replaced empty-array auth splats with the bash 3.2-safe form across recon/scanning scripts so anonymous runs no longer abort under `set -u`.
+- **`tools/scope_checker.py` CLI gap** — added a real deterministic CLI with asset checks, URL filtering, JSON output, and clean missing-file errors.
+- **`tools/hai_probe.py` / `tools/zendesk_idor_test.py` help-path crashes** — both tools now handle missing `requests` gracefully and print useful `--help` output without importing the dependency first.
+
+### Added
+- `requirements.txt` for the Python helper tools and test runner.
+- `tests/test_scope_checker.py` coverage for the new deterministic scope checker CLI.
+
+### Changed
+- `install.sh` now supports Claude Code, OpenCode, Pi Agent, Codex-style installs, shared Agent Skills, and project-local installs.
+- `install_tools.sh` attempts to install Python dependencies after the binary tool pass.
+- `tools/validate.py` persists `submission-notes.md` and `validation.json` beside each report skeleton.
+
 ## v4.2.3 — Auto-rotation Stop Hook (May 2026)
 
 ### Added

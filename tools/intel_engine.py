@@ -20,6 +20,10 @@ from datetime import datetime, timezone
 # Import learn.py functions (same repo)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
+_REPO = os.path.dirname(BASE_DIR)
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+from tools.banner import print_banner  # noqa: E402
 
 from learn import fetch_github_advisories, fetch_nvd_cves, severity_order
 
@@ -356,12 +360,21 @@ def main():
             if t.lower() not in [x.lower() for x in techs]:
                 techs.append(t)
 
-    print(f"\n{BOLD}Intel Engine{RESET}")
-    print(f"Target: {CYAN}{args.target}{RESET}")
-    print(f"Tech: {CYAN}{', '.join(techs)}{RESET}")
-    if args.program:
-        print(f"Program: {CYAN}{args.program}{RESET}")
-    print()
+    if not args.json:
+        print_banner(
+            "Intel Engine · CVE + Disclosure Recon",
+            target=args.target,
+            steps=[
+                ("Tech CVEs",   "GitHub Advisory · NVD lookup per stack"),
+                ("Disclosures", "HackerOne Hacktivity + Bugcrowd"),
+                ("Memory",      "merge prior findings for similar targets"),
+                ("Prioritize",  "rank intel by impact vs. observed patterns"),
+            ],
+        )
+        print(f"Tech: {CYAN}{', '.join(techs)}{RESET}")
+        if args.program:
+            print(f"Program: {CYAN}{args.program}{RESET}")
+        print()
 
     # Fetch all intel
     results = fetch_all_intel(techs, args.target, args.program)

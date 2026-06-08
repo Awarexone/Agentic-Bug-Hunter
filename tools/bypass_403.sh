@@ -36,6 +36,13 @@ done
 OUT_DIR="${BYPASS_OUT_DIR:-$(pwd)/findings/bypass/$(date +%Y%m%d_%H%M%S)}"
 mkdir -p "$OUT_DIR"
 
+# shellcheck source=banner.sh
+. "$SCRIPT_DIR/banner.sh"
+print_banner "403 / 401 Bypass Probe" "${URL:-$LIST}" \
+    "byp4xx|full bypass matrix when installed" \
+    "Built-in|header · method · path · encoding tricks" \
+    "Report|matched response codes per technique"
+
 if _have byp4xx; then
   log "byp4xx bypass matrix..."
   if [ -n "$URL" ]; then

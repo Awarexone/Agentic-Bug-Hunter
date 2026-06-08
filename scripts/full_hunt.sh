@@ -108,14 +108,14 @@ unset _BB_HEADERS_TMP
 . "$TOOLS_DIR/tools/_auth_helper.sh"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-echo ""
-echo -e "${RED}${BOLD}"
-echo "  ╔══════════════════════════════════════════════════════╗"
-echo "  ║         SHUVONSEC — FULL HUNT PIPELINE               ║"
-echo "  ║         Ethical Bug Bounty Automation                ║"
-echo "  ╚══════════════════════════════════════════════════════╝"
-echo -e "${RESET}"
-echo -e "${CYAN}  Target:    ${BOLD}${TARGET}${RESET}"
+# shellcheck source=tools/banner.sh
+. "$TOOLS_DIR/tools/banner.sh"
+print_banner "Full Hunt Pipeline · Ethical Bug Bounty" "$TARGET" \
+    "Passive recon|subdomains, URLs, tech fingerprinting" \
+    "Content discovery|directories, parameters, JS analysis" \
+    "Vuln scanning|nuclei templates, XSS, CORS, auth checks" \
+    "Reporting|writes findings to $OUT/reports/"
+
 echo -e "${CYAN}  Output:    ${BOLD}${OUT}/${RESET}"
 echo -e "${CYAN}  Started:   $(date)${RESET}"
 [ -n "$TOKEN" ]  && echo -e "${GREEN}  Auth:      Bearer token provided${RESET}"
@@ -161,7 +161,7 @@ ok "Total unique subdomains: $(wc -l < $OUT/subdomains/all_subs.txt)"
 # ── Probe live subdomains ─────────────────────────────────────────────────────
 if [ "$(check_tool httpx)" = true ]; then
     log "Probing live subdomains..."
-    cat "$OUT/subdomains/all_subs.txt" | httpx -silent "${BB_AUTH_ARGS[@]}" -o "$OUT/subdomains/live_subs.txt" 2>/dev/null
+    cat "$OUT/subdomains/all_subs.txt" | httpx -silent ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} -o "$OUT/subdomains/live_subs.txt" 2>/dev/null
     ok "Live subdomains: $(wc -l < $OUT/subdomains/live_subs.txt)"
 fi
 
@@ -207,7 +207,7 @@ sep
 # agents/recon-agent.md and commands/recon.md.
 if [ "$(check_tool katana)" = true ]; then
     log "Crawling with katana (5 min cap, depth 3)..."
-    timeout 300 katana -u "$TARGETURL" -d 3 -jc -kf all "${BB_AUTH_ARGS[@]}" -o "$OUT/urls/katana.txt" -silent 2>/dev/null || true
+    timeout 300 katana -u "$TARGETURL" -d 3 -jc -kf all ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} -o "$OUT/urls/katana.txt" -silent 2>/dev/null || true
     ok "Katana: $(wc -l < $OUT/urls/katana.txt 2>/dev/null || echo 0) URLs"
     [ -s "$OUT/urls/katana.txt" ] && cat "$OUT/urls/katana.txt" >> "$OUT/urls/all_urls.txt"
     sort -u "$OUT/urls/all_urls.txt" -o "$OUT/urls/all_urls.txt"
@@ -218,7 +218,7 @@ if [ "$(check_tool ffuf)" = true ] && [ -f "$WL_DIRS" ]; then
     log "Fuzzing directories..."
     ffuf -u "$TARGETURL/FUZZ" -w "$WL_DIRS" \
         -mc 200,301,302,403 -t 40 -s \
-        "${BB_AUTH_ARGS[@]}" \
+        ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} \
         -o "$OUT/content/ffuf_dirs.json" -of json \
         2>/dev/null
     ok "ffuf dirs: $(python3 -c "import json; d=json.load(open('$OUT/content/ffuf_dirs.json')); print(len(d.get('results',[])))" 2>/dev/null || echo 0) found"
@@ -232,7 +232,7 @@ if [ "$(check_tool ffuf)" = true ] && [ -f "$WL_FILES" ] && [ "$QUICK" = false ]
     ffuf -u "$TARGETURL/FUZZ" -w "$WL_FILES" \
         -e .php,.bak,.old,.env,.json,.xml,.yml,.yaml,.txt,.zip \
         -mc 200,301,302,403 -t 30 -s \
-        "${BB_AUTH_ARGS[@]}" \
+        ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} \
         -o "$OUT/content/ffuf_files.json" -of json 2>/dev/null
     ok "ffuf files: $(python3 -c "import json; d=json.load(open('$OUT/content/ffuf_files.json')); print(len(d.get('results',[])))" 2>/dev/null || echo 0) found"
 fi
@@ -280,7 +280,7 @@ if [ "$(check_tool nuclei)" = true ]; then
     nuclei -u "$TARGETURL" \
         -severity critical,high \
         -o "$OUT/vulns/nuclei_critical_high.txt" \
-        "${BB_AUTH_ARGS[@]}" \
+        ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} \
         -silent 2>/dev/null
     ok "Nuclei critical/high: $(wc -l < $OUT/vulns/nuclei_critical_high.txt) findings"
 
@@ -288,7 +288,7 @@ if [ "$(check_tool nuclei)" = true ]; then
         nuclei -u "$TARGETURL" \
             -severity medium \
             -o "$OUT/vulns/nuclei_medium.txt" \
-            "${BB_AUTH_ARGS[@]}" \
+            ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} \
             -silent 2>/dev/null
         ok "Nuclei medium: $(wc -l < $OUT/vulns/nuclei_medium.txt) findings"
     fi
@@ -300,7 +300,7 @@ fi
 if [ "$(check_tool dalfox)" = true ] && [ -s "$OUT/vulns/gf_xss.txt" ]; then
     log "Testing XSS candidates with dalfox..."
     cat "$OUT/vulns/gf_xss.txt" | dalfox pipe \
-        "${BB_AUTH_ARGS[@]}" \
+        ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} \
         -o "$OUT/vulns/xss_found.txt" --silence 2>/dev/null
     ok "XSS found: $(wc -l < $OUT/vulns/xss_found.txt)"
 fi
@@ -308,7 +308,7 @@ fi
 # ── CORS scan ─────────────────────────────────────────────────────────────────
 log "Checking CORS misconfiguration..."
 CORS_RESULT=$(curl -sk "$TARGETURL/api/" \
-    "${BB_AUTH_ARGS[@]}" \
+    ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} \
     -H "Origin: https://evil.com" \
     -I 2>/dev/null | grep -i "access-control-allow-origin: https://evil.com" || true)
 if [ -n "$CORS_RESULT" ]; then

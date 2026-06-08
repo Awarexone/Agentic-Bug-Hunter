@@ -1245,9 +1245,17 @@ class ReActAgent:
 
     def run(self) -> dict:
         """Run the full ReAct loop until done or max_steps reached."""
-        print(f"\n{BOLD}{CYAN}╔══════════════════════════════════════════╗{NC}")
-        print(f"{BOLD}{CYAN}║  ReAct Hunt Agent — {self.domain:<20}  ║{NC}")
-        print(f"{BOLD}{CYAN}╚══════════════════════════════════════════╝{NC}\n")
+        from tools.banner import print_banner
+        print_banner(
+            "ReAct Hunt Agent",
+            target=self.domain,
+            steps=[
+                ("Observe", "read working memory + last 5 tool observations"),
+                ("Think",   "LLM picks the next best tool from finding history"),
+                ("Act",     "run tool, parse output, persist findings to session"),
+                ("Loop",    "repeat until max-steps or LLM signals done"),
+            ],
+        )
 
         for i in range(self.max_steps):
             if self.done:

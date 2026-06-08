@@ -5,15 +5,21 @@ Usage: python3 hai_probe.py --token YOUR_API_TOKEN --api-name YOUR_API_NAME
 """
 
 import argparse
-import requests
 import json
 import time
 import sys
+
+try:
+    import requests
+except ImportError:  # pragma: no cover - exercised by CLI smoke checks
+    requests = None
 
 BASE_URL = "https://api.hackerone.com/v1"
 
 class HaiProbe:
     def __init__(self, api_name, api_token):
+        if requests is None:
+            raise RuntimeError("Missing dependency: install requests with `python3 -m pip install requests`")
         self.auth = (api_name, api_token)
         self.session = requests.Session()
         self.session.auth = self.auth
@@ -165,6 +171,9 @@ def main():
     parser.add_argument("--fingerprint", action="store_true", help="Run full fingerprinting")
     parser.add_argument("--list-reports", action="store_true", help="List accessible reports")
     args = parser.parse_args()
+
+    if requests is None:
+        parser.error("missing dependency: install requests with `python3 -m pip install requests`")
 
     probe = HaiProbe(args.api_name, args.token)
 

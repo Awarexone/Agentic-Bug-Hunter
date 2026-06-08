@@ -29,7 +29,7 @@ from datetime import datetime
 # because tools/__init__.py is present.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools.auth_session import AuthSession, add_cli_args, session_from_args  # noqa: E402
-from tools.dashboard import print_banner  # noqa: E402
+from tools.banner import print_banner  # noqa: E402
 
 # Process-wide AuthSession. Populated in main() once flags are parsed and
 # read by run_recon / run_vuln_scan so every subprocess inherits the same
@@ -487,33 +487,18 @@ Examples:
     # Suppress banner on --status / --setup-wordlists (utility paths that
     # shouldn't print a splash) and when explicitly disabled.
     _banner_suppressed = args.no_banner or args.status or args.setup_wordlists
+    if args.no_banner:
+        os.environ["BBHUNT_NO_BANNER"] = "1"
     if not _banner_suppressed:
-        # Mode label: pick the most informative flag the user passed.
-        if args.quick:
-            mode = "quick"
-        elif args.recon_only:
-            mode = "recon-only"
-        elif args.scan_only:
-            mode = "scan-only"
-        elif args.cve_hunt:
-            mode = "cve-hunt"
-        elif args.zero_day:
-            mode = "zero-day"
-        elif args.report_only:
-            mode = "report-only"
-        else:
-            mode = "full"
-
-        target_label = args.target or "(target selector)"
-        output_dir = (
-            os.path.relpath(os.path.join(RECON_DIR, args.target), BASE_DIR) + "/"
-            if args.target else "recon/<auto>/"
-        )
         print_banner(
-            target=target_label,
-            mode=mode,
-            output_dir=output_dir,
-            auth=bool(_AUTH_SESSION and not _AUTH_SESSION.is_empty()),
+            "Bug Bounty Automation Pipeline",
+            target=args.target or "(target selector)",
+            steps=[
+                ("Recon",    "subdomain enum, URL crawl, tech fingerprint, CVE sweep"),
+                ("Hunt",     "XSS · SQLi · SSRF · IDOR · auth bypass · LLM probes"),
+                ("Validate", "7-Question Gate · 4-gate checklist · kill weak findings"),
+                ("Report",   "H1/Bugcrowd/Intigriti template · CVSS 3.1 · PoC + repro"),
+            ],
         )
 
     # Status check

@@ -36,6 +36,13 @@ done
 OUT_DIR="${PARAM_OUT_DIR:-$(pwd)/findings/params/$(date +%Y%m%d_%H%M%S)}"
 mkdir -p "$OUT_DIR"
 
+# shellcheck source=banner.sh
+. "$SCRIPT_DIR/banner.sh"
+print_banner "Parameter Discovery · Hidden HTTP params" "${URL:-$LIST}" \
+    "Arjun|wordlist diff against a target endpoint" \
+    "x8|response-diff parameter brute (Rust, fast)" \
+    "Report|JSON of discovered params per endpoint"
+
 if _have arjun; then
   log "arjun discovery..."
   if [ -n "$URL" ]; then

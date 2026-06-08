@@ -14,9 +14,14 @@ Scope: Zendesk Suite (agent/admin) + Zendesk Front End (end-user)
 
 import os
 import sys
+import argparse
 import json
-import requests
 from urllib.parse import urljoin
+
+try:
+    import requests
+except ImportError:  # pragma: no cover - exercised by CLI smoke checks
+    requests = None
 
 # --- Config ---
 SUBDOMAIN = os.environ.get("ZENDESK_SUBDOMAIN", "")
@@ -28,6 +33,9 @@ AUTH = (f"{EMAIL}/token", API_TOKEN) if EMAIL and API_TOKEN else None
 
 def validate_config():
     """Return an error message when required Zendesk credentials are missing."""
+    if requests is None:
+        return "Missing dependency: install requests with `python3 -m pip install requests`"
+
     missing = []
     if not SUBDOMAIN:
         missing.append("ZENDESK_SUBDOMAIN")
@@ -38,6 +46,38 @@ def validate_config():
     if missing:
         return f"Set {', '.join(missing)} env vars"
     return None
+
+
+def configure_from_args(argv=None):
+    """Parse CLI args and update the env-backed module config."""
+    global SUBDOMAIN, EMAIL, API_TOKEN, BASE_URL, AUTH
+
+    parser = argparse.ArgumentParser(
+        description="Zendesk IDOR / broken access-control tester"
+    )
+    parser.add_argument(
+        "--subdomain",
+        default=SUBDOMAIN,
+        help="Zendesk subdomain (default: ZENDESK_SUBDOMAIN)",
+    )
+    parser.add_argument(
+        "--email",
+        default=EMAIL,
+        help="Zendesk email (default: ZENDESK_EMAIL)",
+    )
+    parser.add_argument(
+        "--token",
+        default=API_TOKEN,
+        help="Zendesk API token (default: ZENDESK_API_TOKEN)",
+    )
+    args = parser.parse_args(argv)
+
+    SUBDOMAIN = args.subdomain
+    EMAIL = args.email
+    API_TOKEN = args.token
+    BASE_URL = f"https://{SUBDOMAIN}.zendesk.com" if SUBDOMAIN else ""
+    AUTH = (f"{EMAIL}/token", API_TOKEN) if EMAIL and API_TOKEN else None
+    return args
 
 # --- Helpers ---
 def api_get(path, auth=True, params=None):
@@ -312,7 +352,8 @@ def test_webhook_ssrf():
                 print(f"  [{target[:40]}] Status {r.status_code}")
 
 # === MAIN ===
-def main() -> int:
+def main(argv=None) -> int:
+    configure_from_args(argv)
     error = validate_config()
     if error:
         print(f"ERROR: {error}")

@@ -51,6 +51,13 @@ done
 CACHE_DIR="${BBHUNT_CACHE_DIR:-$HOME/.cache/bbhunt/scope}"
 mkdir -p "$CACHE_DIR"
 
+# shellcheck source=banner.sh
+. "$SCRIPT_DIR/banner.sh"
+print_banner "Scope Aggregator · H1 · BC · IT · YWH · Immunefi" "$PROGRAM" \
+    "bbscope|authenticated multi-platform pull" \
+    "bounty-targets-data|hourly-updated public dump fallback" \
+    "Aggregate|dedupe + write host list to stdout/--out" 1>&2
+
 # Map our short labels to bbscope/dump platform names. Immunefi is intentionally
 # absent from arkadiyt/bounty-targets-data — pull it through bbscope when needed.
 declare -a PLATFORMS_TO_PULL

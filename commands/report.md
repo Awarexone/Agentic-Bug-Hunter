@@ -37,6 +37,24 @@ Provide when prompted:
 6. Recommended fix (1-2 sentences, specific)
 7. Supporting materials section
 
+## Persistence Rule
+
+Always save the full report and the final triage guidance into the finding's
+folder. Do not leave the pre-submit checklist, references, escalation notes, or
+"one note before submitting" guidance only in terminal output.
+
+Expected files:
+
+```text
+findings/<target-or-program>-<bug-class>/
+├── hackerone-report.md       # or bugcrowd-report.md / intigriti-report.md / immunefi-report.md
+├── submission-notes.md       # checklist, references, final caveats, submission note
+└── evidence/                 # screenshots, curl output, response bodies when available
+```
+
+If `/validate` generated `submission-notes.md`, update that file instead of
+creating a second notes file.
+
 ## Platform Selection
 
 ### HackerOne Format

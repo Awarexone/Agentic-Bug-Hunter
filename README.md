@@ -222,24 +222,51 @@ claude-bug-bounty/
 │   ├── hunt.py                # Master orchestrator
 │   ├── recon_engine.sh        # Subdomain + URL discovery
 │   ├── vuln_scanner.sh        # XSS · SQLi · SSRF · SSTI probe pipeline
-│   ├── validate.py            # 4-gate finding validator
-│   └── …                      # 30+ more — see tools/README.md
+│   ├── validate.py            # 4-gate finding validator with identity checks
+│   └── …                      # 30+ more scanners — see tools/README.md
 │
 ├── memory/                    # Cross-session hunt memory (pattern DB · audit log)
 ├── rules/                     # Always-active hunting + reporting rules
+├── tests/                     # Regression test suite (pytest)
 ├── web3/                      # 13-chapter smart contract audit guide
-├── docs/                      # Advanced techniques · auth sessions · payloads ref
 ├── mcp/                       # MCP integrations — Burp Suite · Caido · HackerOne API
 ├── wordlists/                 # Curated wordlists + SecLists / PayloadsAllTheThings refs
 ├── scripts/                   # Dork runner · full hunt pipeline
 ├── hooks/                     # Claude Code hook configuration
 ├── site/                      # bughunter.fun landing page
-├── demo/                      # Tutorial demo server (video walkthroughs)
+├── demo/                      # Local vulnerable target for tutorial recordings
+│
+├── docs/                      # Extended documentation
+│   ├── advanced-techniques.md # Exploitation techniques + chaining strategies
+│   ├── auth-sessions.md       # Auth header management guide
+│   ├── payloads.md            # Payload reference for common vuln classes
+│   ├── smart-contract-audit.md# Smart contract audit deep-dive
+│   ├── TUTORIAL.md            # A→Z video tutorial walkthrough
+│   └── TODOS.md               # Open improvement items
+│
+├── .github/                   # GitHub community health files
+│   ├── CONTRIBUTING.md        # How to contribute
+│   ├── CODE_OF_CONDUCT.md     # Community standards
+│   ├── SECURITY.md            # Vulnerability reporting policy
+│   ├── PULL_REQUEST_TEMPLATE.md
+│   └── ISSUE_TEMPLATE/        # Bug report · Feature request · False positive
 │
 ├── install.sh                 # Install skills + commands → ~/.claude/
 ├── install_tools.sh           # Install subfinder · httpx · nuclei · katana · ffuf …
-├── uninstall.sh               # Remove from ~/.claude/
-└── config.example.json        # Auth session config template
+├── uninstall.sh               # Remove skills + commands from ~/.claude/
+├── uninstall_tools.sh         # Remove external scanning tools
+├── agent.py                   # LangGraph-style ReAct hunting agent
+├── brain.py                   # Multi-provider LLM reasoning layer
+├── serve.py                   # Launch local demo target (python3 serve.py)
+├── config.example.json        # Auth session config template
+├── requirements.txt           # Python dependencies
+├── CLAUDE.md                  # Claude Code plugin manifest (auto-loaded)
+├── AGENTS.md                  # Multi-harness plugin guide (OpenCode · Codex · Pi)
+├── SKILL.md                   # Master skill shortcut (auto-loaded by agent harnesses)
+├── OPENCODE.md                # OpenCode-specific installation guide
+├── CHANGELOG.md               # Version history
+├── FAQ.md                     # Frequently asked questions
+└── TERMS.md                   # Terms of use + authorized testing only
 ```
 
 ---

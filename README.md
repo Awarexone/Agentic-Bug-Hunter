@@ -198,6 +198,52 @@ Every tool in the pipeline is gated on whether it's installed — missing tools 
 
 ---
 
+## Project Structure
+
+```
+claude-bug-bounty/
+│
+├── skills/                    # AI knowledge bases — loaded as /skill-name
+│   ├── bug-bounty/            # Master workflow — all vuln classes, LLM testing, chains
+│   ├── bb-methodology/        # Hunting mindset · 5-phase workflow · session discipline
+│   ├── web2-recon/            # Subdomain enum · live host discovery · URL crawl
+│   ├── web2-vuln-classes/     # 21 bug classes with bypass tables
+│   ├── security-arsenal/      # Payloads · bypass tables · gf patterns
+│   ├── triage-validation/     # 7-Question Gate · 4 gates · never-submit list
+│   ├── report-writing/        # Templates for H1 · Bugcrowd · Intigriti · Immunefi
+│   ├── web3-audit/            # Smart contract bugs · Foundry PoC · 10 bug classes
+│   ├── meme-coin-audit/       # Rug pull detection · LP attacks · bonding curve
+│   └── credential-attack/     # Password spray methodology · legal guardrails
+│
+├── commands/                  # 26 slash commands (/recon /hunt /validate /report …)
+├── agents/                    # 9 specialized AI agents (recon, validator, reporter …)
+│
+├── tools/                     # Python + shell scanner pipeline (~35 tools)
+│   ├── hunt.py                # Master orchestrator
+│   ├── recon_engine.sh        # Subdomain + URL discovery
+│   ├── vuln_scanner.sh        # XSS · SQLi · SSRF · SSTI probe pipeline
+│   ├── validate.py            # 4-gate finding validator
+│   └── …                      # 30+ more — see tools/README.md
+│
+├── memory/                    # Cross-session hunt memory (pattern DB · audit log)
+├── rules/                     # Always-active hunting + reporting rules
+├── web3/                      # 13-chapter smart contract audit guide
+├── docs/                      # Advanced techniques · auth sessions · payloads ref
+├── mcp/                       # MCP integrations — Burp Suite · Caido · HackerOne API
+├── wordlists/                 # Curated wordlists + SecLists / PayloadsAllTheThings refs
+├── scripts/                   # Dork runner · full hunt pipeline
+├── hooks/                     # Claude Code hook configuration
+├── site/                      # bughunter.fun landing page
+├── demo/                      # Tutorial demo server (video walkthroughs)
+│
+├── install.sh                 # Install skills + commands → ~/.claude/
+├── install_tools.sh           # Install subfinder · httpx · nuclei · katana · ffuf …
+├── uninstall.sh               # Remove from ~/.claude/
+└── config.example.json        # Auth session config template
+```
+
+---
+
 ## Installation
 
 **Prerequisites:**

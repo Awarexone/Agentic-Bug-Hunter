@@ -525,42 +525,97 @@ fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 log_info "Scan Complete. Consolidating..."
+CONF_SQLI=$(grep -c "\[CONFIRMED\].*SQLI-POC-VERIFIED" "$FINDINGS_DIR/sqli/timebased_candidates.txt" 2>/dev/null || echo 0)
+CONF_RCE=$(grep -c "\[CONFIRMED\]" "$FINDINGS_DIR/upload/verified_rce_pocs.txt" 2>/dev/null || echo 0)
+CONF_SSTI=$(grep -c "\[CONFIRMED\].*SSTI-CONFIRMED" "$FINDINGS_DIR/ssti/ssti_candidates.txt" 2>/dev/null || echo 0)
+CONF_SAML=$(grep -c "\[CONFIRMED\].*SAML-SIG-STRIP" "$FINDINGS_DIR/saml/findings.txt" 2>/dev/null || echo 0)
+POSS_SQLI=$(grep -c "\[POSSIBLE\].*SQLI-" "$FINDINGS_DIR/sqli/timebased_candidates.txt" 2>/dev/null || echo 0)
+POSS_XSS=$(grep -c "\[POSSIBLE\]" "$FINDINGS_DIR/xss/dalfox_results.txt" 2>/dev/null || echo 0)
+POSS_MFA_RATE=$(grep -c "\[POSSIBLE\].*MFA-NO-RATE-LIMIT" "$FINDINGS_DIR/mfa/findings.txt" 2>/dev/null || echo 0)
+POSS_UPLOAD=$(grep -c "\[POSSIBLE\].*UPLOAD-ONLY-POC" "$FINDINGS_DIR/upload/verified_upload_pocs.txt" 2>/dev/null || echo 0)
+POSS_MFA_SKIP=$(grep -c "\[POSSIBLE\].*MFA-WORKFLOW-SKIP" "$FINDINGS_DIR/mfa/findings.txt" 2>/dev/null || echo 0)
+INFO_UPLOAD=$(grep -c "\[INFORMATIONAL\].*UPLOAD-CANDIDATE" "$FINDINGS_DIR/upload/active_upload_probe.txt" 2>/dev/null || echo 0)
+INFO_SAML_ENDPOINTS=$(grep -c "\[INFORMATIONAL\].*SAML-ENDPOINT" "$FINDINGS_DIR/saml/endpoints.txt" 2>/dev/null || echo 0)
+INFO_SAML_META=$(grep -c "\[INFORMATIONAL\].*SAML-METADATA-EXPOSED" "$FINDINGS_DIR/saml/findings.txt" 2>/dev/null || echo 0)
+INFO_CMS=$(find "$FINDINGS_DIR/metasploit/" -name "*.rc" 2>/dev/null | wc -l | tr -d ' ')
+INFO_MFA_MANIP=$(grep -c "\[INFORMATIONAL\].*MFA-RESPONSE-MANIP" "$FINDINGS_DIR/mfa/findings.txt" 2>/dev/null || echo 0)
 {
     echo "Scan Date  : $(date)"
     echo "Target     : $TARGET"
     echo ""
     echo "=== CONFIRMED (submit after /validate) ==="
-    printf "  SQLi PoC (linear-confirmed) : %s\n" \
-        "$(grep -c "\[CONFIRMED\].*SQLI-POC-VERIFIED" "$FINDINGS_DIR/sqli/timebased_candidates.txt" 2>/dev/null || echo 0)"
-    printf "  RCE PoC (code-executed)     : %s\n" \
-        "$(grep -c "\[CONFIRMED\]" "$FINDINGS_DIR/upload/verified_rce_pocs.txt" 2>/dev/null || echo 0)"
-    printf "  SSTI (math-canary)          : %s\n" \
-        "$(grep -c "\[CONFIRMED\].*SSTI-CONFIRMED" "$FINDINGS_DIR/ssti/ssti_candidates.txt" 2>/dev/null || echo 0)"
-    printf "  SAML sig-strip (session)    : %s\n" \
-        "$(grep -c "\[CONFIRMED\].*SAML-SIG-STRIP" "$FINDINGS_DIR/saml/findings.txt" 2>/dev/null || echo 0)"
+    printf "  SQLi PoC (linear-confirmed) : %s\n" "$CONF_SQLI"
+    printf "  RCE PoC (code-executed)     : %s\n" "$CONF_RCE"
+    printf "  SSTI (math-canary)          : %s\n" "$CONF_SSTI"
+    printf "  SAML sig-strip (session)    : %s\n" "$CONF_SAML"
     echo ""
     echo "=== POSSIBLE (run /validate before submitting) ==="
-    printf "  SQLi delay candidates       : %s\n" \
-        "$(grep -c "\[POSSIBLE\].*SQLI-" "$FINDINGS_DIR/sqli/timebased_candidates.txt" 2>/dev/null || echo 0)"
-    printf "  XSS (dalfox, unconfirmed)   : %s\n" \
-        "$(grep -c "\[POSSIBLE\]" "$FINDINGS_DIR/xss/dalfox_results.txt" 2>/dev/null || echo 0)"
-    printf "  MFA rate-limit              : %s\n" \
-        "$(grep -c "\[POSSIBLE\].*MFA-NO-RATE-LIMIT" "$FINDINGS_DIR/mfa/findings.txt" 2>/dev/null || echo 0)"
-    printf "  Upload (file-only)          : %s\n" \
-        "$(grep -c "\[POSSIBLE\].*UPLOAD-ONLY-POC" "$FINDINGS_DIR/upload/verified_upload_pocs.txt" 2>/dev/null || echo 0)"
-    printf "  MFA workflow-skip           : %s\n" \
-        "$(grep -c "\[POSSIBLE\].*MFA-WORKFLOW-SKIP" "$FINDINGS_DIR/mfa/findings.txt" 2>/dev/null || echo 0)"
+    printf "  SQLi delay candidates       : %s\n" "$POSS_SQLI"
+    printf "  XSS (dalfox, unconfirmed)   : %s\n" "$POSS_XSS"
+    printf "  MFA rate-limit              : %s\n" "$POSS_MFA_RATE"
+    printf "  Upload (file-only)          : %s\n" "$POSS_UPLOAD"
+    printf "  MFA workflow-skip           : %s\n" "$POSS_MFA_SKIP"
     echo ""
     echo "=== INFORMATIONAL (do not submit without chain) ==="
-    printf "  Upload paths found          : %s\n" \
-        "$(grep -c "\[INFORMATIONAL\].*UPLOAD-CANDIDATE" "$FINDINGS_DIR/upload/active_upload_probe.txt" 2>/dev/null || echo 0)"
-    printf "  SAML endpoints              : %s\n" \
-        "$(grep -c "\[INFORMATIONAL\].*SAML-ENDPOINT" "$FINDINGS_DIR/saml/endpoints.txt" 2>/dev/null || echo 0)"
-    printf "  SAML metadata exposed       : %s\n" \
-        "$(grep -c "\[INFORMATIONAL\].*SAML-METADATA-EXPOSED" "$FINDINGS_DIR/saml/findings.txt" 2>/dev/null || echo 0)"
-    printf "  CMS detected                : %s\n" \
-        "$(find "$FINDINGS_DIR/metasploit/" -name "*.rc" 2>/dev/null | wc -l | tr -d ' ')"
-    printf "  MFA response-manip canary   : %s\n" \
-        "$(grep -c "\[INFORMATIONAL\].*MFA-RESPONSE-MANIP" "$FINDINGS_DIR/mfa/findings.txt" 2>/dev/null || echo 0)"
+    printf "  Upload paths found          : %s\n" "$INFO_UPLOAD"
+    printf "  SAML endpoints              : %s\n" "$INFO_SAML_ENDPOINTS"
+    printf "  SAML metadata exposed       : %s\n" "$INFO_SAML_META"
+    printf "  CMS detected                : %s\n" "$INFO_CMS"
+    printf "  MFA response-manip canary   : %s\n" "$INFO_MFA_MANIP"
 } > "$FINDINGS_DIR/summary.txt"
 cat "$FINDINGS_DIR/summary.txt"
+
+python3 - "$FINDINGS_DIR" "$TARGET" \
+    "$CONF_SQLI" "$CONF_RCE" "$CONF_SSTI" "$CONF_SAML" \
+    "$POSS_SQLI" "$POSS_XSS" "$POSS_MFA_RATE" "$POSS_UPLOAD" "$POSS_MFA_SKIP" \
+    "$INFO_UPLOAD" "$INFO_SAML_ENDPOINTS" "$INFO_SAML_META" "$INFO_CMS" "$INFO_MFA_MANIP" <<'PY'
+import json
+import os
+import sys
+from datetime import datetime
+
+out_dir = sys.argv[1]
+target = sys.argv[2]
+nums = list(map(int, sys.argv[3:]))
+
+payload = {
+    "generated_at": datetime.now().isoformat(timespec="seconds"),
+    "target": target,
+    "counts": {
+        "confirmed": {
+            "sqli": nums[0],
+            "rce": nums[1],
+            "ssti": nums[2],
+            "saml_sig_strip": nums[3],
+        },
+        "possible": {
+            "sqli_delay": nums[4],
+            "xss_dalfox": nums[5],
+            "mfa_rate_limit": nums[6],
+            "upload_file_only": nums[7],
+            "mfa_workflow_skip": nums[8],
+        },
+        "informational": {
+            "upload_paths": nums[9],
+            "saml_endpoints": nums[10],
+            "saml_metadata": nums[11],
+            "cms_detected": nums[12],
+            "mfa_response_manip": nums[13],
+        },
+    },
+    "artifacts": {
+        "summary_txt": os.path.join(out_dir, "summary.txt"),
+        "sqli_timebased": os.path.join(out_dir, "sqli", "timebased_candidates.txt"),
+        "rce": os.path.join(out_dir, "upload", "verified_rce_pocs.txt"),
+        "ssti": os.path.join(out_dir, "ssti", "ssti_candidates.txt"),
+        "saml": os.path.join(out_dir, "saml", "findings.txt"),
+        "xss": os.path.join(out_dir, "xss", "dalfox_results.txt"),
+        "mfa": os.path.join(out_dir, "mfa", "findings.txt"),
+        "upload": os.path.join(out_dir, "upload", "active_upload_probe.txt"),
+    },
+}
+
+with open(os.path.join(out_dir, "summary.json"), "w", encoding="utf-8") as fh:
+    json.dump(payload, fh, indent=2, sort_keys=True)
+    fh.write("\n")
+PY

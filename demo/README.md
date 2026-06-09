@@ -1,7 +1,7 @@
 # Vulnerable Demo Target
 
 A self-contained "shuvonsec.me lookalike" web app used by the
-[A→Z tutorial](../TUTORIAL.md) to demonstrate the toolkit end-to-end.
+[A→Z tutorial](../docs/TUTORIAL.md) to demonstrate the toolkit end-to-end.
 
 > ⚠️  **Intentionally vulnerable. Run locally only.**
 > The server binds to `127.0.0.1` by default. Don't expose it to the public

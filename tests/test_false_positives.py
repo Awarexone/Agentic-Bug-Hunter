@@ -201,6 +201,35 @@ class TestAuthBypassAdminOnly:
 
 
 # ---------------------------------------------------------------------------
+# 6. More noisy classes that should still fail unless impact is proven
+# ---------------------------------------------------------------------------
+
+class TestOtherNoisyClasses:
+    def test_ssrf_dns_only_needs_real_http_impact(self, monkeypatch):
+        passed, notes = _gate3(monkeypatch, True, True, "")
+        assert not passed
+        assert notes["rejection_reason"] == "no_reproducible_impact"
+
+    def test_saml_metadata_only_needs_proof_of_abuse(self, monkeypatch):
+        passed, notes = _gate3(monkeypatch, True, True, "")
+        assert not passed
+        assert notes["rejection_reason"] == "no_reproducible_impact"
+
+    def test_mfa_no_lockout_without_bypass_is_not_enough(self, monkeypatch):
+        passed, notes = _gate3(monkeypatch, True, False, "curl -s 'https://target.com/mfa'")
+        assert not passed
+        assert notes["rejection_reason"] == "unrealistic_privileges"
+
+    def test_race_condition_without_reproducible_poC_fails(self, monkeypatch):
+        passed, notes = _gate1(
+            monkeypatch, False, True, True, True,
+            vuln_type="Race condition",
+        )
+        assert not passed
+        assert notes["rejection_reason"] == "not_reproducible"
+
+
+# ---------------------------------------------------------------------------
 # Sanity: rejection reason codes are a known closed set
 # ---------------------------------------------------------------------------
 
@@ -224,3 +253,13 @@ def test_reason_codes_used_in_fixtures_are_in_known_set():
         "not_reproducible",
     }
     assert used.issubset(KNOWN_REASON_CODES)
+
+
+def test_known_rejection_codes_cover_new_fixtures():
+    assert {
+        "no_reproducible_impact",
+        "no_concrete_impact",
+        "unrealistic_privileges",
+        "identity_not_proven",
+        "not_reproducible",
+    }.issubset(KNOWN_REASON_CODES)

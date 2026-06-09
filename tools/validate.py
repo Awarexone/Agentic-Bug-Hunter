@@ -212,6 +212,19 @@ def ask_yn_required(prompt: str) -> bool:
         print(f"  {YELLOW}Enter y or n.{RESET}")
 
 
+def load_json_file(path: str) -> dict:
+    if not path:
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except FileNotFoundError:
+        return {}
+    except Exception as exc:
+        print(f"  {YELLOW}Could not read JSON file {path}: {exc}{RESET}")
+        return {}
+
+
 def ask_choice(prompt: str, choices: list[tuple[str, str]]) -> str:
     """Ask user to pick from labeled choices. Returns the choice key."""
     print(f"\n  {prompt}")
@@ -550,6 +563,7 @@ def generate_report_skeleton(info: dict) -> str:
     sev        = severity_from_score(score)
     scanner_confidence = info.get("scanner_confidence", "unknown")
     validation_status = info.get("validation_status", "scanner_hit")
+    scanner_summary = info.get("scanner_summary", {})
     date       = datetime.now().strftime("%Y-%m-%d")
 
     return f"""# {vuln_type} on {endpoint} — [fill in specific impact]
@@ -558,6 +572,7 @@ def generate_report_skeleton(info: dict) -> str:
 **Severity:** {sev} ({score}) — {vector}
 **Scanner Confidence:** {scanner_confidence}
 **Validation Status:** {validation_status}
+**Scanner Summary:** {scanner_summary if scanner_summary else "n/a"}
 **Date Found:** {date}
 
 ---
@@ -755,6 +770,7 @@ def write_validation_json(output_dir: str, info: dict, gate_notes: dict) -> str:
         # scanner_hit = gates failed or no PoC — do not submit
         "status": "validated_finding" if all_pass else "scanner_hit",
         "curl_poc": info.get("curl_poc", ""),
+        "scanner_summary": info.get("scanner_summary", {}),
         "rejection_reasons": rejection_reasons,
         "finding": {
             "program":            info.get("target"),
@@ -787,6 +803,11 @@ def main():
     parser.add_argument("--notes-output", default="", help="Output path for persisted submission notes")
     parser.add_argument("--program", default="", help="HackerOne program handle for dup check")
     parser.add_argument(
+        "--scanner-summary",
+        default="",
+        help="Path to tools/vuln_scanner.sh summary.json for calibration handoff",
+    )
+    parser.add_argument(
         "--scanner-confidence",
         default="unknown",
         choices=["confirmed", "possible", "informational", "unknown"],
@@ -811,6 +832,7 @@ def main():
     target_program = args.program or ask("HackerOne program handle (e.g., 'target-program')", "unknown")
     vuln_type      = ask("Vulnerability type (e.g., 'IDOR', 'Stored XSS', 'SSRF')")
     endpoint       = ask("Affected endpoint (e.g., '/api/invoices/:id')")
+    scanner_summary = load_json_file(args.scanner_summary)
 
     # Run the 4 gates
     g1_pass, g1_notes = gate1_is_real(vuln_type)
@@ -858,6 +880,7 @@ def main():
         "impact":             impact_desc,
         "curl_poc":           g3_notes.get("curl_poc", ""),
         "scanner_confidence": args.scanner_confidence,
+        "scanner_summary":    scanner_summary,
         "cvss_score":         cvss_score,
         "cvss_vector":        cvss_vector,
         "cvss_params":        cvss_params,

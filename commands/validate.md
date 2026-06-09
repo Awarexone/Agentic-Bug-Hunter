@@ -25,6 +25,10 @@ Describe the finding when prompted. Include:
 - What the PoC shows
 - The target program
 
+If you already ran the scanner, pass its `summary.json` with
+`--scanner-summary findings/<target>/summary.json` so the validation record
+captures the scanner tiering that led to this finding.
+
 ## The 7-Question Gate
 
 Answer each. ONE wrong answer = STOP.

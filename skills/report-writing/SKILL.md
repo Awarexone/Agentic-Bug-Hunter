@@ -41,6 +41,11 @@ findings/<target-or-program>-<bug-class>/
 If `tools/validate.py` already wrote `submission-notes.md`, append/update it
 instead of creating a duplicate.
 
+Validation artifacts should stay honest: preserve `scanner_confidence`,
+`validation.json`, and the exact `curl_poc` used to prove the impact. If the
+scanner only produced `possible` or `informational`, do not rewrite it as a
+confirmed finding without new evidence.
+
 ---
 
 ## TITLE FORMULA

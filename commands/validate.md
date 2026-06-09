@@ -75,6 +75,15 @@ rate limit on non-critical forms, missing cookie flags alone...
 
 If yes → KILL IT unless you have a chain.
 
+### Auth-related findings need cross-identity proof
+
+For IDOR, BOLA, auth bypass, ATO, and privilege escalation:
+- Session A must reach Session B's data or action
+- A fresh session must still reproduce the result
+- Anonymous vs authenticated behavior must be different
+
+Blank identity answers fail automatically.
+
 ## Check: Conditionally Valid?
 
 If it's on the never-submit list, can you chain it?
@@ -88,6 +97,19 @@ If it's on the never-submit list, can you chain it?
 | Prompt injection | + IDOR → other user's data? |
 
 If no chain → KILL IT. If chain confirmed → report both together.
+
+## Common N/A Classes
+
+Kill these before writing a report unless you have a proven chain or data delta:
+
+- Reflected XSS without impact beyond alert-level proof
+- SSRF DNS callback only
+- IDOR on your own account
+- SQLi error only, no data returned
+- CORS wildcard without credentialed exfil
+- Open redirect without token theft
+- MFA no lockout without OTP bypass
+- SAML metadata exposure without signature abuse
 
 ## 4 Gates — All Must Pass
 

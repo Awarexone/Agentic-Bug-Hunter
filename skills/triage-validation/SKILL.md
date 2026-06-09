@@ -122,6 +122,9 @@ Why this matters:
 under each identity and confirm the bug holds before writing the report.
 This is the most common reason "confirmed IDOR" findings come back as N/A.
 
+If you cannot answer the identity questions, treat the finding as unproven.
+Blank answers auto-fail on auth-related findings.
+
 ---
 
 ---

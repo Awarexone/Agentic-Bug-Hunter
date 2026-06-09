@@ -59,7 +59,13 @@ def _gate1(monkeypatch, repro, no_proxy, no_state, rtfm,
     yn = lambda b: "y" if b else "n"
     answers = [yn(repro), yn(no_proxy), yn(no_state), yn(rtfm)]
     if identity:
-        answers += [yn(a) for a in identity]
+        for item in identity:
+            if isinstance(item, str):
+                answers.append(item)
+            elif item is None:
+                answers.append("")
+            else:
+                answers.append(yn(item))
     inputs = iter(answers)
     monkeypatch.setattr("builtins.input", lambda _p="": next(inputs))
     return validate.gate1_is_real(vuln_type)
@@ -143,6 +149,15 @@ class TestIDOROwnDataOnly:
             monkeypatch, True, True, True, True,
             vuln_type="IDOR",
             identity=[True, False, True],   # fresh_session=False
+        )
+        assert not passed
+        assert notes["rejection_reason"] == "identity_not_proven"
+
+    def test_blank_identity_auto_fails(self, monkeypatch):
+        passed, notes = _gate1(
+            monkeypatch, True, True, True, True,
+            vuln_type="IDOR",
+            identity=["", True, True],   # blank cross-account answer
         )
         assert not passed
         assert notes["rejection_reason"] == "identity_not_proven"

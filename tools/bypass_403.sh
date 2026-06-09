@@ -59,6 +59,31 @@ _is_waf_page() {
   echo "$1" | grep -qiE "Access Denied|Cloudflare|You have been blocked|blocked by|security check|Please Wait|Ray ID|cf-error"
 }
 
+_normalize_body() {
+  local body_file="$1"
+  python3 - "$body_file" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="ignore")
+
+# Remove obvious volatile material before comparison.
+replacements = [
+    (r'(?i)\b[0-9a-f]{32,64}\b', '<hash>'),
+    (r'(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b', '<uuid>'),
+    (r'\b\d{4,}\b', '<num>'),
+    (r'(?i)(csrf|xsrf|token|nonce|session|request[_-]?id|trace[_-]?id|ray id|cf-ray)[^<>\n\r]*', r'\1:<redacted>'),
+]
+
+for pattern, repl in replacements:
+    text = re.sub(pattern, repl, text)
+
+text = re.sub(r'\s+', ' ', text).strip()
+print(text)
+PY
+}
+
 # Built-in fallback — most common header / method / path tricks
 _probe_one() {
   local target="$1" found=0
@@ -67,9 +92,11 @@ _probe_one() {
   log "probing $target"
 
   # Capture baseline 403 body length for content comparison
-  local orig_body orig_len
+  local orig_body orig_len orig_norm orig_code
   orig_body=$(curl -sk --max-time 5 "$target" 2>/dev/null || true)
   orig_len=${#orig_body}
+  orig_norm=$(printf '%s' "$orig_body" | _normalize_body /dev/stdin 2>/dev/null || printf '%s' "$orig_body")
+  orig_code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "$target" 2>/dev/null || echo 0)
 
   for combo in \
     "GET|$target|X-Original-URL: $target" \
@@ -102,28 +129,29 @@ _probe_one() {
     [ -n "$hdr" ] && args+=( -H "$hdr" )
     code=$(curl "${args[@]}" "$url" 2>/dev/null || echo 0)
     bypass_body=$(cat "$body_file" 2>/dev/null || true)
+    bypass_norm=$(printf '%s' "$bypass_body" | _normalize_body /dev/stdin 2>/dev/null || printf '%s' "$bypass_body")
     rm -f "$body_file"
     bypass_len=${#bypass_body}
 
     if [ "$code" = "200" ] || [ "$code" = "201" ] || [ "$code" = "204" ]; then
       # Determine confidence state:
-      #   [CONFIRMED]    — body differs significantly from 403 baseline AND is not a WAF page
-      #   [POSSIBLE]     — 200 returned but body within 50 bytes of 403 (likely WAF soft-block)
-      #   [INFORMATIONAL]— body contains WAF challenge strings
+      #   [CONFIRMED]    — normalized body differs from baseline and no WAF page pattern matches
+      #   [POSSIBLE]     — 200 returned but normalized body is still effectively the same
+      #   [INFORMATIONAL]— body contains WAF challenge strings or only redirects
       local len_diff=$(( bypass_len - orig_len ))
       [ "$len_diff" -lt 0 ] && len_diff=$(( orig_len - bypass_len ))
 
       local state
       if _is_waf_page "$bypass_body"; then
         state="[INFORMATIONAL]"
-      elif [ "$len_diff" -le 50 ]; then
+      elif [ "$bypass_norm" = "$orig_norm" ]; then
         state="[POSSIBLE]"
       else
         state="[CONFIRMED]"
       fi
 
-      hit "$state $method  $url  $hdr  → HTTP $code (body_len=$bypass_len orig_len=$orig_len)"
-      echo "$state $method|$url|$hdr|$code|body_len=$bypass_len|orig_len=$orig_len" >> "$OUT_DIR/bypass_hits.txt"
+      hit "$state $method  $url  $hdr  → HTTP $code (body_len=$bypass_len orig_len=$orig_len baseline_code=$orig_code)"
+      echo "$state $method|$url|$hdr|$code|body_len=$bypass_len|orig_len=$orig_len|baseline_code=$orig_code" >> "$OUT_DIR/bypass_hits.txt"
       found=1
     elif [ "$code" = "301" ] || [ "$code" = "302" ] || [ "$code" = "303" ] || [ "$code" = "307" ] || [ "$code" = "308" ]; then
       hit "[INFORMATIONAL] $method  $url  $hdr  → HTTP $code (redirect)"

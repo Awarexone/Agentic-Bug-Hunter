@@ -198,6 +198,20 @@ def ask_yn(prompt: str, default: bool = True) -> bool:
     return val in ("y", "yes")
 
 
+def ask_yn_required(prompt: str) -> bool:
+    """Ask a required yes/no question. Blank answers auto-fail."""
+    while True:
+        val = input(f"  {prompt} [y/n]: ").strip().lower()
+        if val in ("y", "yes"):
+            return True
+        if val in ("n", "no"):
+            return False
+        if not val:
+            print(f"  {YELLOW}Blank answer auto-fails this check.{RESET}")
+            return False
+        print(f"  {YELLOW}Enter y or n.{RESET}")
+
+
 def ask_choice(prompt: str, choices: list[tuple[str, str]]) -> str:
     """Ask user to pick from labeled choices. Returns the choice key."""
     print(f"\n  {prompt}")
@@ -256,14 +270,15 @@ def gate1_is_real(vuln_type: str = "") -> tuple[bool, dict]:
     if _is_auth_related(vuln_type):
         print(f"\n  {CYAN}Identity Check  (required — auth-related vuln type detected){RESET}")
         print(f"  {DIM}Most IDOR/ATO N/As happen because the tester only read their own data.{RESET}\n")
-        cross_account = ask_yn("Tested with two accounts: Session A read Session B's data (not your own)?")
-        fresh_session = ask_yn("Reproduced with a fresh session (not your existing logged-in cookie)?")
-        anon_delta    = ask_yn("Confirmed the delta: anonymous is blocked, attacker-authenticated succeeds?")
+        cross_account = ask_yn_required("Tested with two accounts: Session A read Session B's data (not your own)?")
+        fresh_session = ask_yn_required("Reproduced with a fresh session (not your existing logged-in cookie)?")
+        anon_delta    = ask_yn_required("Confirmed the delta: anonymous is blocked, attacker-authenticated succeeds?")
         identity_ok   = cross_account and fresh_session and anon_delta
         identity_notes = {
             "cross_account_tested":    cross_account,
             "fresh_session_tested":    fresh_session,
             "anon_vs_auth_delta":      anon_delta,
+            "identity_required":       True,
         }
         if not identity_ok:
             print(f"\n  {RED}Identity check FAIL — gate cannot pass without cross-account proof.{RESET}")
@@ -370,7 +385,9 @@ def gate3_exploitable() -> tuple[bool, dict]:
 
     rejection_reason: str | None = None
     if not passed:
-        if not concrete_impact:
+        if not curl_valid:
+            rejection_reason = "no_reproducible_impact"
+        elif not concrete_impact:
             rejection_reason = "no_concrete_impact"
         elif not no_unrealistic:
             rejection_reason = "unrealistic_privileges"
@@ -531,12 +548,16 @@ def generate_report_skeleton(info: dict) -> str:
     score      = info.get("cvss_score", 0.0)
     vector     = info.get("cvss_vector", "CVSS:3.1/...")
     sev        = severity_from_score(score)
+    scanner_confidence = info.get("scanner_confidence", "unknown")
+    validation_status = info.get("validation_status", "scanner_hit")
     date       = datetime.now().strftime("%Y-%m-%d")
 
     return f"""# {vuln_type} on {endpoint} — [fill in specific impact]
 
 **Program:** {target}
 **Severity:** {sev} ({score}) — {vector}
+**Scanner Confidence:** {scanner_confidence}
+**Validation Status:** {validation_status}
 **Date Found:** {date}
 
 ---
@@ -679,6 +700,8 @@ Generated: {date}
 - Program: {info.get('target', 'unknown')}
 - Vulnerability type: {info.get('vuln_type', 'unknown')}
 - Endpoint: {info.get('endpoint', 'unknown')}
+- Scanner confidence: {info.get('scanner_confidence', 'unknown')}
+- Validation status: {info.get('validation_status', 'scanner_hit')}
 - Report draft: {report_path}
 - CVSS: {info.get('cvss_score', 'n/a')} — `{info.get('cvss_vector', 'n/a')}`
 
@@ -731,6 +754,7 @@ def write_validation_json(output_dir: str, info: dict, gate_notes: dict) -> str:
         # validated_finding = all 4 gates passed with real curl PoC
         # scanner_hit = gates failed or no PoC — do not submit
         "status": "validated_finding" if all_pass else "scanner_hit",
+        "curl_poc": info.get("curl_poc", ""),
         "rejection_reasons": rejection_reasons,
         "finding": {
             "program":            info.get("target"),
@@ -841,6 +865,7 @@ def main():
         "gate2_pass":         g2_pass,
         "gate3_pass":         g3_pass,
         "gate4_pass":         g4_pass,
+        "validation_status":  "validated_finding" if all_pass else "scanner_hit",
     }
 
     skeleton = generate_report_skeleton(info)

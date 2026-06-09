@@ -55,11 +55,6 @@ findings/<target-or-program>-<bug-class>/
 If `/validate` generated `submission-notes.md`, update that file instead of
 creating a second notes file.
 
-The validation artifacts now include `scanner_confidence`, `validation.json`,
-and the exact `curl_poc` used to prove impact. Keep those values aligned with
-the final report; do not upgrade a `possible` scanner hit into a `confirmed`
-submission without new evidence.
-
 ## Platform Selection
 
 ### HackerOne Format

@@ -16,6 +16,10 @@
 - `install.sh` now supports Claude Code, OpenCode, Pi Agent, Codex-style installs, shared Agent Skills, and project-local installs.
 - `install_tools.sh` attempts to install Python dependencies after the binary tool pass.
 - `tools/validate.py` persists `submission-notes.md` and `validation.json` beside each report skeleton.
+- `tools/vuln_scanner.sh` now writes `summary.json` so validation can ingest the scanner confidence and tier counts directly.
+- `tools/validate.py` now accepts `--scanner-summary` and records the scanner handoff in `validation.json` and the report skeleton.
+- `tools/bypass_403.sh` now compares normalized response bodies before marking a bypass confirmed.
+- Added regression coverage for the scanner handoff, bypass normalization, and false-positive classes that commonly come back N/A.
 
 ## v4.2.3 — Auto-rotation Stop Hook (May 2026)
 

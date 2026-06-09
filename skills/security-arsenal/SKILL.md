@@ -741,7 +741,7 @@ Missing CSP / HSTS / X-Frame-Options / other security headers
 Missing SPF / DKIM / DMARC
 GraphQL introspection alone (no auth bypass, no IDOR)
 Banner / version disclosure without a working CVE exploit
-Clickjacking on non-sensitive pages (no sensitive action in PoC)
+Clickjacking on non-sensitive pages (no sensitive action in PoC) — for working overlay PoC against sensitive action, see web2-vuln-classes **CSS Injection**
 Tabnabbing
 CSV injection (no actual code execution shown)
 CORS wildcard (*) without credential exfil PoC
@@ -772,7 +772,7 @@ These are valid ONLY when combined with a chain that proves real impact:
 | Standalone Finding | Chain Required | Result if Chained |
 |---|---|---|
 | Open redirect | + OAuth code theft via redirect_uri abuse | ATO (Critical) |
-| Clickjacking | + sensitive action + working PoC (not just login) | Medium |
+| Clickjacking | + sensitive action + working PoC (not just login) — see web2-vuln-classes **CSS Injection** for the opacity-overlay template | Medium |
 | CORS wildcard | + credentialed request exfils user data | High |
 | CSRF | + sensitive action (transfer funds, change email) | High |
 | Rate limit bypass | + OTP/token brute force succeeding | Medium/High |

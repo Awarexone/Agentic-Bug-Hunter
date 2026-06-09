@@ -54,12 +54,23 @@ if _have byp4xx; then
   exit 0
 fi
 
+# WAF challenge page patterns — if body matches, downgrade to [INFORMATIONAL]
+_is_waf_page() {
+  echo "$1" | grep -qiE "Access Denied|Cloudflare|You have been blocked|blocked by|security check|Please Wait|Ray ID|cf-error"
+}
+
 # Built-in fallback — most common header / method / path tricks
 _probe_one() {
   local target="$1" found=0
   local base="${target%/*}"      # strip last segment
   local last="${target##*/}"
   log "probing $target"
+
+  # Capture baseline 403 body length for content comparison
+  local orig_body orig_len
+  orig_body=$(curl -sk --max-time 5 "$target" 2>/dev/null || true)
+  orig_len=${#orig_body}
+
   for combo in \
     "GET|$target|X-Original-URL: $target" \
     "GET|$target|X-Rewrite-URL: $target" \
@@ -83,12 +94,40 @@ _probe_one() {
     method=$(echo "$combo" | cut -d'|' -f1)
     url=$(echo "$combo" | cut -d'|' -f2)
     hdr=$(echo "$combo" | cut -d'|' -f3)
-    args=( -sk -o /dev/null -w "%{http_code}" --max-time 5 -X "$method" )
+
+    # Capture body and status code together
+    local body_file
+    body_file=$(mktemp /tmp/bypass_body_XXXXXX)
+    args=( -sk -w "%{http_code}" --max-time 5 -X "$method" -o "$body_file" )
     [ -n "$hdr" ] && args+=( -H "$hdr" )
     code=$(curl "${args[@]}" "$url" 2>/dev/null || echo 0)
+    bypass_body=$(cat "$body_file" 2>/dev/null || true)
+    rm -f "$body_file"
+    bypass_len=${#bypass_body}
+
     if [ "$code" = "200" ] || [ "$code" = "201" ] || [ "$code" = "204" ]; then
-      hit "$method  $url  $hdr  → HTTP $code"
-      echo "$method|$url|$hdr|$code" >> "$OUT_DIR/bypass_hits.txt"
+      # Determine confidence state:
+      #   [CONFIRMED]    — body differs significantly from 403 baseline AND is not a WAF page
+      #   [POSSIBLE]     — 200 returned but body within 50 bytes of 403 (likely WAF soft-block)
+      #   [INFORMATIONAL]— body contains WAF challenge strings
+      local len_diff=$(( bypass_len - orig_len ))
+      [ "$len_diff" -lt 0 ] && len_diff=$(( orig_len - bypass_len ))
+
+      local state
+      if _is_waf_page "$bypass_body"; then
+        state="[INFORMATIONAL]"
+      elif [ "$len_diff" -le 50 ]; then
+        state="[POSSIBLE]"
+      else
+        state="[CONFIRMED]"
+      fi
+
+      hit "$state $method  $url  $hdr  → HTTP $code (body_len=$bypass_len orig_len=$orig_len)"
+      echo "$state $method|$url|$hdr|$code|body_len=$bypass_len|orig_len=$orig_len" >> "$OUT_DIR/bypass_hits.txt"
+      found=1
+    elif [ "$code" = "301" ] || [ "$code" = "302" ] || [ "$code" = "303" ] || [ "$code" = "307" ] || [ "$code" = "308" ]; then
+      hit "[INFORMATIONAL] $method  $url  $hdr  → HTTP $code (redirect)"
+      echo "[INFORMATIONAL] $method|$url|$hdr|$code|redirect" >> "$OUT_DIR/bypass_hits.txt"
       found=1
     fi
   done

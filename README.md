@@ -568,6 +568,22 @@ git push origin feature/your-contribution
 
 **Built by bug hunters, for bug hunters.** &nbsp;·&nbsp; If this helped you find a bug, [leave a star ⭐](https://github.com/shuvonsec/claude-bug-bounty)
 
+</div>
+
+---
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=shuvonsec%2Fclaude-bug-bounty&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=shuvonsec/claude-bug-bounty&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=shuvonsec/claude-bug-bounty&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=shuvonsec/claude-bug-bounty&type=date&legend=top-left" />
+ </picture>
+</a>
+
+<div align="center">
+
 <br>
 
 <sub>MIT License · For authorized security testing only. Test only within an approved bug bounty program scope. Never test systems without explicit written permission. Follow responsible disclosure.</sub>

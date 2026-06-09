@@ -55,6 +55,28 @@ Q7: Is this NOT on the never-submit list?
     NO: Missing headers, self-XSS, open redirect alone, etc. → KILL or CHAIN
 ```
 
+### Auth-related findings need identity proof
+
+If the bug class involves IDOR, BOLA, auth bypass, ATO, or privilege escalation,
+you must prove it across identities:
+- Session A reading Session B's data
+- Fresh session repro
+- Anonymous vs authenticated delta
+
+Blank answers fail this check. If you cannot prove cross-account impact, kill it.
+
+### Common N/A classes
+
+Typical scanner hits that still need a real PoC:
+- Reflected XSS without a session consequence
+- SSRF with DNS only, no HTTP data
+- IDOR on your own data
+- SQLi error strings without table data
+- CORS wildcard without credentialed exfil
+- Open redirect alone
+- MFA no lockout without OTP bypass
+- SAML metadata exposure without signature abuse
+
 ## Fast Kill Checklist
 
 Kill immediately if ANY of these are true:

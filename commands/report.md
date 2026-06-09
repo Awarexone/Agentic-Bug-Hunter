@@ -55,6 +55,10 @@ findings/<target-or-program>-<bug-class>/
 If `/validate` generated `submission-notes.md`, update that file instead of
 creating a second notes file.
 
+If `validation.json` includes `scanner_summary`, keep that context attached to
+the finding folder so you can trace how the result graduated from a scanner hit
+to a validated finding.
+
 ## Platform Selection
 
 ### HackerOne Format

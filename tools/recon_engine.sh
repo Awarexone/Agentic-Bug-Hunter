@@ -45,6 +45,14 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 THREADS=20
 RATE_LIMIT=50  # requests per second
 
+# shellcheck source=tools/banner.sh
+. "$(dirname "$0")/banner.sh"
+print_banner "Recon Engine · Bug Bounty" "$TARGET" \
+    "Subdomain enum|subfinder · amass · crt.sh · wayback" \
+    "Live probe|httpx + dnsx with tech fingerprinting" \
+    "URL crawl|katana · gau · waybackurls" \
+    "Templates|nuclei sweep (optional)"
+
 # Prefer Go tools in ~/go/bin
 export PATH="$HOME/go/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 

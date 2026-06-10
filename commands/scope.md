@@ -22,6 +22,28 @@ Always check scope BEFORE the first request.
 /scope *.company.com
 ```
 
+## Deterministic Local Check
+
+Use the local scope checker before sending traffic:
+
+```bash
+python3 tools/scope_checker.py https://api.target.com/v2/users \
+  --domain target.com \
+  --domain '*.target.com' \
+  --exclude-domain staging.target.com
+```
+
+Filter a discovered URL list:
+
+```bash
+python3 tools/scope_checker.py \
+  --domain target.com \
+  --domain '*.target.com' \
+  --exclude-domain staging.target.com \
+  --input-file recon/target.com/urls/all.txt \
+  --output recon/target.com/urls/in_scope.txt
+```
+
 ## Scope Check Process
 
 ### Step 1: Read In-Scope List

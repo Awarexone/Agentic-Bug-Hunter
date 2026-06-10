@@ -10,9 +10,11 @@
 #
 # Callers splat the array into curl/httpx/katana/nuclei/ffuf invocations:
 #
-#   curl -sk "${BB_AUTH_ARGS[@]}" "$url"
-#   nuclei -l "$list" "${BB_AUTH_ARGS[@]}" -o "$out"
+#   curl -sk ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "$url"
+#   nuclei -l "$list" ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} -o "$out"
 #
+# The verbose expansion is intentional: bash 3.2 on macOS aborts under set -u
+# when expanding an empty array as "${BB_AUTH_ARGS[@]}".
 # Empty session = empty array = no behavior change for anonymous hunts.
 # Compatible with bash 3.2 (macOS default).
 # =============================================================================

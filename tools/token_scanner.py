@@ -31,6 +31,11 @@ from dataclasses import dataclass, field, asdict
 from enum import Enum
 from pathlib import Path
 
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+from tools.banner import print_banner  # noqa: E402
+
 # ── Colors ──────────────────────────────────────────────────────────────────
 
 RED = "\033[91m"
@@ -749,6 +754,19 @@ Examples:
     )
 
     args = parser.parse_args()
+
+    # Skip banner in machine-readable modes so output stays parseable.
+    if not args.json_output:
+        print_banner(
+            "Token Scanner · Meme Coin Rug Detection",
+            target=args.target,
+            steps=[
+                ("Pattern match", "hidden mint · honeypot · fee manipulation"),
+                ("Authority",     "mint · freeze · upgrade · LP-lock checks"),
+                ("MEV / curve",   "sandwich amplification · bonding-curve traps"),
+                ("Report",        "markdown + JSON findings"),
+            ],
+        )
 
     scanner = TokenScanner(
         target_path=args.target,

@@ -22,6 +22,7 @@ from pathlib import Path
 # Make memory/ importable when running as a script from repo root.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from tools.banner import print_banner  # noqa: E402
 from memory.rotation import (  # noqa: E402
     DEFAULT_KEEP,
     DEFAULT_MAX_BYTES,
@@ -132,6 +133,16 @@ def main(argv: list[str] | None = None) -> int:
 
     root = Path(args.dir).resolve()
     max_bytes = int(args.max_mb * 1024 * 1024)
+
+    print_banner(
+        "Memory GC · Hunt-memory JSONL rotation",
+        target=str(root),
+        steps=[
+            ("Inspect", f"scan {root.name}/ for files over the cap"),
+            ("Rotate",  f"keep {args.keep} backups, cap {args.max_mb:.0f} MB"),
+            ("Purge",   "drop old backups when --purge-backups is set"),
+        ],
+    )
 
     over = report(root, max_bytes, args.keep)
     print()

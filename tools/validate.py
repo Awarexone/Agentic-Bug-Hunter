@@ -18,6 +18,11 @@ import urllib.request
 import urllib.error
 from datetime import datetime
 
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+from tools.banner import print_banner  # noqa: E402
+
 # macOS: Python may not have system SSL certs. Use unverified context for API queries.
 _SSL_CTX = ssl.create_default_context()
 try:
@@ -193,6 +198,33 @@ def ask_yn(prompt: str, default: bool = True) -> bool:
     return val in ("y", "yes")
 
 
+def ask_yn_required(prompt: str) -> bool:
+    """Ask a required yes/no question. Blank answers auto-fail."""
+    while True:
+        val = input(f"  {prompt} [y/n]: ").strip().lower()
+        if val in ("y", "yes"):
+            return True
+        if val in ("n", "no"):
+            return False
+        if not val:
+            print(f"  {YELLOW}Blank answer auto-fails this check.{RESET}")
+            return False
+        print(f"  {YELLOW}Enter y or n.{RESET}")
+
+
+def load_json_file(path: str) -> dict:
+    if not path:
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except FileNotFoundError:
+        return {}
+    except Exception as exc:
+        print(f"  {YELLOW}Could not read JSON file {path}: {exc}{RESET}")
+        return {}
+
+
 def ask_choice(prompt: str, choices: list[tuple[str, str]]) -> str:
     """Ask user to pick from labeled choices. Returns the choice key."""
     print(f"\n  {prompt}")
@@ -223,7 +255,19 @@ def gate_header(n: int, name: str, status: str | None = None):
 
 # ─── Gate implementations ─────────────────────────────────────────────────────
 
-def gate1_is_real() -> tuple[bool, dict]:
+# Auth-related vuln types that require session identity checks before Gate 1 can pass.
+_AUTH_KEYWORDS = {
+    "idor", "ato", "auth", "session", "login", "privilege", "account",
+    "bypass", "takeover", "permission", "access control", "broken auth",
+    "bac", "broken access", "insecure direct",
+}
+
+def _is_auth_related(vuln_type: str) -> bool:
+    vt = vuln_type.lower()
+    return any(k in vt for k in _AUTH_KEYWORDS)
+
+
+def gate1_is_real(vuln_type: str = "") -> tuple[bool, dict]:
     gate_header(1, "Is It Real?")
     print("  Can you reproduce the bug from scratch — clean browser, no Burp artifacts?")
     print()
@@ -232,16 +276,43 @@ def gate1_is_real() -> tuple[bool, dict]:
     no_state = ask_yn("No unusual preconditions (doesn't require specific timing or race)?")
     rtfm     = ask_yn("Checked documentation — this isn't expected/documented behavior?")
 
-    passed = repro3 and no_burp and no_state and rtfm
-    notes = {
-        "repro_3_3": repro3,
-        "works_without_proxy": no_burp,
-        "no_special_state": no_state,
+    # Identity check for auth/access-control findings.
+    # The #1 reason IDOR/ATO get N/A: tester only accessed their own data.
+    identity_ok = True
+    identity_notes: dict = {}
+    if _is_auth_related(vuln_type):
+        print(f"\n  {CYAN}Identity Check  (required — auth-related vuln type detected){RESET}")
+        print(f"  {DIM}Most IDOR/ATO N/As happen because the tester only read their own data.{RESET}\n")
+        cross_account = ask_yn_required("Tested with two accounts: Session A read Session B's data (not your own)?")
+        fresh_session = ask_yn_required("Reproduced with a fresh session (not your existing logged-in cookie)?")
+        anon_delta    = ask_yn_required("Confirmed the delta: anonymous is blocked, attacker-authenticated succeeds?")
+        identity_ok   = cross_account and fresh_session and anon_delta
+        identity_notes = {
+            "cross_account_tested":    cross_account,
+            "fresh_session_tested":    fresh_session,
+            "anon_vs_auth_delta":      anon_delta,
+            "identity_required":       True,
+        }
+        if not identity_ok:
+            print(f"\n  {RED}Identity check FAIL — gate cannot pass without cross-account proof.{RESET}")
+
+    passed = repro3 and no_burp and no_state and rtfm and identity_ok
+
+    rejection_reason: str | None = None
+    if not passed:
+        rejection_reason = "identity_not_proven" if (repro3 and no_burp and no_state and rtfm and not identity_ok) else "not_reproducible"
+
+    notes: dict = {
+        "repro_3_3":               repro3,
+        "works_without_proxy":     no_burp,
+        "no_special_state":        no_state,
         "not_documented_behavior": rtfm,
+        **identity_notes,
+        "rejection_reason":        rejection_reason,
     }
 
     if not passed:
-        print(f"\n  {RED}GATE 1 FAIL: Not reliably reproducible.{RESET}")
+        print(f"\n  {RED}GATE 1 FAIL: {rejection_reason}{RESET}")
         print(f"  {DIM}Do not submit yet. Verify the bug is deterministic first.{RESET}")
     else:
         print(f"\n  {GREEN}GATE 1 PASS{RESET}")
@@ -282,14 +353,15 @@ def gate2_in_scope(program_handle: str) -> tuple[bool, dict]:
             print(f"  {YELLOW}Could not fetch scope (network error){RESET}")
 
     passed = asset_in_scope and not_excluded and version_ok
-    notes = {
-        "asset_in_scope": asset_in_scope,
-        "not_excluded": not_excluded,
-        "version_ok": version_ok,
+    notes: dict = {
+        "asset_in_scope":    asset_in_scope,
+        "not_excluded":      not_excluded,
+        "version_ok":        version_ok,
+        "rejection_reason":  "out_of_scope" if not passed else None,
     }
 
     if not passed:
-        print(f"\n  {RED}GATE 2 FAIL: May be out of scope.{RESET}")
+        print(f"\n  {RED}GATE 2 FAIL: out_of_scope{RESET}")
         print(f"  {DIM}Confirm scope before submitting.{RESET}")
     else:
         print(f"\n  {GREEN}GATE 2 PASS{RESET}")
@@ -302,24 +374,50 @@ def gate3_exploitable() -> tuple[bool, dict]:
     print("  Can you demonstrate concrete impact without unrealistic preconditions?")
     print()
 
-    concrete_impact  = ask_yn("Can you show concrete impact (not just 'theoretically an attacker could')?")
-    no_unrealistic   = ask_yn("No unrealistic preconditions (not 'must be admin already', not 'victim must run JS')?")
-    can_demonstrate  = ask_yn("Have proof you can show a triager (screenshot, curl, PoC)?")
+    concrete_impact = ask_yn("Can you show concrete impact (not just 'theoretically an attacker could')?")
+    no_unrealistic  = ask_yn("No unrealistic preconditions (not 'must be admin already', not 'victim must run JS')?")
 
     print()
     print("  What is the concrete impact? (be specific)")
     impact_desc = ask("Describe the impact")
 
-    passed = concrete_impact and no_unrealistic and can_demonstrate
-    notes = {
-        "concrete_impact": concrete_impact,
-        "no_unrealistic_preconditions": no_unrealistic,
-        "has_proof": can_demonstrate,
-        "impact_description": impact_desc,
+    # Require a real curl PoC — yes/no on "have proof" is not enough.
+    # A blank answer here is an automatic FAIL. This is the primary false-positive filter.
+    print()
+    print(f"  {BOLD}Paste the exact curl command that reproduces this.{RESET}")
+    print(f"  {DIM}Example: curl -s 'https://target.com/api/user/456' -H 'Cookie: sess=ATTACKER'{RESET}")
+    print(f"  {YELLOW}Leave blank or type 'skip' → auto-FAIL (no proof = no submit){RESET}")
+    curl_poc   = ask("curl PoC").strip()
+    curl_valid = bool(curl_poc) and curl_poc.lower() != "skip"
+
+    if not curl_valid:
+        print(f"\n  {RED}No PoC provided — this is a scanner hit, not a confirmed finding.{RESET}")
+        print(f"  {DIM}Reproduce it with curl, then come back.{RESET}")
+
+    passed = concrete_impact and no_unrealistic and curl_valid
+
+    rejection_reason: str | None = None
+    if not passed:
+        if not curl_valid:
+            rejection_reason = "no_reproducible_impact"
+        elif not concrete_impact:
+            rejection_reason = "no_concrete_impact"
+        elif not no_unrealistic:
+            rejection_reason = "unrealistic_privileges"
+        else:
+            rejection_reason = "no_reproducible_impact"
+
+    notes: dict = {
+        "concrete_impact":             concrete_impact,
+        "no_unrealistic_preconditions":no_unrealistic,
+        "curl_poc":                    curl_poc if curl_valid else "",
+        "has_proof":                   curl_valid,
+        "impact_description":          impact_desc,
+        "rejection_reason":            rejection_reason,
     }
 
     if not passed:
-        print(f"\n  {RED}GATE 3 FAIL: Exploitability not demonstrated.{RESET}")
+        print(f"\n  {RED}GATE 3 FAIL: {rejection_reason}{RESET}")
         print(f"  {DIM}Build a working PoC before submitting.{RESET}")
     else:
         print(f"\n  {GREEN}GATE 3 PASS{RESET}")
@@ -353,15 +451,16 @@ def gate4_not_dup(vuln_type: str, endpoint: str, program_handle: str) -> tuple[b
     checked_history = ask_yn("Checked git log for recent security fixes with this pattern?")
 
     passed = not_disclosed and not_in_issues and checked_history
-    notes = {
-        "not_in_h1_disclosed": not_disclosed,
+    notes: dict = {
+        "not_in_h1_disclosed":  not_disclosed,
         "not_in_github_issues": not_in_issues,
-        "checked_git_history": checked_history,
-        "h1_similar_reports": [r.get("title") for r in h1_results],
+        "checked_git_history":  checked_history,
+        "h1_similar_reports":   [r.get("title") for r in h1_results],
+        "rejection_reason":     "duplicate_or_already_disclosed" if not passed else None,
     }
 
     if not passed:
-        print(f"\n  {RED}GATE 4 FAIL: Possible duplicate.{RESET}")
+        print(f"\n  {RED}GATE 4 FAIL: duplicate_or_already_disclosed{RESET}")
         print(f"  {DIM}Verify it's not already known before submitting.{RESET}")
     else:
         print(f"\n  {GREEN}GATE 4 PASS{RESET}")
@@ -462,12 +561,18 @@ def generate_report_skeleton(info: dict) -> str:
     score      = info.get("cvss_score", 0.0)
     vector     = info.get("cvss_vector", "CVSS:3.1/...")
     sev        = severity_from_score(score)
+    scanner_confidence = info.get("scanner_confidence", "unknown")
+    validation_status = info.get("validation_status", "scanner_hit")
+    scanner_summary = info.get("scanner_summary", {})
     date       = datetime.now().strftime("%Y-%m-%d")
 
     return f"""# {vuln_type} on {endpoint} — [fill in specific impact]
 
 **Program:** {target}
 **Severity:** {sev} ({score}) — {vector}
+**Scanner Confidence:** {scanner_confidence}
+**Validation Status:** {validation_status}
+**Scanner Summary:** {scanner_summary if scanner_summary else "n/a"}
 **Date Found:** {date}
 
 ---
@@ -561,28 +666,176 @@ Example: In `path/to/file.ts`, the `functionName` function should verify
 """
 
 
+PRE_SUBMIT_CHECKLIST = [
+    "Title follows formula: [Class] in [endpoint] allows [actor] to [impact]",
+    "First sentence states exact impact in plain English",
+    "Steps to Reproduce has exact HTTP request (copy-paste ready)",
+    "Response showing the bug is included (screenshot or JSON body)",
+    "Two test accounts used — not just one account testing itself",
+    "CVSS score calculated and included",
+    "Recommended fix is 1-2 sentences (not a lecture)",
+    "No typos in endpoint paths or parameter names",
+    "Report is < 600 words — triagers skim long reports",
+    "Severity claimed matches impact described — don't overclaim",
+    "Never used \"could potentially\" or \"may allow\"",
+    "PoC is reproducible by triager from a fresh state",
+]
+
+
+def write_submission_notes(
+    output_dir: str,
+    report_path: str,
+    info: dict,
+    gates: list[tuple[int, str, bool]],
+    all_pass: bool,
+    notes_path: str = "",
+) -> str:
+    """Persist terminal guidance that would otherwise be lost in scrollback."""
+    path = notes_path or os.path.join(output_dir, "submission-notes.md")
+    date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    gate_rows = "\n".join(
+        f"| Gate {n} | {name} | {'PASS' if passed else 'FAIL'} |"
+        for n, name, passed in gates
+    )
+    checklist = "\n".join(f"- [ ] {item}" for item in PRE_SUBMIT_CHECKLIST)
+    verdict = (
+        "All validation gates passed. The report is a submission candidate after "
+        "you fill in the exact request, response, screenshots, and fix notes."
+        if all_pass else
+        "One or more validation gates failed. Keep this as a draft until the "
+        "failed gates are resolved; do not submit it yet."
+    )
+
+    content = f"""# Submission Notes
+
+Generated: {date}
+
+## Finding
+
+- Program: {info.get('target', 'unknown')}
+- Vulnerability type: {info.get('vuln_type', 'unknown')}
+- Endpoint: {info.get('endpoint', 'unknown')}
+- Scanner confidence: {info.get('scanner_confidence', 'unknown')}
+- Validation status: {info.get('validation_status', 'scanner_hit')}
+- Report draft: {report_path}
+- CVSS: {info.get('cvss_score', 'n/a')} — `{info.get('cvss_vector', 'n/a')}`
+
+## Validation Summary
+
+| Gate | Question | Result |
+|---|---|---|
+{gate_rows}
+
+## One Note Before Submitting
+
+{verdict}
+
+## Final Checklist Before Submitting
+
+{checklist}
+
+## References
+
+- `commands/report.md` — platform-specific report structure.
+- `skills/report-writing/SKILL.md` — impact-first templates, downgrade counters, and pre-submit checklist.
+- `skills/triage-validation/SKILL.md` — 7-Question Gate and never-submit list.
+- https://www.first.org/cvss/calculator/4.0 — verify the CVSS 4.0 vector.
+"""
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    return path
+
+
+def write_validation_json(output_dir: str, info: dict, gate_notes: dict) -> str:
+    """Persist the structured validation answers for future tmux/session pickup."""
+    path = os.path.join(output_dir, "validation.json")
+
+    all_pass = all([
+        info.get("gate1_pass"), info.get("gate2_pass"),
+        info.get("gate3_pass"), info.get("gate4_pass"),
+    ])
+
+    # Collect rejection reasons across all failed gates (chain-not-proven is set by caller)
+    rejection_reasons = [
+        n.get("rejection_reason")
+        for n in gate_notes.values()
+        if n.get("rejection_reason")
+    ]
+
+    payload = {
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        # scanner_confidence comes from --scanner-confidence CLI arg (confirmed/possible/informational/unknown)
+        "scanner_confidence": info.get("scanner_confidence", "unknown"),
+        # validated_finding = all 4 gates passed with real curl PoC
+        # scanner_hit = gates failed or no PoC — do not submit
+        "status": "validated_finding" if all_pass else "scanner_hit",
+        "curl_poc": info.get("curl_poc", ""),
+        "scanner_summary": info.get("scanner_summary", {}),
+        "rejection_reasons": rejection_reasons,
+        "finding": {
+            "program":            info.get("target"),
+            "vulnerability_type": info.get("vuln_type"),
+            "endpoint":           info.get("endpoint"),
+            "impact":             info.get("impact"),
+            "curl_poc":           info.get("curl_poc", ""),
+            "cvss_score":         info.get("cvss_score"),
+            "cvss_vector":        info.get("cvss_vector"),
+            "cvss_params":        info.get("cvss_params"),
+        },
+        "gates": {
+            "is_real":      {"passed": info.get("gate1_pass"), "notes": gate_notes["gate1"]},
+            "in_scope":     {"passed": info.get("gate2_pass"), "notes": gate_notes["gate2"]},
+            "exploitable":  {"passed": info.get("gate3_pass"), "notes": gate_notes["gate3"]},
+            "not_duplicate":{"passed": info.get("gate4_pass"), "notes": gate_notes["gate4"]},
+        },
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, sort_keys=True)
+        f.write("\n")
+    return path
+
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="Interactive bug validation assistant")
     parser.add_argument("--output",  default="", help="Output path for generated report skeleton")
+    parser.add_argument("--notes-output", default="", help="Output path for persisted submission notes")
     parser.add_argument("--program", default="", help="HackerOne program handle for dup check")
+    parser.add_argument(
+        "--scanner-summary",
+        default="",
+        help="Path to tools/vuln_scanner.sh summary.json for calibration handoff",
+    )
+    parser.add_argument(
+        "--scanner-confidence",
+        default="unknown",
+        choices=["confirmed", "possible", "informational", "unknown"],
+        help="Confidence level from the scanner that produced this finding",
+    )
     args = parser.parse_args()
 
-    print(f"\n{BOLD}{CYAN}{'═' * 60}{RESET}")
-    print(f"{BOLD}{CYAN}  Bug Bounty Validation Assistant{RESET}")
-    print(f"{BOLD}{CYAN}{'═' * 60}{RESET}")
-    print(f"\nThis will walk you through the 4 validation gates,")
-    print(f"calculate your CVSS score, and generate a report skeleton.\n")
+    print_banner(
+        "Bug Validation Assistant",
+        target=args.program or None,
+        steps=[
+            ("Gate 1 — Real",        "is the finding reproducible / not a placebo?"),
+            ("Gate 2 — In scope",    "matches program scope + asset list"),
+            ("Gate 3 — Exploitable", "real attacker, real impact, right now"),
+            ("Gate 4 — Not dup",     "search disclosures + Hacktivity"),
+            ("CVSS + report",        "score + H1 report skeleton"),
+        ],
+    )
 
     # Collect basic info upfront
     section("Target Information")
     target_program = args.program or ask("HackerOne program handle (e.g., 'target-program')", "unknown")
     vuln_type      = ask("Vulnerability type (e.g., 'IDOR', 'Stored XSS', 'SSRF')")
     endpoint       = ask("Affected endpoint (e.g., '/api/invoices/:id')")
+    scanner_summary = load_json_file(args.scanner_summary)
 
     # Run the 4 gates
-    g1_pass, g1_notes = gate1_is_real()
+    g1_pass, g1_notes = gate1_is_real(vuln_type)
     g2_pass, g2_notes = gate2_in_scope(target_program)
     g3_pass, g3_notes = gate3_exploitable()
     g4_pass, g4_notes = gate4_not_dup(vuln_type, endpoint, target_program)
@@ -621,17 +874,21 @@ def main():
     impact_desc = g3_notes.get("impact_description", "")
 
     info = {
-        "target":      target_program,
-        "vuln_type":   vuln_type,
-        "endpoint":    endpoint,
-        "impact":      impact_desc,
-        "cvss_score":  cvss_score,
-        "cvss_vector": cvss_vector,
-        "cvss_params": cvss_params,
-        "gate1_pass":  g1_pass,
-        "gate2_pass":  g2_pass,
-        "gate3_pass":  g3_pass,
-        "gate4_pass":  g4_pass,
+        "target":             target_program,
+        "vuln_type":          vuln_type,
+        "endpoint":           endpoint,
+        "impact":             impact_desc,
+        "curl_poc":           g3_notes.get("curl_poc", ""),
+        "scanner_confidence": args.scanner_confidence,
+        "scanner_summary":    scanner_summary,
+        "cvss_score":         cvss_score,
+        "cvss_vector":        cvss_vector,
+        "cvss_params":        cvss_params,
+        "gate1_pass":         g1_pass,
+        "gate2_pass":         g2_pass,
+        "gate3_pass":         g3_pass,
+        "gate4_pass":         g4_pass,
+        "validation_status":  "validated_finding" if all_pass else "scanner_hit",
     }
 
     skeleton = generate_report_skeleton(info)
@@ -649,15 +906,28 @@ def main():
         os.makedirs(base_dir, exist_ok=True)
         output_path = os.path.join(base_dir, "hackerone-report.md")
 
-    with open(output_path, "w") as f:
+    output_dir = os.path.dirname(os.path.abspath(output_path)) or "."
+    os.makedirs(output_dir, exist_ok=True)
+
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write(skeleton)
 
+    notes_path = write_submission_notes(output_dir, output_path, info, gates, all_pass, args.notes_output)
+    validation_path = write_validation_json(output_dir, info, {
+        "gate1": g1_notes,
+        "gate2": g2_notes,
+        "gate3": g3_notes,
+        "gate4": g4_notes,
+    })
+
     print(f"  {BOLD}{GREEN}Report skeleton generated:{RESET} {output_path}")
+    print(f"  {BOLD}{GREEN}Submission notes saved:{RESET} {notes_path}")
+    print(f"  {BOLD}{GREEN}Validation JSON saved:{RESET} {validation_path}")
     print(f"\n  {BOLD}Next steps:{RESET}")
     print(f"    1. Fill in the actual HTTP request + response in the PoC section")
     print(f"    2. Attach screenshots (naming: TARGET-VULN-TYPE-STEP-N.png)")
     print(f"    3. Replace all [bracketed] placeholders with specific details")
-    print(f"    4. Run /bug-bounty-report for the submission checklist")
+    print(f"    4. Review submission-notes.md before sending the report")
     print()
 
 

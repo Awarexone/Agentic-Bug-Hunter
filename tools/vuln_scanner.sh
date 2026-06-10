@@ -193,11 +193,11 @@ verify_upload_poc() {
             local resp=$(curl -sk -f --max-time 5 ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "$probe_url" || true)
             if echo "$resp" | grep -q "RCE-VAL-49"; then
                 log_crit "  [POC-RCE-CONFIRMED] Code Execution Verified: $probe_url"
-                echo "[RCE-POC] $probe_url" >> "$FINDINGS_DIR/upload/verified_rce_pocs.txt"
+                echo "[CONFIRMED] [RCE-POC] $probe_url" >> "$FINDINGS_DIR/upload/verified_rce_pocs.txt"
                 rm -f "/tmp/$canary"; return 0
             elif echo "$resp" | grep -q "RCE-VAL-"; then
                 log_vuln "  [POC-UPLOAD-ONLY] File saved but NOT executed (Source visible): $probe_url"
-                echo "[UPLOAD-ONLY-POC] $probe_url" >> "$FINDINGS_DIR/upload/verified_upload_pocs.txt"
+                echo "[POSSIBLE] [UPLOAD-ONLY-POC] $probe_url" >> "$FINDINGS_DIR/upload/verified_upload_pocs.txt"
             fi
         done
     done
@@ -234,7 +234,7 @@ if ! skip_has upload; then
             U="${host%/}${path}"
             if [ "$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "$U")" -eq 200 ]; then
                 log_vuln "Found upload path: $U"
-                echo "[UPLOAD-CANDIDATE] $U" >> "$FINDINGS_DIR/upload/active_upload_probe.txt"
+                echo "[INFORMATIONAL] [UPLOAD-CANDIDATE] $U" >> "$FINDINGS_DIR/upload/active_upload_probe.txt"
                 verify_upload_poc "$U"
             fi
         done
@@ -273,15 +273,15 @@ if ! skip_has sqli; then
                     if [ "$RC" -eq 0 ] && [ "$((TE - BASE_MS))" -gt 1800 ]; then
                         if verify_sqli_poc "$url" "$i" "$dialect"; then
                             log_crit "EMPIRICAL SQLI POC: $url"
-                            echo "[SQLI-POC-VERIFIED] dialect=$dialect param=$i url=$url" >> "$FINDINGS_DIR/sqli/timebased_candidates.txt"
+                            echo "[CONFIRMED] [SQLI-POC-VERIFIED] dialect=$dialect param=$i url=$url" >> "$FINDINGS_DIR/sqli/timebased_candidates.txt"
                             break 2
                         else
                             log_vuln "SQLi Candidate (confirmed delay but not linear): $url"
-                            echo "[SQLI-CANDIDATE] dialect=$dialect param=$i url=$url" >> "$FINDINGS_DIR/sqli/timebased_candidates.txt"
+                            echo "[POSSIBLE] [SQLI-CANDIDATE] dialect=$dialect param=$i url=$url" >> "$FINDINGS_DIR/sqli/timebased_candidates.txt"
                         fi
                     elif [ "$RC" -eq 28 ] && [ "$TE" -gt 18000 ]; then
                         log_warn "Potential SQLi (Timeout Multiplier): $url"
-                        echo "[SQLI-TIMEOUT-CANDIDATE] timeout=${TE}ms param=$i url=$url" >> "$FINDINGS_DIR/sqli/timebased_candidates.txt"
+                        echo "[POSSIBLE] [SQLI-TIMEOUT-CANDIDATE] timeout=${TE}ms param=$i url=$url" >> "$FINDINGS_DIR/sqli/timebased_candidates.txt"
                     fi
                 done
             done
@@ -294,10 +294,12 @@ if ! skip_has xss; then
     log_info "Check 3: XSS (dalfox + URL dedup + global timeout)"
     PARAMS_FILE="$RECON_DIR/urls/with_params.txt"
     if tool_ok dalfox && [ -s "$PARAMS_FILE" ]; then
-    DAL_LIMIT=$([ "$QUICK_MODE" = "--quick" ] && echo 30 || echo 100)
-    DAL_MAX_TIME=$([ "$QUICK_MODE" = "--quick" ] && echo 300 || echo 900)
-    DAL_DEDUP_FILE=$(mktemp /tmp/dalfox_dedup_XXXXXX.txt)
-    python3 - "$PARAMS_FILE" "$DAL_DEDUP_FILE" <<'PYEOF' 2>/dev/null || cp "$PARAMS_FILE" "$DAL_DEDUP_FILE"
+        DAL_LIMIT=$([ "$QUICK_MODE" = "--quick" ] && echo 30 || echo 100)
+        DAL_MAX_TIME=$([ "$QUICK_MODE" = "--quick" ] && echo 300 || echo 900)
+        # Deduplicate by base-URL + sorted param keys to avoid scanning the same
+        # endpoint N times with different random values (e.g. ?rand=1.234 variants)
+        DAL_DEDUP_FILE=$(mktemp /tmp/dalfox_dedup_XXXXXX.txt)
+        python3 - "$PARAMS_FILE" "$DAL_DEDUP_FILE" <<'PYEOF' 2>/dev/null || cp "$PARAMS_FILE" "$DAL_DEDUP_FILE"
 import sys
 from urllib.parse import urlparse, parse_qs
 seen = set()
@@ -315,23 +317,36 @@ with open(sys.argv[1]) as fin, open(sys.argv[2], 'w') as fout:
             seen.add(key)
             fout.write(url + '\n')
 PYEOF
-    ORIG_COUNT=$(wc -l < "$PARAMS_FILE" 2>/dev/null || echo 0)
-    DEDUP_COUNT=$(wc -l < "$DAL_DEDUP_FILE" 2>/dev/null || echo 0)
-    log_step "Running dalfox on $DAL_LIMIT URLs (deduped $ORIG_COUNT → $DEDUP_COUNT, timeout: ${DAL_MAX_TIME}s)..."
-    head -"$DAL_LIMIT" "$DAL_DEDUP_FILE" | \
-        timeout "$DAL_MAX_TIME" dalfox pipe \
-        --silence \
-        --no-color \
-        --worker 5 \
-        --delay 100 \
-        --timeout 10 \
-        --waf-evasion \
-        ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} \
-        --output "$FINDINGS_DIR/xss/dalfox_results.txt" 2>/dev/null || true
-    rm -f "$DAL_DEDUP_FILE"
+        ORIG_COUNT=$(wc -l < "$PARAMS_FILE" 2>/dev/null || echo 0)
+        DEDUP_COUNT=$(wc -l < "$DAL_DEDUP_FILE" 2>/dev/null || echo 0)
+        log_step "Running dalfox on $DAL_LIMIT URLs (deduped $ORIG_COUNT -> $DEDUP_COUNT, timeout: ${DAL_MAX_TIME}s)..."
+        head -"$DAL_LIMIT" "$DAL_DEDUP_FILE" | \
+            timeout "$DAL_MAX_TIME" dalfox pipe \
+            --silence \
+            --no-color \
+            --worker 5 \
+            --delay 100 \
+            --timeout 10 \
+            --waf-evasion \
+            ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} \
+            --output "$FINDINGS_DIR/xss/dalfox_results.txt" 2>/dev/null || true
+        rm -f "$DAL_DEDUP_FILE"
 
-    DALFOX_COUNT=$(count_findings "$FINDINGS_DIR/xss/dalfox_results.txt")
-    [ "$DALFOX_COUNT" -gt 0 ] && log_vuln "Dalfox found $DALFOX_COUNT potential XSS" || log_done "Dalfox: no XSS found"
+        # Prefix every dalfox line with [POSSIBLE] — dalfox labels its own output;
+        # impact is not confirmed until manually verified in-browser.
+        if [ -s "$FINDINGS_DIR/xss/dalfox_results.txt" ]; then
+            DAL_TMP=$(mktemp /tmp/dalfox_prefixed_XXXXXX.txt)
+            while IFS= read -r _dal_line; do
+                echo "[POSSIBLE] $_dal_line"
+            done < "$FINDINGS_DIR/xss/dalfox_results.txt" > "$DAL_TMP"
+            mv "$DAL_TMP" "$FINDINGS_DIR/xss/dalfox_results.txt"
+        fi
+
+        DALFOX_COUNT=$(count_vuln "$FINDINGS_DIR/xss/dalfox_results.txt")
+        [ "$DALFOX_COUNT" -gt 0 ] && log_vuln "Dalfox found $DALFOX_COUNT potential XSS" || log_done "Dalfox: no XSS found"
+    else
+        [ -s "$PARAMS_FILE" ] || log_warn "No parameterized URLs found for XSS scan"
+        tool_ok dalfox || log_warn "dalfox not installed — skipping XSS scan"
     fi
 fi
 
@@ -359,7 +374,7 @@ if ! skip_has ssti; then
                 body=$(curl -sk --max-time 10 ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} "$injected" 2>/dev/null || true)
                 if echo "$body" | grep -qE '(\b49\b|7777777)'; then
                     log_crit "SSTI confirmed [$engine]: $injected"
-                    echo "[SSTI-CONFIRMED] engine=$engine url=$injected" >> "$SSTI_OUT"
+                    echo "[CONFIRMED] [SSTI-CONFIRMED] engine=$engine url=$injected" >> "$SSTI_OUT"
                     hit=$(( hit + 1 ))
                     break
                 fi
@@ -384,7 +399,8 @@ if ! skip_has cms; then
             RHOST_VAL=$(dig +short "$HOST_PART" | head -1)
             [ -z "$RHOST_VAL" ] && RHOST_VAL="$HOST_PART"
             
-            echo "use exploit/unix/webapp/${CMS}_admin_shell_upload" > "$MSF_RC"
+            echo "# [INFORMATIONAL] CMS detected — version detection only; exploitability not tested" > "$MSF_RC"
+            echo "use exploit/unix/webapp/${CMS}_admin_shell_upload" >> "$MSF_RC"
             echo "set RHOSTS $RHOST_VAL" >> "$MSF_RC"
             echo "set SSL $([[ "$url" == https* ]] && echo "true" || echo "false")" >> "$MSF_RC"
             echo "set TARGETURI /" >> "$MSF_RC"
@@ -420,7 +436,7 @@ if ! skip_has mfa; then
                 done | sort | uniq -c | sort -rn | head -5)
                 if echo "$STATUS_CODES" | grep -qv "429\|ERR"; then
                     log_vuln "[MFA] No rate limit detected on OTP endpoint: $BASE"
-                    echo "[MFA-NO-RATE-LIMIT] $BASE | codes: $STATUS_CODES" >> "$FINDINGS_DIR/mfa/findings.txt"
+                    echo "[POSSIBLE] [MFA-NO-RATE-LIMIT] $BASE | codes: $STATUS_CODES" >> "$FINDINGS_DIR/mfa/findings.txt"
                 fi
             fi
 
@@ -433,7 +449,7 @@ if ! skip_has mfa; then
                     "$HOST/$PROTECTED" 2>/dev/null || echo "0")
                 if [ "$SKIP_CODE" = "200" ]; then
                     log_vuln "[MFA] Protected endpoint accessible before MFA: $HOST/$PROTECTED"
-                    echo "[MFA-WORKFLOW-SKIP] $HOST/$PROTECTED accessible (HTTP 200)" >> "$FINDINGS_DIR/mfa/findings.txt"
+                    echo "[POSSIBLE] [MFA-WORKFLOW-SKIP] $HOST/$PROTECTED accessible (HTTP 200)" >> "$FINDINGS_DIR/mfa/findings.txt"
                 fi
             done
 
@@ -445,7 +461,7 @@ if ! skip_has mfa; then
                     -d '{"otp":"999999"}' 2>/dev/null || true)
                 if echo "$RESP" | grep -qi '"success"\s*:\s*false\|"verified"\s*:\s*false\|"status"\s*:\s*"fail"'; then
                     log_vuln "[MFA] Response manipulation candidate (server sends JSON success flag): $BASE"
-                    echo "[MFA-RESPONSE-MANIP] $BASE | change false->true in response" >> "$FINDINGS_DIR/mfa/findings.txt"
+                    echo "[INFORMATIONAL] [MFA-RESPONSE-MANIP] $BASE | change false->true in response" >> "$FINDINGS_DIR/mfa/findings.txt"
                 fi
             fi
 
@@ -476,7 +492,7 @@ if ! skip_has saml; then
             case "$CODE" in
                 200|301|302|403)
                     log_vuln "[SAML] Endpoint found (HTTP $CODE): ${host}${SAML_PATH}"
-                    echo "[SAML-ENDPOINT] ${host}${SAML_PATH} | HTTP $CODE" >> "$FINDINGS_DIR/saml/endpoints.txt"
+                    echo "[INFORMATIONAL] [SAML-ENDPOINT] ${host}${SAML_PATH} | HTTP $CODE" >> "$FINDINGS_DIR/saml/endpoints.txt"
                     ;;
             esac
         done
@@ -488,7 +504,7 @@ if ! skip_has saml; then
         RESP=$(curl -sk --max-time 8 "$url" 2>/dev/null || true)
         if echo "$RESP" | grep -qi "EntityDescriptor\|IDPSSODescriptor\|X509Certificate"; then
             log_vuln "[SAML] Metadata exposed (aids XSW/cert extraction): $url"
-            echo "[SAML-METADATA-EXPOSED] $url" >> "$FINDINGS_DIR/saml/findings.txt"
+            echo "[INFORMATIONAL] [SAML-METADATA-EXPOSED] $url" >> "$FINDINGS_DIR/saml/findings.txt"
             # Extract cert if present
             echo "$RESP" | grep -o '<X509Certificate>[^<]*' | head -3 >> "$FINDINGS_DIR/saml/certs.txt" 2>/dev/null || true
         fi
@@ -505,7 +521,7 @@ if ! skip_has saml; then
                 -d "SAMLResponse=${STRIPPED_SAML}" 2>/dev/null || echo "0")
             if [ "$CODE" = "200" ] || [ "$CODE" = "302" ]; then
                 log_vuln "[SAML] Signature stripping accepted (HTTP $CODE): $ACS_URL — CRITICAL ATO"
-                echo "[SAML-SIG-STRIP] $ACS_URL | HTTP $CODE | stripped assertion accepted" >> "$FINDINGS_DIR/saml/findings.txt"
+                echo "[CONFIRMED] [SAML-SIG-STRIP] $ACS_URL | HTTP $CODE | stripped assertion accepted" >> "$FINDINGS_DIR/saml/findings.txt"
             fi
         fi
     fi
@@ -516,15 +532,97 @@ fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 log_info "Scan Complete. Consolidating..."
+CONF_SQLI=$(grep -c "\[CONFIRMED\].*SQLI-POC-VERIFIED" "$FINDINGS_DIR/sqli/timebased_candidates.txt" 2>/dev/null || echo 0)
+CONF_RCE=$(grep -c "\[CONFIRMED\]" "$FINDINGS_DIR/upload/verified_rce_pocs.txt" 2>/dev/null || echo 0)
+CONF_SSTI=$(grep -c "\[CONFIRMED\].*SSTI-CONFIRMED" "$FINDINGS_DIR/ssti/ssti_candidates.txt" 2>/dev/null || echo 0)
+CONF_SAML=$(grep -c "\[CONFIRMED\].*SAML-SIG-STRIP" "$FINDINGS_DIR/saml/findings.txt" 2>/dev/null || echo 0)
+POSS_SQLI=$(grep -c "\[POSSIBLE\].*SQLI-" "$FINDINGS_DIR/sqli/timebased_candidates.txt" 2>/dev/null || echo 0)
+POSS_XSS=$(grep -c "\[POSSIBLE\]" "$FINDINGS_DIR/xss/dalfox_results.txt" 2>/dev/null || echo 0)
+POSS_MFA_RATE=$(grep -c "\[POSSIBLE\].*MFA-NO-RATE-LIMIT" "$FINDINGS_DIR/mfa/findings.txt" 2>/dev/null || echo 0)
+POSS_UPLOAD=$(grep -c "\[POSSIBLE\].*UPLOAD-ONLY-POC" "$FINDINGS_DIR/upload/verified_upload_pocs.txt" 2>/dev/null || echo 0)
+POSS_MFA_SKIP=$(grep -c "\[POSSIBLE\].*MFA-WORKFLOW-SKIP" "$FINDINGS_DIR/mfa/findings.txt" 2>/dev/null || echo 0)
+INFO_UPLOAD=$(grep -c "\[INFORMATIONAL\].*UPLOAD-CANDIDATE" "$FINDINGS_DIR/upload/active_upload_probe.txt" 2>/dev/null || echo 0)
+INFO_SAML_ENDPOINTS=$(grep -c "\[INFORMATIONAL\].*SAML-ENDPOINT" "$FINDINGS_DIR/saml/endpoints.txt" 2>/dev/null || echo 0)
+INFO_SAML_META=$(grep -c "\[INFORMATIONAL\].*SAML-METADATA-EXPOSED" "$FINDINGS_DIR/saml/findings.txt" 2>/dev/null || echo 0)
+INFO_CMS=$(find "$FINDINGS_DIR/metasploit/" -name "*.rc" 2>/dev/null | wc -l | tr -d ' ')
+INFO_MFA_MANIP=$(grep -c "\[INFORMATIONAL\].*MFA-RESPONSE-MANIP" "$FINDINGS_DIR/mfa/findings.txt" 2>/dev/null || echo 0)
 {
-    echo "Scan Date : $(date)"
-    echo "Target    : $TARGET"
-    echo "Verified SQLi PoCs   : $(grep -c "SQLI-POC-VERIFIED" "$FINDINGS_DIR/sqli/timebased_candidates.txt" 2>/dev/null || echo 0)"
-    echo "Verified RCE PoCs    : $(count_vuln "$FINDINGS_DIR/upload/verified_rce_pocs.txt")"
-    echo "Verified Upload Only : $(count_vuln "$FINDINGS_DIR/upload/verified_upload_pocs.txt")"
-    echo "XSS (dalfox)         : $(count_vuln "$FINDINGS_DIR/xss/dalfox_results.txt")"
-    echo "SSTI Confirmed       : $(count_vuln "$FINDINGS_DIR/ssti/ssti_candidates.txt")"
-    echo "MFA Bypass Findings  : $(count_vuln "$FINDINGS_DIR/mfa/findings.txt")"
-    echo "SAML/SSO Findings    : $(count_vuln "$FINDINGS_DIR/saml/findings.txt")"
+    echo "Scan Date  : $(date)"
+    echo "Target     : $TARGET"
+    echo ""
+    echo "=== CONFIRMED (submit after /validate) ==="
+    printf "  SQLi PoC (linear-confirmed) : %s\n" "$CONF_SQLI"
+    printf "  RCE PoC (code-executed)     : %s\n" "$CONF_RCE"
+    printf "  SSTI (math-canary)          : %s\n" "$CONF_SSTI"
+    printf "  SAML sig-strip (session)    : %s\n" "$CONF_SAML"
+    echo ""
+    echo "=== POSSIBLE (run /validate before submitting) ==="
+    printf "  SQLi delay candidates       : %s\n" "$POSS_SQLI"
+    printf "  XSS (dalfox, unconfirmed)   : %s\n" "$POSS_XSS"
+    printf "  MFA rate-limit              : %s\n" "$POSS_MFA_RATE"
+    printf "  Upload (file-only)          : %s\n" "$POSS_UPLOAD"
+    printf "  MFA workflow-skip           : %s\n" "$POSS_MFA_SKIP"
+    echo ""
+    echo "=== INFORMATIONAL (do not submit without chain) ==="
+    printf "  Upload paths found          : %s\n" "$INFO_UPLOAD"
+    printf "  SAML endpoints              : %s\n" "$INFO_SAML_ENDPOINTS"
+    printf "  SAML metadata exposed       : %s\n" "$INFO_SAML_META"
+    printf "  CMS detected                : %s\n" "$INFO_CMS"
+    printf "  MFA response-manip canary   : %s\n" "$INFO_MFA_MANIP"
 } > "$FINDINGS_DIR/summary.txt"
 cat "$FINDINGS_DIR/summary.txt"
+
+python3 - "$FINDINGS_DIR" "$TARGET" \
+    "$CONF_SQLI" "$CONF_RCE" "$CONF_SSTI" "$CONF_SAML" \
+    "$POSS_SQLI" "$POSS_XSS" "$POSS_MFA_RATE" "$POSS_UPLOAD" "$POSS_MFA_SKIP" \
+    "$INFO_UPLOAD" "$INFO_SAML_ENDPOINTS" "$INFO_SAML_META" "$INFO_CMS" "$INFO_MFA_MANIP" <<'PY'
+import json
+import os
+import sys
+from datetime import datetime
+
+out_dir = sys.argv[1]
+target = sys.argv[2]
+nums = list(map(int, sys.argv[3:]))
+
+payload = {
+    "generated_at": datetime.now().isoformat(timespec="seconds"),
+    "target": target,
+    "counts": {
+        "confirmed": {
+            "sqli": nums[0],
+            "rce": nums[1],
+            "ssti": nums[2],
+            "saml_sig_strip": nums[3],
+        },
+        "possible": {
+            "sqli_delay": nums[4],
+            "xss_dalfox": nums[5],
+            "mfa_rate_limit": nums[6],
+            "upload_file_only": nums[7],
+            "mfa_workflow_skip": nums[8],
+        },
+        "informational": {
+            "upload_paths": nums[9],
+            "saml_endpoints": nums[10],
+            "saml_metadata": nums[11],
+            "cms_detected": nums[12],
+            "mfa_response_manip": nums[13],
+        },
+    },
+    "artifacts": {
+        "summary_txt": os.path.join(out_dir, "summary.txt"),
+        "sqli_timebased": os.path.join(out_dir, "sqli", "timebased_candidates.txt"),
+        "rce": os.path.join(out_dir, "upload", "verified_rce_pocs.txt"),
+        "ssti": os.path.join(out_dir, "ssti", "ssti_candidates.txt"),
+        "saml": os.path.join(out_dir, "saml", "findings.txt"),
+        "xss": os.path.join(out_dir, "xss", "dalfox_results.txt"),
+        "mfa": os.path.join(out_dir, "mfa", "findings.txt"),
+        "upload": os.path.join(out_dir, "upload", "active_upload_probe.txt"),
+    },
+}
+
+with open(os.path.join(out_dir, "summary.json"), "w", encoding="utf-8") as fh:
+    json.dump(payload, fh, indent=2, sort_keys=True)
+    fh.write("\n")
+PY

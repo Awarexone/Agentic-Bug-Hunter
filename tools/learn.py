@@ -19,6 +19,11 @@ import urllib.parse
 import urllib.error
 from datetime import datetime
 
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+from tools.banner import print_banner  # noqa: E402
+
 # macOS: Python may not have system SSL certs. Use unverified context for API queries.
 _SSL_CTX = ssl.create_default_context()
 try:
@@ -358,9 +363,16 @@ def main():
     else:
         output_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "intel.md")
 
-    print(f"\n{BOLD}Bug Intelligence Fetcher{RESET}")
-    print(f"Technologies: {CYAN}{', '.join(techs)}{RESET}")
-    print(f"Output: {output_path}\n")
+    print_banner(
+        "Bug Intelligence · Tech-stack Recon",
+        target=args.target or ",".join(techs),
+        steps=[
+            ("CVE pull",    "GitHub Advisory + NVD CVE feed"),
+            ("Disclosures", "HackerOne Hacktivity (+ program if given)"),
+            ("Mind-map",    "group by vuln class for quick-scan"),
+            ("Write",       f"output → {output_path}"),
+        ],
+    )
 
     results = fetch_intel(techs)
 

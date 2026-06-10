@@ -10,7 +10,7 @@ Provider selection (in order of precedence):
   2. Auto-detect: uses first provider whose API key / server is available
 
 API keys (env vars):
-  ANTHROPIC_API_KEY   — Claude (claude-opus-4-6, claude-sonnet-4-6, etc.)
+  ANTHROPIC_API_KEY   — Claude (claude-opus-4-7, claude-sonnet-4-6, etc.)
   OPENAI_API_KEY      — OpenAI (gpt-4o, o1, etc.)
   XAI_API_KEY         — Grok (grok-2-latest, grok-3-mini, etc.)
   OLLAMA_HOST         — Ollama base URL (default: http://localhost:11434)
@@ -246,7 +246,7 @@ class LLMClient:
             except Exception:
                 return []
         elif self.provider == "claude":
-            return ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"]
+            return ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"]
         elif self.provider == "openai":
             return ["gpt-4o", "gpt-4o-mini", "o1", "o3-mini"]
         elif self.provider == "grok":

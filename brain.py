@@ -71,22 +71,31 @@ OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 
 class LLMClient:
     """
-    Unified chat interface for Ollama, Claude, OpenAI, and Grok.
+    Unified chat interface for Ollama, Groq, DeepSeek, Claude, OpenAI, and Grok.
 
     Usage:
         client = LLMClient()          # auto-detect provider
+        client = LLMClient("groq")    # force Groq (free tier)
         client = LLMClient("claude")  # force Claude API
         reply  = client.chat(model, system_prompt, user_prompt, max_tokens=2000)
+
+    Free providers:
+        ollama   — local, zero cost (default: http://localhost:11434)
+        groq     — cloud free tier, GROQ_API_KEY    (https://console.groq.com)
+        deepseek — very cheap,      DEEPSEEK_API_KEY (https://platform.deepseek.com)
     """
 
-    PROVIDER_PRIORITY = ["ollama", "claude", "openai", "grok"]
+    # Priority: free-local first, free-cloud second, paid last
+    PROVIDER_PRIORITY = ["ollama", "groq", "deepseek", "claude", "openai", "grok"]
 
     # Default models per provider
     DEFAULT_MODELS = {
-        "claude":  "claude-sonnet-4-6",
-        "openai":  "gpt-4o",
-        "grok":    "grok-2-latest",
-        "ollama":  None,  # resolved dynamically
+        "claude":   "claude-sonnet-4-6",
+        "openai":   "gpt-4o",
+        "grok":     "grok-2-latest",
+        "groq":     "llama-3.3-70b-versatile",
+        "deepseek": "deepseek-chat",
+        "ollama":   None,  # resolved dynamically
     }
 
     def __init__(self, provider: str | None = None):
@@ -103,9 +112,11 @@ class LLMClient:
 
     # Env var a provider's API key is read from; keyed for quick lookup.
     PROVIDER_KEY_ENV = {
-        "claude": "ANTHROPIC_API_KEY",
-        "openai": "OPENAI_API_KEY",
-        "grok":   "XAI_API_KEY",
+        "claude":   "ANTHROPIC_API_KEY",
+        "openai":   "OPENAI_API_KEY",
+        "grok":     "XAI_API_KEY",
+        "groq":     "GROQ_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY",
     }
 
     def _auto_detect(self) -> str:
@@ -164,9 +175,9 @@ class LLMClient:
             self._http = requests.Session()
             self._http.headers.update({"Authorization": f"Bearer {key}",
                                        "Content-Type": "application/json"})
-            self._openai_base = "https://api.openai.com/v1"
-            self.available    = True
-            self.description  = "OpenAI API"
+            self._api_base   = "https://api.openai.com/v1"
+            self.available   = True
+            self.description = "OpenAI API"
 
         elif provider == "grok":
             key = os.environ.get("XAI_API_KEY", "")
@@ -176,9 +187,33 @@ class LLMClient:
             self._http = requests.Session()
             self._http.headers.update({"Authorization": f"Bearer {key}",
                                        "Content-Type": "application/json"})
-            self._grok_base  = "https://api.x.ai/v1"
+            self._api_base   = "https://api.x.ai/v1"
             self.available   = True
             self.description = "Grok API (xAI)"
+
+        elif provider == "groq":
+            key = os.environ.get("GROQ_API_KEY", "")
+            if not key:
+                return
+            import requests
+            self._http = requests.Session()
+            self._http.headers.update({"Authorization": f"Bearer {key}",
+                                       "Content-Type": "application/json"})
+            self._api_base   = "https://api.groq.com/openai/v1"
+            self.available   = True
+            self.description = "Groq API (free tier — llama-3.3-70b)"
+
+        elif provider == "deepseek":
+            key = os.environ.get("DEEPSEEK_API_KEY", "")
+            if not key:
+                return
+            import requests
+            self._http = requests.Session()
+            self._http.headers.update({"Authorization": f"Bearer {key}",
+                                       "Content-Type": "application/json"})
+            self._api_base   = "https://api.deepseek.com/v1"
+            self.available   = True
+            self.description = "DeepSeek API (deepseek-chat / deepseek-reasoner)"
 
     def chat(self, model: str | None, system: str, user: str,
              max_tokens: int = 4000, temperature: float = 0.1) -> str:
@@ -190,7 +225,7 @@ class LLMClient:
                 return self._chat_ollama(model, system, user, max_tokens, temperature)
             elif self.provider == "claude":
                 return self._chat_claude(model, system, user, max_tokens, temperature)
-            elif self.provider in ("openai", "grok"):
+            elif self.provider in ("openai", "grok", "groq", "deepseek"):
                 return self._chat_openai_compat(model, system, user, max_tokens, temperature)
         except Exception as e:
             print(f"{YELLOW}[Brain/{self.provider}] chat error: {e}{NC}", flush=True)
@@ -228,7 +263,7 @@ class LLMClient:
 
     def _chat_openai_compat(self, model, system, user, max_tokens, temperature) -> str:
         import json as _json
-        base = self._grok_base if self.provider == "grok" else self._openai_base
+        base = self._api_base
         m    = model or self.DEFAULT_MODELS[self.provider]
         body = {"model": m, "max_tokens": max_tokens, "temperature": temperature,
                 "messages": [{"role": "system", "content": system},
@@ -251,6 +286,10 @@ class LLMClient:
             return ["gpt-4o", "gpt-4o-mini", "o1", "o3-mini"]
         elif self.provider == "grok":
             return ["grok-2-latest", "grok-3-mini", "grok-3"]
+        elif self.provider == "groq":
+            return ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"]
+        elif self.provider == "deepseek":
+            return ["deepseek-chat", "deepseek-reasoner"]
         return []
 
 # Model preference order — first available wins

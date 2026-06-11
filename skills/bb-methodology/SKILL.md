@@ -78,6 +78,25 @@ Before touching any tool:
 - **Intuition engineering**: Log why something "feels wrong." Verify later. Update mental DB.
 - **Unknown management**: Can't understand something? Add to "investigate later" list. Just-in-Time Learning.
 
+#### 5. AI-Assisted Thinking (model as a second analyst)
+
+Use AI to expand hypotheses, not to declare verdicts. The model is a fast adversarial planner; the browser, proxy, and live requests are the proof layer.
+
+- **Decompose the feature**: ask for actors, assets, entry points, state transitions, and trust boundaries.
+- **Generate sibling paths**: versioned endpoints, mobile routes, legacy APIs, alternate roles, and admin-only variants.
+- **Build a role matrix**: anonymous, user A, user B, stale session, fresh session, admin, service account.
+- **Ask for dev shortcuts**: "Where would a tired developer skip a check or reuse a helper?"
+- **Ask for chains**: "If this bug is real, what bug B and C sit next to it?"
+- **Turn ideas into requests**: every AI suggestion must become a single reproducible HTTP experiment.
+- **Kill weak signals fast**: if AI cannot point to a concrete request, response diff, or cross-account delta, the idea stays as a hypothesis.
+
+High-signal prompts:
+- "Given this endpoint and feature, list the 10 most likely trust-boundary mistakes."
+- "What sibling endpoints, methods, or roles should I test next?"
+- "Which bug class would a rushed implementation likely miss here?"
+- "What does the smallest proof request look like?"
+- "What would make this become a real report instead of a scanner hit?"
+
 ### Amateur vs Pro: 7-Phase Comparison
 
 | Phase | Amateur | Pro |

@@ -297,6 +297,24 @@ ffuf -w subs.txt -u https://FUZZ.target.com -ac
 ## AI-Assisted Tools
 - **strix** (usestrix.com) -- open-source AI scanner for automated initial sweep
 
+## AI-ASSISTED HUNT LOOP
+
+Use AI as a second analyst, not as the authority.
+
+1. **Decompose the feature** — ask for actors, assets, trust boundaries, hidden state, and sibling endpoints.
+2. **Generate the test matrix** — anonymous vs authenticated, user A vs user B, fresh vs stale session, web vs mobile, legacy vs current API.
+3. **Ask for developer shortcuts** — where a rushed implementation would likely skip a check, reuse a helper, or trust a client-side value.
+4. **Ask for adjacent bugs** — if A is real, what B and C are likely nearby?
+5. **Convert every idea into one request** — the output must be a concrete HTTP experiment or it stays speculation.
+6. **Proof first, report later** — AI can rank hypotheses, but only live request/response diffs and cross-account deltas can promote a finding.
+
+Good prompt shapes:
+- "Given this feature, list the 10 most likely trust-boundary mistakes."
+- "What sibling routes, methods, or roles should I test next?"
+- "What would a tired developer probably reuse here?"
+- "What is the smallest reproducible request that could prove impact?"
+- "What evidence would downgrade this to N/A?"
+
 ---
 
 # PHASE 1: RECON

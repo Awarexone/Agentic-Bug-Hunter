@@ -15,6 +15,17 @@
   <img src="https://img.shields.io/badge/Standalone-Free_Mode-brightgreen.svg?style=flat-square" alt="Free Standalone Mode">
   <a href="https://claude.ai/claude-code"><img src="https://img.shields.io/badge/Claude_Code-Plugin-D97706.svg?style=flat-square" alt="Claude Code Plugin"></a>
   <a href="#contributing"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square" alt="PRs Welcome"></a>
+  <a href="https://star-history.com/#shuvonsec/claude-bug-bounty"><img src="https://img.shields.io/github/stars/shuvonsec/claude-bug-bounty?style=flat-square&color=yellow" alt="GitHub Stars"></a>
+</p>
+
+<p align="center">
+  <a href="https://star-history.com/#shuvonsec/claude-bug-bounty&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=shuvonsec/claude-bug-bounty&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=shuvonsec/claude-bug-bounty&type=Date" />
+      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=shuvonsec/claude-bug-bounty&type=Date" />
+    </picture>
+  </a>
 </p>
 
 <p align="center">

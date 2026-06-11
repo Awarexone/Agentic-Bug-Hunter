@@ -1,61 +1,126 @@
 <p align="center">
-  <img src="logo.png" alt="Claude Bug Bounty" width="280"/>
+  <img src="logo.png" alt="BugHunter" width="280"/>
 </p>
 
-<h1 align="center">Claude Bug Bounty</h1>
+<h1 align="center">BugHunter</h1>
 
 <p align="center">
   <b>AI-powered bug bounty hunting — recon to report, in your terminal.</b><br>
-  <sub>Find vulnerabilities. Validate them. Get paid.</sub>
+  <sub>Find vulnerabilities. Validate them. Get paid. No subscription required.</sub>
 </p>
 
 <p align="center">
   <a href="https://github.com/shuvonsec/claude-bug-bounty/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/Python-3.8+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.8+">
-  <img src="https://img.shields.io/badge/Tests-passing-brightgreen.svg?style=flat-square" alt="Tests">
-  <a href="https://claude.ai/claude-code"><img src="https://img.shields.io/badge/Claude_Code-Plugin-D97706.svg?style=flat-square" alt="Claude Code"></a>
+  <img src="https://img.shields.io/badge/Standalone-Free_Mode-brightgreen.svg?style=flat-square" alt="Free Standalone Mode">
+  <a href="https://claude.ai/claude-code"><img src="https://img.shields.io/badge/Claude_Code-Plugin-D97706.svg?style=flat-square" alt="Claude Code Plugin"></a>
   <a href="#contributing"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square" alt="PRs Welcome"></a>
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick Start</a> · <a href="#commands">Commands</a> · <a href="#what-it-finds">What It Finds</a> · <a href="#installation">Install</a> · <a href="FAQ.md">FAQ</a>
+  <a href="#-standalone-mode--no-subscription-required">Free Setup</a> · <a href="#quick-start">Quick Start</a> · <a href="#commands">Commands</a> · <a href="#what-it-finds">What It Finds</a> · <a href="#installation">Install</a> · <a href="FAQ.md">FAQ</a>
 </p>
 
 ---
 
 ## What Is This?
 
-A [Claude Code](https://claude.ai/claude-code) plugin that turns your AI assistant into a professional bug bounty hunting partner. Give it a target — it handles recon, tests for vulnerabilities, validates findings through a strict gate, and writes submission-ready reports for HackerOne, Bugcrowd, Intigriti, and Immunefi.
+A professional bug bounty hunting toolkit that works **with or without a Claude subscription**. Give it a target — it handles recon, tests for vulnerabilities, validates findings through a strict gate, and writes submission-ready reports for HackerOne, Bugcrowd, Intigriti, and Immunefi.
 
 **It remembers everything.** Patterns found on one target inform the next. Sessions pick up where they left off.
 
-> Requires [Claude Code](https://claude.ai/claude-code) with a Claude Pro / Max plan or an Anthropic API key.
+Works as a [Claude Code](https://claude.ai/claude-code) plugin **or** as a fully standalone CLI (`bughunter`) powered by free AI providers.
+
+---
+
+## 🆓 Standalone Mode — No Subscription Required
+
+**You no longer need Claude Code, Claude Pro, or any paid AI subscription.**
+
+Install once, use the `bughunter` command from any terminal on your machine:
+
+```bash
+git clone https://github.com/shuvonsec/claude-bug-bounty.git
+cd claude-bug-bounty
+./install.sh --agent standalone
+```
+
+```
+bughunter setup              # choose your AI provider (Ollama is free + offline)
+bughunter recon target.com   # map the attack surface
+bughunter hunt  target.com   # hunt for vulnerabilities
+bughunter validate "finding" # 7-Question Gate on your finding
+bughunter report             # write a submission-ready report
+bughunter chat               # interactive AI hunting shell
+bughunter providers          # list all available AI providers
+bughunter status             # check which provider is active
+```
+
+### Free AI Providers (auto-detected, free-first priority)
+
+| Provider | Cost | Privacy | Speed | Get Started |
+|:---|:---|:---|:---|:---|
+| **Ollama** | 100% free · runs locally | Full — stays on your machine | Fast | `ollama pull qwen2.5:14b` |
+| **Groq** | Free tier available | Cloud | Very fast | [console.groq.com](https://console.groq.com) → get API key |
+| **DeepSeek** | Very cheap ($0.001/1K tokens) | Cloud | Fast | [platform.deepseek.com](https://platform.deepseek.com) |
+| Claude API | Paid | Cloud | Fast | [console.anthropic.com](https://console.anthropic.com) |
+| OpenAI | Paid | Cloud | Fast | [platform.openai.com](https://platform.openai.com) |
+
+BugHunter auto-detects providers in this order: **Ollama → Groq → DeepSeek → Claude → OpenAI**
+
+Switch providers anytime: `bughunter setup`
+
+### Zero-cost fully offline setup
+
+```bash
+# 1. Install Ollama (runs AI locally, no internet needed after download)
+curl -fsSL https://ollama.ai/install.sh | sh
+ollama pull qwen2.5:14b          # ~9 GB, one-time download
+
+# 2. Install BugHunter
+git clone https://github.com/shuvonsec/claude-bug-bounty.git
+cd claude-bug-bounty
+./install.sh --agent standalone   # creates system-wide 'bughunter' command
+
+# 3. Hunt
+bughunter setup       # choose Ollama
+bughunter recon target.com
+```
+
+### Groq setup (free cloud, fastest option)
+
+```bash
+export GROQ_API_KEY="your-key-here"     # free at console.groq.com
+./install.sh --agent standalone
+bughunter setup       # choose Groq
+bughunter hunt target.com
+```
 
 ---
 
 ## Quick Start
 
-**Option A — let Claude install it** *(recommended)*
-
-Open your terminal, run `claude`, then paste:
-
-```text
-Install the Claude Bug Bounty toolkit from https://github.com/shuvonsec/claude-bug-bounty
-into ~/tools/. Clone the repo, run ./install_tools.sh then ./install.sh.
-Verify /recon /hunt /validate /report are available. If anything breaks, tell me
-which tool failed and the exact one-line fix.
-```
-
-**Option B — manual**
+**Option A — standalone (no subscription, works for everyone)**
 
 ```bash
 git clone https://github.com/shuvonsec/claude-bug-bounty.git
 cd claude-bug-bounty
-chmod +x install_tools.sh && ./install_tools.sh   # subfinder · httpx · nuclei · katana · ffuf · dalfox
-chmod +x install.sh      && ./install.sh          # skills + commands → ~/.claude/
+./install.sh --agent standalone   # creates system-wide 'bughunter' command
+bughunter setup                   # pick a free AI provider
+bughunter recon target.com
+bughunter hunt  target.com
+bughunter validate "my finding"
+bughunter report
 ```
 
-**Then start hunting:**
+**Option B — Claude Code plugin** *(requires Claude Code)*
+
+```bash
+git clone https://github.com/shuvonsec/claude-bug-bounty.git
+cd claude-bug-bounty
+chmod +x install_tools.sh && ./install_tools.sh   # subfinder · httpx · nuclei · katana · ffuf
+chmod +x install.sh      && ./install.sh          # skills + commands → ~/.claude/
+```
 
 ```bash
 claude
@@ -63,6 +128,16 @@ claude
 /hunt target.com         # test for vulnerabilities
 /validate                # run the 7-Question Gate
 /report                  # write the submission
+```
+
+**Option C — let Claude install it** *(Claude Code only)*
+
+Open your terminal, run `claude`, then paste:
+
+```text
+Install the Claude Bug Bounty toolkit from https://github.com/shuvonsec/claude-bug-bounty
+into ~/tools/. Clone the repo, run ./install_tools.sh then ./install.sh.
+Verify /recon /hunt /validate /report are available.
 ```
 
 ---
@@ -251,12 +326,13 @@ claude-bug-bounty/
 │   ├── PULL_REQUEST_TEMPLATE.md
 │   └── ISSUE_TEMPLATE/        # Bug report · Feature request · False positive
 │
-├── install.sh                 # Install skills + commands → ~/.claude/
+├── engine.py                  # Standalone CLI — 'bughunter' command, no subscription needed
+├── brain.py                   # Multi-provider LLM layer (Ollama · Groq · DeepSeek · Claude · OpenAI)
+├── agent.py                   # LangGraph-style ReAct hunting agent
+├── install.sh                 # Install skills + commands → ~/.claude/ (or standalone mode)
 ├── install_tools.sh           # Install subfinder · httpx · nuclei · katana · ffuf …
 ├── uninstall.sh               # Remove skills + commands from ~/.claude/
 ├── uninstall_tools.sh         # Remove external scanning tools
-├── agent.py                   # LangGraph-style ReAct hunting agent
-├── brain.py                   # Multi-provider LLM reasoning layer
 ├── serve.py                   # Launch local demo target (python3 serve.py)
 ├── config.example.json        # Auth session config template
 ├── requirements.txt           # Python dependencies
@@ -287,6 +363,13 @@ sudo apt install golang python3 jq
 
 ```bash
 chmod +x install_tools.sh && ./install_tools.sh
+```
+
+**Standalone `bughunter` command** (no subscription, works without Claude Code):
+
+```bash
+./install.sh --agent standalone
+bughunter setup    # choose Ollama (free) · Groq (free tier) · DeepSeek (cheap) · Claude · OpenAI
 ```
 
 **AI skills + commands** into Claude Code:

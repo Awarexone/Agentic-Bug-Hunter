@@ -64,6 +64,15 @@ API_CHECKS = [
     ("LOW",  "API key in URL — logs exposure of credentials", "manual review"),
 ]
 
+AI_CHECKS = [
+    ("HIGH", "AI-assisted feature decomposition — actors, assets, trust boundaries, state changes", "second analyst"),
+    ("HIGH", "AI-assisted sibling diffing — versioned routes, alternate roles, mobile vs web, legacy paths", "second analyst"),
+    ("HIGH", "AI-assisted chain planning — turn weak signals into A→B→C impact hypotheses", "second analyst"),
+    ("MED",  "AI-assisted dev shortcut search — where a rushed helper or reused check might fail", "second analyst"),
+    ("MED",  "AI-assisted test matrix — anonymous vs auth, user A vs user B, fresh vs stale session", "second analyst"),
+    ("LOW",  "AI-generated ideas still need live proof — requests, diffs, and cross-account evidence", "validation gate"),
+]
+
 MOBILE_CHECKS = [
     ("HIGH", "WebView JS injection — `addJavascriptInterface` without origin check", "bug-bounty-hunt → SDK/Client-Library section"),
     ("HIGH", "Deep link hijack — register same URI scheme, steal OAuth codes", "manual + AndroidManifest review"),
@@ -127,6 +136,8 @@ def build_mermaid(target: str, target_type: str, techs: list[str]) -> str:
 
     if target_type == "website":
         lines += [
+            "      AI-assisted planning",
+            '        "Feature decomposition / sibling diffing"',
             "      Auth flow",
             '        "IDOR / ATO"',
             '        "CSRF"',
@@ -147,6 +158,8 @@ def build_mermaid(target: str, target_type: str, techs: list[str]) -> str:
         ]
     elif target_type == "opensrc":
         lines += [
+            "      AI-assisted planning",
+            '        "Feature decomposition / sibling diffing"',
             "      Hash/token comparisons",
             '        "Timing side-channel"',
             "      JWT handling",
@@ -164,6 +177,8 @@ def build_mermaid(target: str, target_type: str, techs: list[str]) -> str:
         ]
     elif target_type == "api":
         lines += [
+            "      AI-assisted planning",
+            '        "Feature decomposition / sibling diffing"',
             "      All endpoints",
             '        "Auth bypass on undocumented routes"',
             "      ID parameters",
@@ -179,6 +194,8 @@ def build_mermaid(target: str, target_type: str, techs: list[str]) -> str:
         ]
     elif target_type == "mobile":
         lines += [
+            "      AI-assisted planning",
+            '        "Feature decomposition / sibling diffing"',
             "      WebView",
             '        "JS bridge injection"',
             "      Deep links",
@@ -217,6 +234,7 @@ def build_checklist(target_type: str, techs: list[str]) -> str:
     checks = list(type_map.get(target_type, WEBSITE_CHECKS))
 
     # Add tech-specific checks
+    checks.extend(AI_CHECKS)
     for tech in techs:
         tech_lower = tech.lower().strip()
         if tech_lower in TECH_CHECKS:
@@ -328,6 +346,7 @@ def main():
         "mobile":  MOBILE_CHECKS,
     }
     checks = list(type_map.get(target_type, WEBSITE_CHECKS))
+    checks.extend(AI_CHECKS)
     for tech in techs:
         if tech.lower() in TECH_CHECKS:
             checks.extend(TECH_CHECKS[tech.lower()])

@@ -1,5 +1,11 @@
 # Changelog
 
+## v4.3.2 — AI Hunt Playbook (Jun 2026)
+
+### Added
+- AI-assisted hunt guidance in `skills/bb-methodology/SKILL.md` and `skills/bug-bounty/SKILL.md`: use the model for feature decomposition, sibling-endpoint diffing, role matrices, and chain planning, while keeping proof requirements anchored to live requests and cross-account deltas.
+- AI-assisted planning signals in `tools/mindmap.py` so generated hunt checklists now surface hypothesis expansion and validation-gate reminders alongside the traditional vuln-class checklist.
+
 ## v4.3.1 — Bug Fixes + Hardening (Jun 2026)
 
 ### Fixed

@@ -57,6 +57,7 @@ cd claude-bug-bounty
 ```
 
 ```
+bughunter help               # show every command
 bughunter setup              # choose your AI provider (Ollama is free + offline)
 bughunter recon target.com   # map the attack surface
 bughunter hunt  target.com   # hunt for vulnerabilities
@@ -65,6 +66,9 @@ bughunter report             # write a submission-ready report
 bughunter chat               # interactive AI hunting shell
 bughunter providers          # list all available AI providers
 bughunter status             # check which provider is active
+bughunter h target.com       # short alias for hunt
+bughunter r target.com       # short alias for recon
+bughunter v "finding"        # short alias for validate
 ```
 
 ### Free AI Providers (auto-detected, free-first priority)

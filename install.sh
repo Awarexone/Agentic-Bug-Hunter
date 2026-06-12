@@ -17,8 +17,10 @@ Defaults:
 Standalone (no subscription needed):
   ./install.sh --agent standalone Install 'bughunter' system command
                                   After install, type from anywhere:
+                                    bughunter help
                                     bughunter setup
                                     bughunter recon target.com
+                                    bughunter h target.com
 
 Examples:
   ./install.sh --agent opencode   Install OpenCode skills + commands globally
@@ -149,6 +151,8 @@ install_claude() {
     echo ""
     echo "Start hunting:"
     echo "  claude"
+    echo "  claude help"
+    echo "  claude recon target.com"
     echo "  /recon target.com"
     echo "  /hunt target.com"
 }
@@ -170,6 +174,8 @@ install_opencode() {
     echo "OpenCode also reads AGENTS.md from the project root. Keep this repo's AGENTS.md committed for portable project instructions."
     echo "Start hunting:"
     echo "  opencode"
+    echo "  opencode help"
+    echo "  opencode recon target.com"
     echo "  /recon target.com"
 }
 
@@ -189,6 +195,8 @@ install_pi() {
     echo "Pi exposes skills as /skill:<name> and command prompts as /<command>."
     echo "Start hunting:"
     echo "  pi"
+    echo "  pi help"
+    echo "  pi recon target.com"
     echo "  /recon target.com"
 }
 

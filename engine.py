@@ -86,6 +86,47 @@ def save_config(cfg: dict):
     CONFIG.write_text(json.dumps(cfg, indent=2))
 
 
+COMMAND_ALIASES = {
+    "setup": {"setup", "init"},
+    "providers": {"providers", "p"},
+    "models": {"models", "m"},
+    "status": {"status", "s"},
+    "chat": {"chat", "ask"},
+    "recon": {"recon", "r"},
+    "hunt": {"hunt", "h"},
+    "validate": {"validate", "v"},
+    "triage": {"triage", "t"},
+    "report": {"report", "rep"},
+    "chain": {"chain", "c"},
+}
+
+
+def _print_quick_help():
+    print(textwrap.dedent("""
+    BugHunter — fast commands
+
+    bughunter help                 Show full help
+    bughunter setup                Configure your AI provider
+    bughunter recon target.com     Map the attack surface
+    bughunter hunt target.com      Run the full hunt pipeline
+    bughunter validate "finding"   Run the 7-Question Gate
+    bughunter report               Write a submission-ready report
+    bughunter status               Show pipeline status
+
+    Short aliases:
+      init=setup   p=providers   m=models   s=status   r=recon
+      h=hunt       v=validate    t=triage   rep=report   c=chain
+    """).strip())
+
+
+def _normalize_cli_argv(argv: list[str]) -> list[str]:
+    if not argv:
+        return argv
+    if argv[0] in {"help", "-help"}:
+        return ["--help", *argv[1:]]
+    return ["--help" if item == "-help" else item for item in argv]
+
+
 def load_agent_prompt(agent_name: str) -> str:
     """Read agents/<name>.md, strip YAML frontmatter, return body as system prompt."""
     md = AGENTS / f"{agent_name}.md"
@@ -561,6 +602,7 @@ def _print_banner():
 # ── CLI entry point ────────────────────────────────────────────────────────────
 
 def main():
+    argv = _normalize_cli_argv(sys.argv[1:])
     parser = argparse.ArgumentParser(
         prog="engine.py",
         description="Standalone BugHunter Engine — works without Claude Code",
@@ -586,33 +628,33 @@ def main():
 
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
 
-    sub.add_parser("setup",     help="One-time config wizard")
-    sub.add_parser("providers", help="Show all providers + API key status")
-    sub.add_parser("models",    help="List available models for active provider")
-    sub.add_parser("status",    help="Show hunt pipeline status")
-    sub.add_parser("chat",      help="Interactive AI shell")
+    sub.add_parser("setup",     aliases=["init"], help="One-time config wizard")
+    sub.add_parser("providers", aliases=["p"], help="Show all providers + API key status")
+    sub.add_parser("models",    aliases=["m"], help="List available models for active provider")
+    sub.add_parser("status",    aliases=["s"], help="Show hunt pipeline status")
+    sub.add_parser("chat",      aliases=["ask"], help="Interactive AI shell")
 
-    p_recon = sub.add_parser("recon", help="Recon + AI surface analysis")
+    p_recon = sub.add_parser("recon", aliases=["r"], help="Recon + AI surface analysis")
     p_recon.add_argument("target", help="Target domain or IP")
 
-    p_hunt = sub.add_parser("hunt", help="Full hunt pipeline")
+    p_hunt = sub.add_parser("hunt", aliases=["h"], help="Full hunt pipeline")
     p_hunt.add_argument("target", help="Target domain or IP")
     p_hunt.add_argument("--quick", action="store_true", help="Quick mode (fewer checks)")
 
-    p_val = sub.add_parser("validate", help="7-Question Gate on a finding")
+    p_val = sub.add_parser("validate", aliases=["v"], help="7-Question Gate on a finding")
     p_val.add_argument("finding", nargs="?", default="", help="Finding description (or pipe via stdin)")
 
-    p_triage = sub.add_parser("triage", help="Fast triage (alias for validate)")
+    p_triage = sub.add_parser("triage", aliases=["t"], help="Fast triage (alias for validate)")
     p_triage.add_argument("finding", nargs="?", default="", help="Finding description")
 
-    p_rep = sub.add_parser("report", help="Write submission-ready bug report")
+    p_rep = sub.add_parser("report", aliases=["rep"], help="Write submission-ready bug report")
     p_rep.add_argument("--findings-dir", default="", help="Path to findings/<target> directory")
 
-    p_chain = sub.add_parser("chain", help="Build A->B->C exploit chain")
+    p_chain = sub.add_parser("chain", aliases=["c"], help="Build A->B->C exploit chain")
     p_chain.add_argument("--findings-dir", default="", help="Path to findings/<target> directory")
     p_chain.add_argument("finding", nargs="?", default="", help="Bug A description (or pipe via stdin)")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     # Apply provider override
     if getattr(args, "provider", None):
@@ -645,10 +687,8 @@ def main():
 
     if not args.command:
         parser.print_help()
-        print(f"\n{YELLOW}Quick start:{NC}")
-        print("  ./engine.py setup              # configure your AI provider")
-        print("  ./engine.py providers          # see what's available")
-        print("  ./engine.py recon target.com   # start hunting")
+        print()
+        _print_quick_help()
         return
 
     fn = dispatch.get(args.command)

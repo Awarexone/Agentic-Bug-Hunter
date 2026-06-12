@@ -445,13 +445,20 @@ fi
 echo ""
 log_info "Phase 6: Directory Fuzzing"
 
-WORDLIST_DIR="$BASE_DIR/tools/wordlists"
+WORDLIST_DIR="$BASE_DIR/wordlists"
+LEGACY_WORDLIST_DIR="$BASE_DIR/tools/wordlists"
 
 if command -v ffuf &>/dev/null && [ -s "$RECON_DIR/live/urls.txt" ]; then
     # Select wordlist
     WORDLIST=""
     if [ -f "$WORDLIST_DIR/common.txt" ]; then
         WORDLIST="$WORDLIST_DIR/common.txt"
+    elif [ -f "$LEGACY_WORDLIST_DIR/common.txt" ]; then
+        WORDLIST="$LEGACY_WORDLIST_DIR/common.txt"
+    elif [ -f "$WORDLIST_DIR/raft-medium-dirs.txt" ]; then
+        WORDLIST="$WORDLIST_DIR/raft-medium-dirs.txt"
+    elif [ -f "$LEGACY_WORDLIST_DIR/raft-medium-dirs.txt" ]; then
+        WORDLIST="$LEGACY_WORDLIST_DIR/raft-medium-dirs.txt"
     elif [ -f /usr/share/wordlists/dirb/common.txt ]; then
         WORDLIST="/usr/share/wordlists/dirb/common.txt"
     fi

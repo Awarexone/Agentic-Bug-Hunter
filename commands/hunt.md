@@ -155,6 +155,26 @@ HackerOne Hacktivity for this program:
 
 Extract from each report: which endpoint, which bug class, what parameter, what check was missing, what they paid.
 
+## Phase 1.5: WAF Fingerprint (1 min)
+
+Identify the WAF before active probing — bypass strategy depends on vendor.
+
+```bash
+# Active fingerprint (install: pip install wafw00f)
+wafw00f "https://$TARGET"
+wafw00f "https://$TARGET" -a   # try all signatures
+
+# Manual header check
+curl -sIk "https://$TARGET" | grep -iE "cf-ray|x-amzn|x-cdn|x-sucuri|akamai|server:"
+curl -sIk "https://$TARGET" | grep -iE "set-cookie:.*(cf_|incap_ses|visid_incap|TS[0-9a-f]{6}|barra)"
+```
+
+WAF → bypass strategy:
+- **Cloudflare** — find origin IP first (crt.sh, SecurityTrails, Shodan); then payload encoding
+- **AWS WAF** — SQL `/**/` comment split, oversized body bypass
+- **Imperva** — unicode overlong `%c0%2e`, parameter pollution
+- **F5 BIG-IP** — double-slash path `//admin`, strip `TS*` cookie
+
 ## Phase 2: Tech Stack Detection (2 min)
 
 ```bash
@@ -171,6 +191,28 @@ Stack → Primary bug class:
 - Spring Boot → Actuator endpoints, SSTI
 - Next.js → SSRF via Server Actions, open redirect
 - GraphQL → introspection, IDOR via node(), auth bypass on mutations
+
+## 403 Response Protocol
+
+When any probe returns 403, follow this order before declaring dead-end:
+
+```bash
+# 1. Header/path/method matrix (auto-runs WAF fingerprint)
+tools/bypass_403.sh "https://$TARGET/blocked-endpoint"
+
+# 2. Payload-level encoding bypass (for SQLi/XSS keyword blocked)
+tools/waf_encoder.py "<payload>" --class sqli
+tools/waf_encoder.py "<payload>" --class xss
+
+# 3. Upload endpoint blocked
+tools/multipart_mutator.py --file ./shell.aspx --field file \
+  --url "https://$TARGET/upload" --send
+
+# 4. Cloudflare origin hunt (if Cloudflare detected and steps 1-3 fail)
+curl -s "https://crt.sh/?q=%25.$TARGET&output=json" | jq -r '.[].name_value' | sort -u
+
+# 5. Still 403 after 5 min → kill, move to next surface
+```
 
 ## Phase 3: Active Testing (manual — when the scripted scan isn't enough)
 

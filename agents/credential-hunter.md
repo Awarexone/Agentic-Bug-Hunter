@@ -1,7 +1,11 @@
 ---
 name: credential-hunter
 description: Autonomous credential-attack pipeline runner. Chains /wordlist-gen + /osint-employees + /breach-check (data-prep stages, runs without prompts) then HARD STOPS before /spray (live attack stage requires human go/no-go). Designed so the user only types the target once instead of orchestrating four separate commands. Reports back with stats at each stage and a structured go/no-go decision package before spray.
-tools: Bash, Read, Write, AskUserQuestion
+tools:
+  bash: true
+  read: true
+  write: true
+  question: true
 model: claude-sonnet-4-6
 ---
 

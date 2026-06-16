@@ -18,6 +18,16 @@
 </p>
 
 <p align="center">
+  <a href="https://www.star-history.com/?repos=shuvonsec%2Fclaude-bug-bounty&type=date&legend=top-left">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=shuvonsec/claude-bug-bounty&type=date&theme=dark&legend=top-left" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=shuvonsec/claude-bug-bounty&type=date&legend=top-left" />
+      <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=shuvonsec/claude-bug-bounty&type=date&legend=top-left" />
+    </picture>
+  </a>
+</p>
+
+<p align="center">
   <a href="#-standalone-mode--no-subscription-required"><b>Free Setup</b></a>
   &nbsp;·&nbsp;
   <a href="#quick-start"><b>Quick Start</b></a>
@@ -476,18 +486,6 @@ git checkout -b feature/your-contribution
 git commit -m "feat: short description"
 git push origin feature/your-contribution
 ```
-
----
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=shuvonsec%2Fclaude-bug-bounty&type=date&legend=top-left">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=shuvonsec/claude-bug-bounty&type=date&theme=dark&legend=top-left" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=shuvonsec/claude-bug-bounty&type=date&legend=top-left" />
-    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=shuvonsec/claude-bug-bounty&type=date&legend=top-left" />
-  </picture>
-</a>
 
 ---
 

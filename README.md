@@ -11,26 +11,51 @@
 
 <p align="center">
   <a href="https://github.com/shuvonsec/claude-bug-bounty/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square" alt="MIT License"></a>
-  <img src="https://img.shields.io/badge/Python-3.8+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.8+">
-  <img src="https://img.shields.io/badge/Standalone-Free_Mode-brightgreen.svg?style=flat-square" alt="Free Standalone Mode">
+  <img src="https://img.shields.io/badge/Python-3.9+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.9+">
+  <img src="https://img.shields.io/badge/Standalone-Free-brightgreen.svg?style=flat-square" alt="Free Standalone Mode">
   <a href="https://claude.ai/claude-code"><img src="https://img.shields.io/badge/Claude_Code-Plugin-D97706.svg?style=flat-square" alt="Claude Code Plugin"></a>
-  <a href="#contributing"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square" alt="PRs Welcome"></a>
   <a href="https://star-history.com/#shuvonsec/claude-bug-bounty"><img src="https://img.shields.io/github/stars/shuvonsec/claude-bug-bounty?style=flat-square&color=yellow" alt="GitHub Stars"></a>
 </p>
 
 <p align="center">
-  <a href="https://star-history.com/#shuvonsec/claude-bug-bounty&Date">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=shuvonsec/claude-bug-bounty&type=Date&theme=dark" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=shuvonsec/claude-bug-bounty&type=Date" />
-      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=shuvonsec/claude-bug-bounty&type=Date" />
-    </picture>
-  </a>
+  <a href="#-standalone-mode--no-subscription-required"><b>Free Setup</b></a>
+  &nbsp;·&nbsp;
+  <a href="#quick-start"><b>Quick Start</b></a>
+  &nbsp;·&nbsp;
+  <a href="#commands"><b>Commands</b></a>
+  &nbsp;·&nbsp;
+  <a href="#what-it-finds"><b>What It Finds</b></a>
+  &nbsp;·&nbsp;
+  <a href="#installation"><b>Install</b></a>
+  &nbsp;·&nbsp;
+  <a href="FAQ.md"><b>FAQ</b></a>
 </p>
 
-<p align="center">
-  <a href="#-standalone-mode--no-subscription-required">Free Setup</a> · <a href="#quick-start">Quick Start</a> · <a href="#commands">Commands</a> · <a href="#what-it-finds">What It Finds</a> · <a href="#installation">Install</a> · <a href="FAQ.md">FAQ</a>
-</p>
+---
+
+<p align="center"><sub>Here's what you see when you launch it.</sub></p>
+
+```
+██████  ██████  ██   ██ ██   ██ ███   █ ███████
+██   ██ ██   ██ ██   ██ ██   ██ ████  █   ███
+██████  ██████  ███████ ██   ██ ██ ██ █   ███
+██████  ██████  ███████ ██   ██ ██  ███   ███
+██   ██ ██   ██ ██   ██ ██   ██ ██   ██   ███
+██████  ██████  ██   ██ ███████ ██   ██   ███
+
++ Recon. Hunt. Validate. Report. +
+
+┌──────────────────────────────────────────────────────┐
+│ Target  target.com                                   │
+│ Mode    full                                         │
+│ Output  recon/target.com/                            │
+│ Auth    session loaded                               │
+└──────────────────────────────────────────────────────┘
+
+ ● local   Ready   type /hunt to begin
+
+bbhunter v4.3
+```
 
 ---
 
@@ -276,19 +301,28 @@ Nine specialists, each built for one job:
 
 ## How It Works
 
+<div align="center">
+
 ```
-You  →  /recon  →  /hunt  →  /validate  →  /report
-              ↓                     ↓
-         Hunt Memory          7-Question Gate
-      (persists across      (kills weak findings
-          sessions)          before you submit)
+   You ─▶ /recon ─▶ /hunt ─▶ /validate ─▶ /report
+              │                  │
+              ▼                  ▼
+        Hunt Memory       7-Question Gate
+   (persists across    (kills weak findings
+       sessions)         before you submit)
 ```
+
+</div>
 
 Every tool in the pipeline is gated on whether it's installed — missing tools are skipped, not errors. Auth headers set once carry through httpx · katana · ffuf · nuclei · dalfox automatically.
 
 ---
 
 ## Project Structure
+
+<details>
+<summary><b>Click to expand the full tree</b></summary>
+<br>
 
 ```
 claude-bug-bounty/
@@ -360,6 +394,8 @@ claude-bug-bounty/
 └── TERMS.md                   # Terms of use + authorized testing only
 ```
 
+</details>
+
 ---
 
 ## Installation
@@ -413,17 +449,17 @@ echo 'export CHAOS_API_KEY="your-key"' >> ~/.zshrc
 
 ## Rules
 
-These run every session, no exceptions:
+Seven rules run every session, no exceptions:
 
-```
-1. Read full scope first — only test what the program says you can
-2. Real bugs only       — "Can an attacker do this RIGHT NOW?" if no, stop
-3. Kill weak findings   — 30-second check saves hours of wasted reporting
-4. Never go out of scope — one wrong request can get you banned
-5. 5-minute rule        — no progress after 5 min? move to the next target
-6. Validate before report — /validate before spending 30 min writing
-7. Impact first         — test the bugs with the worst consequences first
-```
+| # | Rule | Why |
+|:-:|:---|:---|
+| 1 | **Read full scope first** | Only test what the program authorizes |
+| 2 | **Real bugs only** | "Can an attacker do this RIGHT NOW?" — if no, stop |
+| 3 | **Kill weak findings** | A 30-second check saves hours of wasted reporting |
+| 4 | **Never go out of scope** | One wrong request can get you banned |
+| 5 | **5-minute rule** | No progress after 5 minutes? Move on |
+| 6 | **Validate before report** | `/validate` before spending 30 minutes writing |
+| 7 | **Impact first** | Test the bugs with the worst consequences first |
 
 ---
 

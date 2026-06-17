@@ -38,6 +38,14 @@ from tools.banner import print_banner  # noqa: E402
 _AUTH_SESSION = None
 
 
+def _normalize_argv(argv):
+    if not argv:
+        return argv
+    if argv[0] in {"help", "-help"}:
+        return ["--help", *argv[1:]]
+    return ["--help" if item == "-help" else item for item in argv]
+
+
 # ── Target type detection (FQDN / single IP / CIDR) ──────────────────────────
 
 MAX_CIDR_HOSTS = 254
@@ -450,6 +458,7 @@ def hunt_target(domain, quick=False, recon_only=False, scan_only=False, cve_hunt
 
 
 def main():
+    argv = _normalize_argv(sys.argv[1:])
     parser = argparse.ArgumentParser(
         description="Bug Bounty Hunt Orchestrator",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -476,7 +485,7 @@ Examples:
     parser.add_argument("--no-banner", action="store_true",
                         help="Suppress the startup banner (useful for CI / piped output)")
     add_cli_args(parser)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     # Build the auth session once. It propagates to every subprocess via
     # BBHUNT_AUTH_HEADERS / BBHUNT_SESSION_ID env vars (set per-call so the
@@ -510,6 +519,20 @@ Examples:
     if args.setup_wordlists:
         setup_wordlists()
         return
+
+    if not any((
+        args.target,
+        args.recon_only,
+        args.scan_only,
+        args.report_only,
+        args.cve_hunt,
+        args.zero_day,
+        args.select_targets,
+    )):
+        print("\nQuick start:")
+        print("  python3 tools/hunt.py --target target.com")
+        print("  python3 tools/hunt.py --scan-only --target target.com")
+        print("  python3 tools/hunt.py --status")
 
     # Check tools
     installed, missing = check_tools()

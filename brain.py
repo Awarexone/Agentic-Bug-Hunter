@@ -3,16 +3,26 @@ from __future__ import annotations
 
 """
 Brain — Multi-Provider LLM Reasoning Layer for Bug Bounty & VAPT
-Supports: Ollama (local), Claude API, OpenAI, Grok (xAI)
+Supports: Ollama (local), Claude, OpenAI, Grok, Groq, DeepSeek,
+          Gemini, Kimi (Moonshot), Mistral, Together AI, Cerebras, Perplexity
 
 Provider selection (in order of precedence):
-  1. BRAIN_PROVIDER env var  (ollama | claude | openai | grok)
+  1. BRAIN_PROVIDER env var  (ollama | claude | openai | grok | groq | deepseek |
+                               gemini | kimi | mistral | together | cerebras | perplexity)
   2. Auto-detect: uses first provider whose API key / server is available
 
 API keys (env vars):
-  ANTHROPIC_API_KEY   — Claude (claude-opus-4-6, claude-sonnet-4-6, etc.)
+  ANTHROPIC_API_KEY   — Claude (claude-opus-4-8, claude-sonnet-4-6, etc.)
   OPENAI_API_KEY      — OpenAI (gpt-4o, o1, etc.)
-  XAI_API_KEY         — Grok (grok-2-latest, grok-3-mini, etc.)
+  XAI_API_KEY         — Grok (grok-2-latest, grok-3, etc.)
+  GROQ_API_KEY        — Groq free tier (llama-3.3-70b-versatile)
+  DEEPSEEK_API_KEY    — DeepSeek (deepseek-chat / deepseek-reasoner)
+  GEMINI_API_KEY      — Google Gemini (gemini-2.0-flash, gemini-2.5-pro, etc.)
+  MOONSHOT_API_KEY    — Kimi / Moonshot AI (moonshot-v1-128k, etc.)
+  MISTRAL_API_KEY     — Mistral AI (mistral-large-latest, codestral-latest, etc.)
+  TOGETHER_API_KEY    — Together AI (Llama, Qwen, etc. in cloud)
+  CEREBRAS_API_KEY    — Cerebras (fastest inference — llama3.3-70b)
+  PERPLEXITY_API_KEY  — Perplexity (sonar-pro — live web search)
   OLLAMA_HOST         — Ollama base URL (default: http://localhost:11434)
 
 Default model priority (uses first available):
@@ -71,22 +81,41 @@ OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 
 class LLMClient:
     """
-    Unified chat interface for Ollama, Claude, OpenAI, and Grok.
+    Unified chat interface for Ollama, Groq, DeepSeek, Claude, OpenAI, and Grok.
 
     Usage:
         client = LLMClient()          # auto-detect provider
+        client = LLMClient("groq")    # force Groq (free tier)
         client = LLMClient("claude")  # force Claude API
         reply  = client.chat(model, system_prompt, user_prompt, max_tokens=2000)
+
+    Free providers:
+        ollama   — local, zero cost (default: http://localhost:11434)
+        groq     — cloud free tier, GROQ_API_KEY    (https://console.groq.com)
+        deepseek — very cheap,      DEEPSEEK_API_KEY (https://platform.deepseek.com)
     """
 
-    PROVIDER_PRIORITY = ["ollama", "claude", "openai", "grok"]
+    # Priority: free-local first, free-cloud second, paid last
+    PROVIDER_PRIORITY = [
+        "ollama", "groq", "deepseek", "cerebras",
+        "gemini", "kimi", "mistral", "together",
+        "perplexity", "claude", "openai", "grok",
+    ]
 
     # Default models per provider
     DEFAULT_MODELS = {
-        "claude":  "claude-sonnet-4-6",
-        "openai":  "gpt-4o",
-        "grok":    "grok-2-latest",
-        "ollama":  None,  # resolved dynamically
+        "claude":      "claude-sonnet-4-6",
+        "openai":      "gpt-4o",
+        "grok":        "grok-2-latest",
+        "groq":        "llama-3.3-70b-versatile",
+        "deepseek":    "deepseek-chat",
+        "gemini":      "gemini-2.0-flash",
+        "kimi":        "moonshot-v1-128k",
+        "mistral":     "mistral-large-latest",
+        "together":    "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        "cerebras":    "llama3.3-70b",
+        "perplexity":  "sonar-pro",
+        "ollama":      None,  # resolved dynamically
     }
 
     def __init__(self, provider: str | None = None):
@@ -103,9 +132,17 @@ class LLMClient:
 
     # Env var a provider's API key is read from; keyed for quick lookup.
     PROVIDER_KEY_ENV = {
-        "claude": "ANTHROPIC_API_KEY",
-        "openai": "OPENAI_API_KEY",
-        "grok":   "XAI_API_KEY",
+        "claude":      "ANTHROPIC_API_KEY",
+        "openai":      "OPENAI_API_KEY",
+        "grok":        "XAI_API_KEY",
+        "groq":        "GROQ_API_KEY",
+        "deepseek":    "DEEPSEEK_API_KEY",
+        "gemini":      "GEMINI_API_KEY",
+        "kimi":        "MOONSHOT_API_KEY",
+        "mistral":     "MISTRAL_API_KEY",
+        "together":    "TOGETHER_API_KEY",
+        "cerebras":    "CEREBRAS_API_KEY",
+        "perplexity":  "PERPLEXITY_API_KEY",
     }
 
     def _auto_detect(self) -> str:
@@ -164,9 +201,9 @@ class LLMClient:
             self._http = requests.Session()
             self._http.headers.update({"Authorization": f"Bearer {key}",
                                        "Content-Type": "application/json"})
-            self._openai_base = "https://api.openai.com/v1"
-            self.available    = True
-            self.description  = "OpenAI API"
+            self._api_base   = "https://api.openai.com/v1"
+            self.available   = True
+            self.description = "OpenAI API"
 
         elif provider == "grok":
             key = os.environ.get("XAI_API_KEY", "")
@@ -176,9 +213,105 @@ class LLMClient:
             self._http = requests.Session()
             self._http.headers.update({"Authorization": f"Bearer {key}",
                                        "Content-Type": "application/json"})
-            self._grok_base  = "https://api.x.ai/v1"
+            self._api_base   = "https://api.x.ai/v1"
             self.available   = True
             self.description = "Grok API (xAI)"
+
+        elif provider == "groq":
+            key = os.environ.get("GROQ_API_KEY", "")
+            if not key:
+                return
+            import requests
+            self._http = requests.Session()
+            self._http.headers.update({"Authorization": f"Bearer {key}",
+                                       "Content-Type": "application/json"})
+            self._api_base   = "https://api.groq.com/openai/v1"
+            self.available   = True
+            self.description = "Groq API (free tier — llama-3.3-70b)"
+
+        elif provider == "deepseek":
+            key = os.environ.get("DEEPSEEK_API_KEY", "")
+            if not key:
+                return
+            import requests
+            self._http = requests.Session()
+            self._http.headers.update({"Authorization": f"Bearer {key}",
+                                       "Content-Type": "application/json"})
+            self._api_base   = "https://api.deepseek.com/v1"
+            self.available   = True
+            self.description = "DeepSeek API (deepseek-chat / deepseek-reasoner)"
+
+        elif provider == "gemini":
+            key = os.environ.get("GEMINI_API_KEY", "")
+            if not key:
+                return
+            import requests
+            self._http = requests.Session()
+            self._http.headers.update({"Authorization": f"Bearer {key}",
+                                       "Content-Type": "application/json"})
+            self._api_base   = "https://generativelanguage.googleapis.com/v1beta/openai"
+            self.available   = True
+            self.description = "Google Gemini API (gemini-2.0-flash / gemini-2.5-pro)"
+
+        elif provider == "kimi":
+            key = os.environ.get("MOONSHOT_API_KEY", "")
+            if not key:
+                return
+            import requests
+            self._http = requests.Session()
+            self._http.headers.update({"Authorization": f"Bearer {key}",
+                                       "Content-Type": "application/json"})
+            self._api_base   = "https://api.moonshot.cn/v1"
+            self.available   = True
+            self.description = "Kimi / Moonshot AI (moonshot-v1-128k)"
+
+        elif provider == "mistral":
+            key = os.environ.get("MISTRAL_API_KEY", "")
+            if not key:
+                return
+            import requests
+            self._http = requests.Session()
+            self._http.headers.update({"Authorization": f"Bearer {key}",
+                                       "Content-Type": "application/json"})
+            self._api_base   = "https://api.mistral.ai/v1"
+            self.available   = True
+            self.description = "Mistral AI (mistral-large-latest / codestral-latest)"
+
+        elif provider == "together":
+            key = os.environ.get("TOGETHER_API_KEY", "")
+            if not key:
+                return
+            import requests
+            self._http = requests.Session()
+            self._http.headers.update({"Authorization": f"Bearer {key}",
+                                       "Content-Type": "application/json"})
+            self._api_base   = "https://api.together.xyz/v1"
+            self.available   = True
+            self.description = "Together AI (Llama-3.3-70B / Qwen cloud)"
+
+        elif provider == "cerebras":
+            key = os.environ.get("CEREBRAS_API_KEY", "")
+            if not key:
+                return
+            import requests
+            self._http = requests.Session()
+            self._http.headers.update({"Authorization": f"Bearer {key}",
+                                       "Content-Type": "application/json"})
+            self._api_base   = "https://api.cerebras.ai/v1"
+            self.available   = True
+            self.description = "Cerebras (llama3.3-70b — ultra-fast inference)"
+
+        elif provider == "perplexity":
+            key = os.environ.get("PERPLEXITY_API_KEY", "")
+            if not key:
+                return
+            import requests
+            self._http = requests.Session()
+            self._http.headers.update({"Authorization": f"Bearer {key}",
+                                       "Content-Type": "application/json"})
+            self._api_base   = "https://api.perplexity.ai"
+            self.available   = True
+            self.description = "Perplexity AI (sonar-pro — live web search)"
 
     def chat(self, model: str | None, system: str, user: str,
              max_tokens: int = 4000, temperature: float = 0.1) -> str:
@@ -190,7 +323,10 @@ class LLMClient:
                 return self._chat_ollama(model, system, user, max_tokens, temperature)
             elif self.provider == "claude":
                 return self._chat_claude(model, system, user, max_tokens, temperature)
-            elif self.provider in ("openai", "grok"):
+            elif self.provider in (
+                "openai", "grok", "groq", "deepseek",
+                "gemini", "kimi", "mistral", "together", "cerebras", "perplexity",
+            ):
                 return self._chat_openai_compat(model, system, user, max_tokens, temperature)
         except Exception as e:
             print(f"{YELLOW}[Brain/{self.provider}] chat error: {e}{NC}", flush=True)
@@ -228,7 +364,7 @@ class LLMClient:
 
     def _chat_openai_compat(self, model, system, user, max_tokens, temperature) -> str:
         import json as _json
-        base = self._grok_base if self.provider == "grok" else self._openai_base
+        base = self._api_base
         m    = model or self.DEFAULT_MODELS[self.provider]
         body = {"model": m, "max_tokens": max_tokens, "temperature": temperature,
                 "messages": [{"role": "system", "content": system},
@@ -246,11 +382,32 @@ class LLMClient:
             except Exception:
                 return []
         elif self.provider == "claude":
-            return ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"]
+            return ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"]
         elif self.provider == "openai":
             return ["gpt-4o", "gpt-4o-mini", "o1", "o3-mini"]
         elif self.provider == "grok":
             return ["grok-2-latest", "grok-3-mini", "grok-3"]
+        elif self.provider == "groq":
+            return ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"]
+        elif self.provider == "deepseek":
+            return ["deepseek-chat", "deepseek-reasoner"]
+        elif self.provider == "gemini":
+            return ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+        elif self.provider == "kimi":
+            return ["moonshot-v1-128k", "moonshot-v1-32k", "moonshot-v1-8k"]
+        elif self.provider == "mistral":
+            return ["mistral-large-latest", "mistral-small-latest", "codestral-latest", "open-mistral-nemo"]
+        elif self.provider == "together":
+            return [
+                "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+                "meta-llama/Llama-3.1-405B-Instruct-Turbo",
+                "Qwen/Qwen2.5-Coder-32B-Instruct",
+                "deepseek-ai/DeepSeek-R1",
+            ]
+        elif self.provider == "cerebras":
+            return ["llama3.3-70b", "llama3.1-8b"]
+        elif self.provider == "perplexity":
+            return ["sonar-pro", "sonar", "sonar-reasoning-pro", "sonar-reasoning"]
         return []
 
 # Model preference order — first available wins

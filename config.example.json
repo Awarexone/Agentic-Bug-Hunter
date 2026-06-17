@@ -7,5 +7,21 @@
   "nuclei_severity": ["critical", "high", "medium"],
   "katana_depth": 3,
   "ffuf_threads": 40,
-  "interactsh_server": "oast.pro"
+  "interactsh_server": "oast.pro",
+
+  "_brain_comment": "Set BRAIN_PROVIDER env var to force a specific LLM provider. Auto-detect picks the first available.",
+  "_brain_providers": {
+    "ollama":      "OLLAMA_HOST=http://localhost:11434  (free, local)",
+    "groq":        "GROQ_API_KEY=...  (free tier — llama-3.3-70b)",
+    "deepseek":    "DEEPSEEK_API_KEY=...  (very cheap — deepseek-chat / reasoner)",
+    "cerebras":    "CEREBRAS_API_KEY=...  (fastest cloud inference — llama3.3-70b)",
+    "gemini":      "GEMINI_API_KEY=...  (Google — gemini-2.0-flash / gemini-2.5-pro)",
+    "kimi":        "MOONSHOT_API_KEY=...  (Kimi / Moonshot AI — 128K context)",
+    "mistral":     "MISTRAL_API_KEY=...  (codestral-latest great for code analysis)",
+    "together":    "TOGETHER_API_KEY=...  (Llama-3.3-70B / Qwen in cloud)",
+    "perplexity":  "PERPLEXITY_API_KEY=...  (sonar-pro — live web search)",
+    "claude":      "ANTHROPIC_API_KEY=...  (claude-sonnet-4-6 / opus-4-8)",
+    "openai":      "OPENAI_API_KEY=...  (gpt-4o / o1)",
+    "grok":        "XAI_API_KEY=...  (grok-3 / grok-2-latest)"
+  }
 }

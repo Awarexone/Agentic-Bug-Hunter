@@ -38,6 +38,10 @@ venv/
 *.out
 nmap-output/
 
+# IaC / agent tooling state
+.atlas/
+.forge/
+
 # Personal hunt notes (target-specific markdown — never push)
 docs/*Bug Bounty*.md
 docs/*hunt*.md

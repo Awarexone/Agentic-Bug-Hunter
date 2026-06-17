@@ -63,6 +63,7 @@ if [[ "$MODE" == "claude" ]] || [[ "$MODE" == "both" ]]; then
 
     INSTALL_DIR="${HOME}/.claude/skills"
     COMMANDS_DIR="${HOME}/.claude/commands"
+    AGENTS_DIR="${HOME}/.claude/agents"
 
     # Remove installed skills
     for skill_dir in "${REPO_ROOT}/skills/"*/; do
@@ -76,8 +77,14 @@ if [[ "$MODE" == "claude" ]] || [[ "$MODE" == "both" ]]; then
         remove_file "${COMMANDS_DIR}/${cmd_name}"
     done
 
+    # Remove installed agents
+    for agent_file in "${REPO_ROOT}/agents/"*.md; do
+        agent_name=$(basename "$agent_file")
+        remove_file "${AGENTS_DIR}/${agent_name}"
+    done
+
     # Clean up empty parent dirs (only if we created them and they're now empty)
-    for dir in "${INSTALL_DIR}" "${COMMANDS_DIR}"; do
+    for dir in "${INSTALL_DIR}" "${COMMANDS_DIR}" "${AGENTS_DIR}"; do
         if [ -d "$dir" ] && [ -z "$(ls -A "$dir")" ]; then
             rmdir "$dir"
             echo "  (removed empty dir): $dir"
@@ -98,6 +105,7 @@ if [[ "$MODE" == "opencode" ]] || [[ "$MODE" == "both" ]]; then
 
     SKILLS_DIR="${REPO_ROOT}/.opencode/skills"
     COMMANDS_DIR="${REPO_ROOT}/.opencode/commands"
+    AGENTS_DIR="${REPO_ROOT}/.opencode/agents"
 
     # Remove symlinked skills
     for skill_dir in "${REPO_ROOT}/skills/"*/; do
@@ -111,8 +119,14 @@ if [[ "$MODE" == "opencode" ]] || [[ "$MODE" == "both" ]]; then
         remove_file "${COMMANDS_DIR}/${cmd_name}"
     done
 
+    # Remove copied agents
+    for agent_file in "${REPO_ROOT}/agents/"*.md; do
+        agent_name=$(basename "$agent_file")
+        remove_file "${AGENTS_DIR}/${agent_name}"
+    done
+
     # Clean up empty parent dirs
-    for dir in "${SKILLS_DIR}" "${COMMANDS_DIR}"; do
+    for dir in "${SKILLS_DIR}" "${COMMANDS_DIR}" "${AGENTS_DIR}"; do
         if [ -d "$dir" ] && [ -z "$(ls -A "$dir")" ]; then
             rmdir "$dir"
             echo "  (removed empty dir): $dir"

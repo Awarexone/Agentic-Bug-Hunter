@@ -21,7 +21,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `skills/mobile-pentest/` | Android/iOS app pentest — runtime-first proxy workflow, APK/IPA decompile for hidden endpoints + secrets, deeplink/exported-activity injection, WebView bridge, SSL pinning bypass |
 | `skills/cicd-security/` | CI/CD pipeline hunting — GitHub Actions injection, secret exfil, self-hosted runner poisoning, OIDC abuse, supply chain attacks |
 | `skills/graphql-audit/` | GraphQL hunting — introspection, field suggestions (clairvoyance), batching DoS, IDOR via aliasing, injection, auth bypass, depth bombs |
-| `skills/web-llm-scanners/` | Six automated scanners — CORS, CRLF/host-header, NoSQL injection, JWT (alg:none/confusion/crack), OOB blind-bug confirmation (interactsh), LLM red-team corpus |
+| `skills/argus/` | **Argus** (all-seeing scanner suite) — CORS, CRLF/host-header, NoSQL injection, JWT (alg:none/confusion/crack), OOB blind-bug confirmation (interactsh), LLM red-team corpus |
 
 ### Commands (33 slash commands)
 

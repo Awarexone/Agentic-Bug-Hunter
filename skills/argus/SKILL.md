@@ -1,13 +1,14 @@
 ---
-name: web-llm-scanners
-description: Six automated scanners for high-value web + LLM bug classes — CORS misconfiguration (origin reflection / null / credentialed read), CRLF & host-header injection, NoSQL injection (operator auth-bypass / $where blind), JWT attacks (alg:none / RS256→HS256 confusion / secret crack), out-of-band confirmation of blind SSRF/XXE/SQLi/RCE/Log4Shell via interactsh, and an LLM red-team corpus (prompt-injection / jailbreak / system-prompt leak / exfil / indirect injection). Use when a target exposes a JSON API, a login endpoint, JWT auth, a parameter that might reach the server, a chatbot/agent, or any endpoint suspected of a blind/out-of-band bug.
+name: argus
+description: Argus — the all-seeing scanner suite. Six automated scanners for high-value web + LLM bug classes — CORS misconfiguration (origin reflection / null / credentialed read), CRLF & host-header injection, NoSQL injection (operator auth-bypass / $where blind), JWT attacks (alg:none / RS256→HS256 confusion / secret crack), out-of-band confirmation of blind SSRF/XXE/SQLi/RCE/Log4Shell via interactsh, and an LLM red-team corpus (prompt-injection / jailbreak / system-prompt leak / exfil / indirect injection). Use when a target exposes a JSON API, a login endpoint, JWT auth, a parameter that might reach the server, a chatbot/agent, or any endpoint suspected of a blind/out-of-band bug.
 ---
 
-# WEB + LLM SCANNERS
+# ARGUS — THE ALL-SEEING SCANNER SUITE
 
-> Six tools that close the highest-value gaps: two of the most common web2 classes
-> (CORS, CRLF), the NoSQL "db" surface, JWT forging, **blind-bug confirmation via
-> OOB** (the one that unblocks an entire severity band), and automated LLM
+> Named for Argus Panoptes, the hundred-eyed giant. Six "eyes" that surface what
+> ordinary scans miss: two of the most common web2 classes (CORS, CRLF), the
+> NoSQL "db" surface, JWT forging, **blind-bug confirmation via OOB** (the eye
+> that sees the invisible — unblocks an entire severity band), and automated LLM
 > red-teaming. All pure-Python, no new deps. Core logic is offline-testable.
 
 ---

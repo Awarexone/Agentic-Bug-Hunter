@@ -1,0 +1,104 @@
+# .cursorignore — Bug Bounty Toolkit
+#
+# Syntax: standard .gitignore (Cursor uses ripgrep's ignore crate).
+# Best-effort exclusion from Cursor AI features (Tab, Agent, Chat, @-symbols)
+# AND from codebase indexing. Terminal commands may still bypass this,
+# so DO NOT rely on this alone for secrets — combine with .gitignore +
+# filesystem permissions + per-tool allowlists.
+#
+# Default index ignores already applied by Cursor (do NOT duplicate):
+#   package-lock.json, pnpm-lock.yaml, yarn.lock, composer.lock,
+#   Gemfile.lock, bun.lockb, .env*, .git/, .svn/, .hg/, *.lock,
+#   *.bak, *.tmp, binaries, archives, node_modules/, __pycache__/,
+#   .next/, .nuxt/, .cache/, .gradle/, .DS_Store/, etc.
+#
+# Architecture context:
+#   Bug bounty plugin — recon output, hunt memory, and credential
+#   stores must never enter Cursor's AI context.
+
+# ─────────────────────────────────────────────────────────────
+# CREDENTIALS & SECRETS — never expose to Cursor AI or index
+# ─────────────────────────────────────────────────────────────
+.private/
+.private/**
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+secrets/**
+api_keys.txt
+secrets.txt
+.env
+.env.*
+config.json
+config.local.json
+*.burp
+
+# ─────────────────────────────────────────────────────────────
+# AUTH SESSIONS — cookies, bearer tokens, SAML assertions
+# ─────────────────────────────────────────────────────────────
+.auth/
+.auth/**
+sessions/
+sessions/**
+
+# ─────────────────────────────────────────────────────────────
+# HUNT MEMORY — audit logs may contain target URLs + PoC data
+# ─────────────────────────────────────────────────────────────
+hunt-memory/
+hunt-memory/**
+*.audit.jsonl
+
+# ─────────────────────────────────────────────────────────────
+# RECON OUTPUT — discovered target endpoints + JS bundle secrets
+# ─────────────────────────────────────────────────────────────
+recon/
+recon/**
+
+# ─────────────────────────────────────────────────────────────
+# FINDINGS & REPORTS — victim PII, exploit chains, PoC payloads
+# ─────────────────────────────────────────────────────────────
+findings/
+findings/**
+reports/
+reports/**
+
+# ─────────────────────────────────────────────────────────────
+# MCP INTEGRATIONS — Burp state, HackerOne tokens
+# ─────────────────────────────────────────────────────────────
+mcp/**/state/
+mcp/**/.cache/
+mcp/**/*.token
+
+# ─────────────────────────────────────────────────────────────
+# KILO INTERNAL STATE
+# ─────────────────────────────────────────────────────────────
+.kilo/worktrees/
+.kilo/agent-manager.json
+.kilo/plans/
+.kilo/sessions/
+
+# ─────────────────────────────────────────────────────────────
+# BUILD ARTIFACTS & TOOL OUTPUT
+# ─────────────────────────────────────────────────────────────
+nmap-output/
+.atlas/
+.forge/
+*.out
+*.log
+*.txt.bak
+*.json.bak
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# macOS / IDE
+.DS_Store
+.AppleDouble
+.vscode/
+.idea/

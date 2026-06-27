@@ -1,0 +1,102 @@
+# .kilocodeignore — Bug Bounty Toolkit
+#
+# Syntax: standard .gitignore patterns (matches kilo's documentation).
+# This file is auto-migrated by IgnoreMigrator into deny rules for
+# read/edit/glob/grep/write/bash tools via kilo.jsonc permissions.
+#
+# Architecture context:
+#   This repo is a bug bounty hunting plugin with 12 agents, hunt memory,
+#   recon output, and credentials for authorized testing of public bounty
+#   programs. Sensitive outputs must never enter AI context.
+#
+# Hardcoded ignores already applied by Kilo (do NOT duplicate):
+#   node_modules, .git, dist, build, .cache, __pycache__, vendor,
+#   lock files, binary artifacts.
+
+# ─────────────────────────────────────────────────────────────
+# CREDENTIALS & SECRETS — never let the AI see or edit these
+# ─────────────────────────────────────────────────────────────
+.private/
+.private/**
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+secrets/**
+api_keys.txt
+secrets.txt
+.env
+.env.*
+config.json
+config.local.json
+*.burp
+
+# ─────────────────────────────────────────────────────────────
+# AUTH SESSIONS — cookies, bearer tokens, captured SAML assertions
+# ─────────────────────────────────────────────────────────────
+.auth/
+.auth/**
+sessions/
+sessions/**
+
+# ─────────────────────────────────────────────────────────────
+# HUNT MEMORY — audit logs may contain target URLs, PoC evidence
+# ─────────────────────────────────────────────────────────────
+hunt-memory/
+hunt-memory/**
+*.audit.jsonl
+
+# ─────────────────────────────────────────────────────────────
+# RECON OUTPUT — contains discovered target endpoints, JS bundles
+# with secrets, nuclei findings. Treat as sensitive target intel.
+# ─────────────────────────────────────────────────────────────
+recon/
+recon/**
+
+# ─────────────────────────────────────────────────────────────
+# FINDINGS & REPORTS — victim data, PoC payloads, exploit chains
+# ─────────────────────────────────────────────────────────────
+findings/
+findings/**
+reports/
+reports/**
+
+# ─────────────────────────────────────────────────────────────
+# MCP INTEGRATIONS — Burp project state, HackerOne API tokens
+# ─────────────────────────────────────────────────────────────
+mcp/**/state/
+mcp/**/.cache/
+mcp/**/*.token
+
+# ─────────────────────────────────────────────────────────────
+# KILO INTERNAL STATE — Agent Manager worktrees, session state
+# ─────────────────────────────────────────────────────────────
+.kilo/worktrees/
+.kilo/agent-manager.json
+.kilo/plans/
+.kilo/sessions/
+
+# ─────────────────────────────────────────────────────────────
+# BUILD ARTIFACTS & TOOL OUTPUT
+# ─────────────────────────────────────────────────────────────
+nmap-output/
+.atlas/
+.forge/
+*.out
+*.log
+*.txt.bak
+*.json.bak
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# macOS / IDE
+.DS_Store
+.AppleDouble
+.vscode/
+.idea/

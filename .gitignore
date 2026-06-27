@@ -36,3 +36,7 @@ venv/
 nmap-output/
 .atlas/
 .forge/
+
+# Kilo internal artifacts (plans, agent state)
+.kilo/plans/
+.kilo/agent-manager.json

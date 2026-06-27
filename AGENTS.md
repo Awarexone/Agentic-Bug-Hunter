@@ -4,7 +4,7 @@ This repo is an agent-portable bug bounty plugin for professional hunting across
 
 ## What's Here
 
-### Skills (9 domains — load with `/bug-bounty`, `/web2-recon`, `/token-scan`, etc.)
+### Skills (10 domains — load with `/bug-bounty`, `/web2-recon`, `/token-scan`, etc.)
 
 | Skill | Domain |
 |---|---|
@@ -15,8 +15,9 @@ This repo is an agent-portable bug bounty plugin for professional hunting across
 | `skills/security-arsenal/` | Payloads, bypass tables, gf patterns, always-rejected list |
 | `skills/web3-audit/` | 10 smart contract bug classes, Foundry PoC template, pre-dive kill signals |
 | `skills/meme-coin-audit/` | Meme coin rug pull detection, token authority checks, bonding curve exploits, LP attacks |
-| `skills/report-writing/` | H1/Bugcrowd/Intigriti/Immunefi report templates, CVSS 3.1, human tone |
+| `skills/report-writing/` | H1/Bugcrowd/Intigriti/Immunefi report templates, CVSS 4.0, human tone |
 | `skills/triage-validation/` | 7-Question Gate, 4 gates, never-submit list, conditionally valid table |
+| `skills/program-scout/` | **Program discovery, scoring, and deployment planning across H1/Bugcrowd/Intigriti/Immunefi** |
 
 ### Commands (21 slash commands)
 
@@ -49,20 +50,24 @@ This repo is an agent-portable bug bounty plugin for professional hunting across
 | `/arsenal` | `/arsenal [tool]` — list installed external tools or get an install hint |
 | `/scan-cves` | `/scan-cves <host>` — focused nuclei CVE sweep (high/critical) + optional log4j-scan |
 
-### Agents (8 specialized agents)
+### Agents (12 specialized agents)
 
+- `program-scout` — **program discovery, scoring, and deployment planning**
 - `recon-agent` — subdomain enum + live host discovery
 - `report-writer` — generates H1/Bugcrowd/Immunefi reports
 - `validator` — 4-gate checklist on a finding
+- `security-champion` — **final 10-check validation gate before report submission**
 - `web3-auditor` — smart contract bug class analysis
 - `chain-builder` — builds A→B→C exploit chains
 - `autopilot` — autonomous hunt loop (scope→recon→rank→hunt→validate→report)
 - `recon-ranker` — attack surface ranking from recon output + memory
 - `token-auditor` — fast meme coin/token rug pull and security analysis
+- `mobile-hunter` — **Android/iOS static analysis, secret extraction, deep link testing**
+- `credential-hunter` — credential-attack pipeline with hard spray stop
 
 ### Rules (always active)
 
-- `rules/hunting.md` — 17 critical hunting rules
+- `rules/hunting.md` — 21 critical hunting rules (incl. agent security controls)
 - `rules/reporting.md` — report quality rules
 
 ### Tools (Python/shell — in `tools/`)
@@ -138,3 +143,6 @@ Install for another harness:
 3. Run 7-Question Gate BEFORE writing any report
 4. KILL weak findings fast — N/A hurts your validity ratio
 5. 5-minute rule — nothing after 5 min = move on
+6. THREE-STAGE VERIFICATION for all outbound requests (scope → safety → execute)
+7. SECURITY CHAMPION final check before any report submission
+8. AUDIT EVERYTHING — log all actions to hunt-memory/audit.jsonl

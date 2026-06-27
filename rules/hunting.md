@@ -204,3 +204,80 @@ echo "SAMLResponse_VALUE" | base64 -d | xmllint --format -
 ```
 
 > SAML bugs frequently pay High–Critical because they enable SSO bypass across the entire platform.
+
+---
+
+## 21. AGENT SECURITY RULES (All Agents Must Follow)
+
+Every agent in the toolkit operates under these additional security controls:
+
+### 21.1 Three-Stage Verification (Mandatory for All Outbound Requests)
+
+```
+Stage 1 — SCOPE CHECK
+  python3 tools/scope_checker.py <url> --domain <scope_patterns> --json
+  → Must return in_scope: true
+  → If false → BLOCK and log to audit.jsonl
+
+Stage 2 — SAFETY CHECK
+  → Not on never-submit list (standalone)
+  → Not theoretical (has concrete PoC)
+  → Not exceeding rate limits
+  → Not DoS or destructive
+
+Stage 3 — EXECUTE
+  → Send request with proper scope filter
+  → Log to audit.jsonl with session_id hash
+  → Capture response for validation
+```
+
+### 21.2 Agent-Specific Security Controls
+
+| Agent | Primary Risk | Control |
+|-------|-------------|---------|
+| Program Scout | Probing targets directly | READ-ONLY on public metadata |
+| Recon Agent | Out-of-scope enumeration | ScopeChecker before all subdomain enum |
+| Recon Ranker | Ranking out-of-scope endpoints | Filter all URLs through ScopeChecker |
+| Autopilot/Hunter | Uncontrolled autonomous testing | 3-stage verification + human checkpoints |
+| Validator | False approvals | 7-Question Gate mandatory, no exceptions |
+| Security Champion | Missing final check | 10-check matrix, all must pass |
+| Chain Builder | Testing unproven chains | Confirm A first, scope-check B endpoints |
+| Report Writer | Theoretical language | No "could potentially", exact req/res required |
+| Web3 Auditor | Mainnet contract interaction | Read-only analysis, no mainnet transactions |
+| Token Auditor | Unverified contract analysis | Kill if source not verified |
+| Mobile Hunter | Out-of-scope app testing | Verify package name against scope list |
+| Credential Hunter | Unauthorized spraying | HARD STOP before Stage 4, human approval only |
+
+### 21.3 Audit Logging (Mandatory)
+
+Every agent action that touches target infrastructure must log to `hunt-memory/audit.jsonl`:
+
+```json
+{
+  "ts": "ISO-8601",
+  "agent": "agent-name",
+  "action": "description",
+  "target": "url or asset",
+  "scope_check": "pass|fail|skipped",
+  "result": "outcome",
+  "session_id": "12-char-sha256-prefix"
+}
+```
+
+### 21.4 Credential Handling
+
+- Cookies, bearer tokens, API keys → NEVER logged in plain text
+- Only 12-char `session_id` hash written to audit.jsonl
+- `.private/` directory is gitignored
+- Auth values stay in process memory only
+
+### 21.5 Rate Limiting (Per-Agent)
+
+| Agent | Default Rate | Burst Allowed |
+|-------|-------------|---------------|
+| Program Scout | 1 req/sec | No |
+| Recon Agent | 10 req/sec | Yes (subdomain enum) |
+| Hunter/Autopilot | 1 req/sec | No |
+| Chain Builder | 1 req/sec | No |
+| Mobile Hunter | N/A (static) | N/A |
+| Credential Hunter | Per spray config | No |

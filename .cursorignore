@@ -78,6 +78,7 @@ mcp/**/*.token
 .kilo/agent-manager.json
 .kilo/plans/
 .kilo/sessions/
+deployment/
 
 # ─────────────────────────────────────────────────────────────
 # BUILD ARTIFACTS & TOOL OUTPUT

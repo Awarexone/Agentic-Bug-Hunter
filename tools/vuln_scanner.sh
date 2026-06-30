@@ -324,8 +324,7 @@ PYEOF
             timeout "$DAL_MAX_TIME" dalfox pipe \
             --silence \
             --no-color \
-            --worker 5 \
-            --delay 100 \
+            --worker 20 \
             --timeout 10 \
             --waf-evasion \
             ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} \

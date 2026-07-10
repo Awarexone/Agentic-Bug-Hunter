@@ -20,6 +20,7 @@ Python and shell scanner pipeline (~35 tools). Every tool checks whether its ext
 | `cloud_recon.sh` | S3Scanner · cloud_enum · CloudFail for public bucket exposure |
 | `takeover_scanner.sh` | Subdomain takeover via dnsReaper · subjack |
 | `cve_scan.sh` | Focused nuclei CVE sweep (high/critical) + optional log4j-scan |
+| `eol_check.py` | Lifecycle / End-of-Life status per detected tech via endoflife.date (pure stdlib, offline-cached) |
 | `bypass_403.sh` | Header · method · encoding tricks against 403/401 |
 | `secrets_hunter.sh` | trufflehog · noseyparker · gitleaks across FS/git/JS/GitHub org |
 

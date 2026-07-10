@@ -226,6 +226,19 @@ These pass basic gut-check but consistently come back N/A. Each row has a **spec
 
 ---
 
+## VALIDATING LLM-EXTRACTED VALUES
+
+An LLM-mediated bypass (encoding a redacted value, coaxing a tool to echo a secret) hands you a *claimed* value, not a confirmed one — models confabulate plausible-looking output under the exact same framing that extracts a real one. Climb this before writing anything into a report:
+
+1. **Bypassing the filter and getting a byte-correct value are two separate problems.** A technique that dodges a guardrail can still return a corrupted answer — confirm the *content* is right, not just that something came back.
+2. **Cross-validate via a second, independently-phrased transform** — a different encoding entirely (not a re-ask of the same one), e.g. Base64 then hex, or two differently-worded direct asks. If both agree, trust it; if they disagree, neither is confirmed yet.
+3. **For a long or high-entropy secret, don't trust Base64/hex alone** — LLMs reliably corrupt long random strings mid-encode. Prefer character-separation (a hyphen/period between every character) for byte-for-byte fidelity, and weigh a majority vote across several repeated reads over trusting one.
+4. **Confirm via an independent channel wherever one exists** — a low-cost API call using the extracted key/credential, an actual login attempt, a decode that produces something structurally sane — before the value goes into report-ready language. See [web2-vuln-classes](skills/web2-vuln-classes/SKILL.md) §11 "Model / API-Key Harvesting" for the parallel rule on verifying a live key before claiming impact — same discipline, applied one step earlier, to the extraction itself.
+
+**Kill signal:** if several independent transforms/phrasings decode to visibly different values, none of them is confirmed — that's evidence of confabulation, not a flaky encoding. Don't average them into a best guess and report it.
+
+---
+
 ## CONDITIONALLY VALID — CHAIN REQUIRED
 
 Build the chain first, prove it works end to end, THEN report.

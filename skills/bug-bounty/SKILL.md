@@ -793,23 +793,12 @@ SeLeCt * FrOm uSeRs
 - [ ] System prompt extraction via roleplay/encoding
 - [ ] RCE via code execution tool abuse
 - [ ] ASCII smuggling (invisible unicode in LLM output)
+- [ ] Output-encoding bypass on a redacted/masked value (ask for Base64/hex/char-separated, not stated)
+- [ ] Semantically-adjacent query against a RAG/knowledge-base app instead of the literal restricted topic
 
 ### Agentic AI Hunting (OWASP ASI01-ASI10)
 
-When target has AI agents with tool access, these are the 10 attack classes:
-
-| ID | Vuln Class | What to Test |
-|----|-----------|-------------|
-| ASI01 | Prompt injection | Override system prompt via user input -- make agent ignore its rules |
-| ASI02 | Tool misuse | Make AI call tools with attacker-controlled params (SSRF via "fetch URL", RCE via code tool) |
-| ASI03 | Data exfil | Extract training data / PII via crafted prompts that leak context |
-| ASI04 | Privilege escalation | Use AI to access admin-only tools -- agent has broader perms than user |
-| ASI05 | Indirect injection | Poison document/URL the AI processes -- hidden instructions in fetched content |
-| ASI06 | Excessive agency | AI takes destructive actions without confirmation -- delete, send, pay |
-| ASI07 | Model DoS | Craft inputs that cause infinite loops, excessive token usage, or OOM |
-| ASI08 | Insecure output | AI generates XSS/SQLi/command injection in its output that gets rendered |
-| ASI09 | Supply chain | Compromised plugins/tools/MCP servers the AI calls |
-| ASI10 | Sensitive disclosure | AI reveals internal configs, API keys, system prompts, user data |
+> See [web2-vuln-classes](skills/web2-vuln-classes/SKILL.md) §11 for the canonical ASI01-10 table, the full technique catalog (encoding bypass, multi-turn campaigns, RAG semantic-adjacency + poisoning, MCP tool-abuse, model-registry supply-chain RCE), and payload examples.
 
 **Triage rule:** ASI alone = Informational. Must chain to IDOR/exfil/RCE/ATO for paid bounty.
 

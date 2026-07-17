@@ -194,22 +194,40 @@ if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
         fi
     done
 
-    # --- pipx (isolated Python venvs) ---
-    if ! command -v pipx &>/dev/null; then
+    # --- uv/pipx (isolated Python venvs; prefer uv when present — faster, no separate install step) ---
+    if command -v uv &>/dev/null; then
+        log_ok "uv found ($(command -v uv)) — using it for isolated Python tool installs"
+    elif ! command -v pipx &>/dev/null; then
         echo "    [*] Installing pipx via brew..."
         brew install pipx && pipx ensurepath
         log_warn "pipx installed — restart shell or 'source ~/.zshrc' for PATH"
     fi
+
+    py_tool_install() {
+        if command -v uv &>/dev/null; then
+            uv tool install "$@"
+        else
+            pipx install "$@"
+        fi
+    }
+    py_tool_upgrade() {
+        if command -v uv &>/dev/null; then
+            uv tool upgrade "$@"
+        else
+            pipx upgrade "$@"
+        fi
+    }
+
     PIPX_CRED_TOOLS=("cewler" "cupp" "trevorspray")
     for tool in "${PIPX_CRED_TOOLS[@]}"; do
         if command -v "$tool" &>/dev/null; then
             log_ok "$tool already installed"
         else
-            echo "    [*] Installing $tool via pipx..."
-            if pipx install "$tool"; then
+            echo "    [*] Installing $tool..."
+            if py_tool_install "$tool"; then
                 log_ok "$tool installed"
             else
-                log_warn "$tool: pipx install failed — try manually"
+                log_warn "$tool: install failed — try 'uv tool install $tool' or 'pipx install $tool' manually"
             fi
         fi
     done
@@ -253,14 +271,14 @@ if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
         fi
     done
 
-    # --- CrossLinked via pipx (avoids PEP 668 pip3 --user breakage on macOS + Python 3.13) ---
-    echo "    [*] Installing CrossLinked via pipx..."
-    if _have pipx && pipx install crosslinked --quiet 2>/dev/null; then
-        log_ok "CrossLinked installed via pipx"
-    elif _have pipx && pipx upgrade crosslinked --quiet 2>/dev/null; then
-        log_ok "CrossLinked upgraded via pipx"
+    # --- CrossLinked via uv/pipx (avoids PEP 668 pip3 --user breakage on macOS + Python 3.13) ---
+    echo "    [*] Installing CrossLinked..."
+    if py_tool_install crosslinked --quiet 2>/dev/null; then
+        log_ok "CrossLinked installed"
+    elif py_tool_upgrade crosslinked --quiet 2>/dev/null; then
+        log_ok "CrossLinked upgraded"
     else
-        log_warn "CrossLinked pipx install failed — run 'pipx install crosslinked' manually"
+        log_warn "CrossLinked install failed — run 'uv tool install crosslinked' or 'pipx install crosslinked' manually"
     fi
 
     # --- SecLists hint (not auto-installed; ~750MB) ---
@@ -305,7 +323,20 @@ fi
 # Python runtime/test dependencies used by helper tools.
 echo ""
 echo "[*] Installing Python dependencies..."
-if command -v python3 &>/dev/null && [ -f requirements.txt ]; then
+if [ -f requirements.txt ] && command -v uv &>/dev/null; then
+    UV_PIP_ARGS=()
+    if [ -z "${VIRTUAL_ENV:-}" ] && [ ! -d .venv ]; then
+        # No active/discoverable venv — install into the system Python, same as
+        # plain `python3 -m pip install` would target in this case.
+        UV_PIP_ARGS+=(--system)
+    fi
+    if uv pip install "${UV_PIP_ARGS[@]}" -r requirements.txt; then
+        log_ok "Python dependencies installed (via uv)"
+    else
+        log_warn "Python dependencies could not be installed automatically"
+        log_warn "Run manually when network is available: uv pip install ${UV_PIP_ARGS[*]} -r requirements.txt"
+    fi
+elif command -v python3 &>/dev/null && [ -f requirements.txt ]; then
     if python3 -m pip install -r requirements.txt; then
         log_ok "Python dependencies installed"
     else
@@ -313,7 +344,7 @@ if command -v python3 &>/dev/null && [ -f requirements.txt ]; then
         log_warn "Run manually when network is available: python3 -m pip install -r requirements.txt"
     fi
 else
-    log_warn "python3 or requirements.txt not found — skipping Python dependencies"
+    log_warn "python3/uv or requirements.txt not found — skipping Python dependencies"
 fi
 
 # Verification

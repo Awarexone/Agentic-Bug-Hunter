@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **OpenRouter provider** (`openrouter`) for standalone `bughunter` / `brain.py` — set `OPENROUTER_API_KEY`, choose option 7 in `bughunter setup`, or `BRAIN_PROVIDER=openrouter`. OpenAI-compatible gateway with default model `anthropic/claude-sonnet-4.6` and a short curated model list (same pattern as other cloud providers).
+
 ## v4.3.2 — AI Hunt Playbook (Jun 2026)
 
 ### Added

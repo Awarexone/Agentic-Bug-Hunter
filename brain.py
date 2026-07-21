@@ -4,11 +4,13 @@ from __future__ import annotations
 """
 Brain — Multi-Provider LLM Reasoning Layer for Bug Bounty & VAPT
 Supports: Ollama (local), Claude, OpenAI, Grok, Groq, DeepSeek,
-          Gemini, Kimi (Moonshot), Mistral, Together AI, Cerebras, Perplexity
+          Gemini, Kimi (Moonshot), Mistral, Together AI, Cerebras, Perplexity,
+          OpenRouter
 
 Provider selection (in order of precedence):
   1. BRAIN_PROVIDER env var  (ollama | claude | openai | grok | groq | deepseek |
-                               gemini | kimi | mistral | together | cerebras | perplexity)
+                               gemini | kimi | mistral | together | cerebras |
+                               perplexity | openrouter)
   2. Auto-detect: uses first provider whose API key / server is available
 
 API keys (env vars):
@@ -23,6 +25,7 @@ API keys (env vars):
   TOGETHER_API_KEY    — Together AI (Llama, Qwen, etc. in cloud)
   CEREBRAS_API_KEY    — Cerebras (fastest inference — llama3.3-70b)
   PERPLEXITY_API_KEY  — Perplexity (sonar-pro — live web search)
+  OPENROUTER_API_KEY  — OpenRouter (multi-model gateway — anthropic/claude-sonnet-4.6, etc.)
   OLLAMA_HOST         — Ollama base URL (default: http://localhost:11434)
 
 Default model priority (uses first available):
@@ -99,7 +102,7 @@ class LLMClient:
     PROVIDER_PRIORITY = [
         "ollama", "groq", "deepseek", "cerebras",
         "gemini", "kimi", "mistral", "together",
-        "perplexity", "claude", "openai", "grok",
+        "perplexity", "openrouter", "claude", "openai", "grok",
     ]
 
     # Default models per provider
@@ -115,6 +118,7 @@ class LLMClient:
         "together":    "meta-llama/Llama-3.3-70B-Instruct-Turbo",
         "cerebras":    "llama3.3-70b",
         "perplexity":  "sonar-pro",
+        "openrouter":  "anthropic/claude-sonnet-4.6",
         "ollama":      None,  # resolved dynamically
     }
 
@@ -143,6 +147,7 @@ class LLMClient:
         "together":    "TOGETHER_API_KEY",
         "cerebras":    "CEREBRAS_API_KEY",
         "perplexity":  "PERPLEXITY_API_KEY",
+        "openrouter":  "OPENROUTER_API_KEY",
     }
 
     def _auto_detect(self) -> str:
@@ -313,6 +318,23 @@ class LLMClient:
             self.available   = True
             self.description = "Perplexity AI (sonar-pro — live web search)"
 
+        elif provider == "openrouter":
+            key = os.environ.get("OPENROUTER_API_KEY", "")
+            if not key:
+                return
+            import requests
+            self._http = requests.Session()
+            # HTTP-Referer + X-Title are optional OpenRouter attribution headers
+            self._http.headers.update({
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://github.com/shuvonsec/claude-bug-bounty",
+                "X-Title": "BugHunter",
+            })
+            self._api_base   = "https://openrouter.ai/api/v1"
+            self.available   = True
+            self.description = "OpenRouter (multi-model gateway)"
+
     def chat(self, model: str | None, system: str, user: str,
              max_tokens: int = 4000, temperature: float = 0.1) -> str:
         """Send a chat request; return the assistant reply as a string."""
@@ -326,6 +348,7 @@ class LLMClient:
             elif self.provider in (
                 "openai", "grok", "groq", "deepseek",
                 "gemini", "kimi", "mistral", "together", "cerebras", "perplexity",
+                "openrouter",
             ):
                 return self._chat_openai_compat(model, system, user, max_tokens, temperature)
         except Exception as e:
@@ -411,6 +434,16 @@ class LLMClient:
             return ["llama3.3-70b", "llama3.1-8b"]
         elif self.provider == "perplexity":
             return ["sonar-pro", "sonar", "sonar-reasoning-pro", "sonar-reasoning"]
+        elif self.provider == "openrouter":
+            return [
+                "anthropic/claude-sonnet-4.6",
+                "anthropic/claude-opus-4",
+                "openai/gpt-4o",
+                "openai/gpt-4o-mini",
+                "google/gemini-2.0-flash-001",
+                "meta-llama/llama-3.3-70b-instruct",
+                "openrouter/auto",
+            ]
         return []
 
 # Model preference order — first available wins

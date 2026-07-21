@@ -14,6 +14,8 @@ Providers (auto-detected, first available wins):
   PAID:  claude   — set ANTHROPIC_API_KEY
          openai   — set OPENAI_API_KEY
          grok     — set XAI_API_KEY
+         openrouter — multi-model gateway, set OPENROUTER_API_KEY
+                    get key: https://openrouter.ai/keys
 
 Usage:
   ./engine.py setup                        one-time config wizard
@@ -200,12 +202,13 @@ def cmd_setup(args):
     header("BugHunter Setup")
 
     providers = {
-        "1": ("ollama",   "Ollama  (local, FREE)       — needs ollama running locally"),
-        "2": ("groq",     "Groq    (cloud, FREE tier)  — needs GROQ_API_KEY"),
-        "3": ("deepseek", "DeepSeek (cloud, very cheap)— needs DEEPSEEK_API_KEY"),
-        "4": ("claude",   "Claude  (paid)              — needs ANTHROPIC_API_KEY"),
-        "5": ("openai",   "OpenAI  (paid)              — needs OPENAI_API_KEY"),
-        "6": ("grok",     "Grok/xAI (paid)             — needs XAI_API_KEY"),
+        "1": ("ollama",     "Ollama     (local, FREE)       — needs ollama running locally"),
+        "2": ("groq",       "Groq       (cloud, FREE tier)  — needs GROQ_API_KEY"),
+        "3": ("deepseek",   "DeepSeek   (cloud, very cheap)— needs DEEPSEEK_API_KEY"),
+        "4": ("claude",     "Claude     (paid)              — needs ANTHROPIC_API_KEY"),
+        "5": ("openai",     "OpenAI     (paid)              — needs OPENAI_API_KEY"),
+        "6": ("grok",       "Grok/xAI   (paid)              — needs XAI_API_KEY"),
+        "7": ("openrouter", "OpenRouter (multi-model)       — needs OPENROUTER_API_KEY"),
     }
 
     print("Choose your AI backend:\n")
@@ -220,11 +223,12 @@ def cmd_setup(args):
     cfg["provider"] = provider
 
     env_map = {
-        "groq":     "GROQ_API_KEY",
-        "deepseek": "DEEPSEEK_API_KEY",
-        "claude":   "ANTHROPIC_API_KEY",
-        "openai":   "OPENAI_API_KEY",
-        "grok":     "XAI_API_KEY",
+        "groq":       "GROQ_API_KEY",
+        "deepseek":   "DEEPSEEK_API_KEY",
+        "claude":     "ANTHROPIC_API_KEY",
+        "openai":     "OPENAI_API_KEY",
+        "grok":       "XAI_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
     }
 
     if provider in env_map:
@@ -272,17 +276,19 @@ def cmd_providers(args):
     saved = cfg.get("provider", "")
 
     env_map = {
-        "ollama":   None,
-        "groq":     "GROQ_API_KEY",
-        "deepseek": "DEEPSEEK_API_KEY",
-        "claude":   "ANTHROPIC_API_KEY",
-        "openai":   "OPENAI_API_KEY",
-        "grok":     "XAI_API_KEY",
+        "ollama":     None,
+        "groq":       "GROQ_API_KEY",
+        "deepseek":   "DEEPSEEK_API_KEY",
+        "claude":     "ANTHROPIC_API_KEY",
+        "openai":     "OPENAI_API_KEY",
+        "grok":       "XAI_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
     }
     tier = {
         "ollama": "FREE (local)", "groq": "FREE tier",
         "deepseek": "cheap",      "claude": "paid",
         "openai": "paid",         "grok": "paid",
+        "openrouter": "subscription",
     }
 
     print(f"\n  {'PROVIDER':<12} {'TIER':<16} {'STATUS':<20} {'NOTE'}")
@@ -623,7 +629,7 @@ def main():
         """),
     )
     parser.add_argument("--provider", "-p",
-                        help="Force provider: ollama / groq / deepseek / claude / openai / grok")
+                        help="Force provider: ollama / groq / deepseek / claude / openai / grok / openrouter")
     parser.add_argument("--no-banner", action="store_true", help="Suppress banner")
 
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
@@ -663,7 +669,7 @@ def main():
     # Load saved API keys into environment before any LLM call
     cfg = load_config()
     for env_var in ("GROQ_API_KEY", "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY",
-                    "OPENAI_API_KEY", "XAI_API_KEY"):
+                    "OPENAI_API_KEY", "XAI_API_KEY", "OPENROUTER_API_KEY"):
         if not os.environ.get(env_var) and cfg.get(env_var):
             os.environ[env_var] = cfg[env_var]
 

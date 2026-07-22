@@ -4,6 +4,11 @@
 
 ### Added
 - **OpenRouter provider** (`openrouter`) for standalone `bughunter` / `brain.py` — set `OPENROUTER_API_KEY`, choose option 7 in `bughunter setup`, or `BRAIN_PROVIDER=openrouter`. OpenAI-compatible gateway with default model `anthropic/claude-sonnet-4.6` and a short curated model list (same pattern as other cloud providers).
+- **Model selection** for standalone `bughunter`: interactive picker in `setup`, `bughunter models <id>` to save active model, `--model` / `BRAIN_MODEL` env override, and `model` key in `~/.bughunter/config.json`. `LLMClient.resolve_model()` resolves explicit arg → env → provider default.
+- `x-ai/grok-4.5` added to the OpenRouter curated model list.
+
+### Fixed
+- **`tools/recon_engine.sh`**: define missing `log_vuln` helper (Phase 6.5 config-exposure check no longer aborts with `command not found`).
 
 ## v4.3.2 — AI Hunt Playbook (Jun 2026)
 

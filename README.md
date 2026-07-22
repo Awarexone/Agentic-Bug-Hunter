@@ -121,6 +121,15 @@ BugHunter auto-detects providers in this order: **Ollama → Groq → DeepSeek �
 
 Switch providers anytime: `bughunter setup`
 
+Set / switch the active model (saved in `~/.bughunter/config.json`):
+
+```bash
+bughunter models                         # list + show active
+bughunter models x-ai/grok-4.5           # set active model
+bughunter --model anthropic/claude-sonnet-4.6 chat   # one-shot override
+export BRAIN_MODEL=x-ai/grok-4.5         # env override
+```
+
 ### Zero-cost fully offline setup
 
 ```bash

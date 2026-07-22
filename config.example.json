@@ -9,7 +9,8 @@
   "ffuf_threads": 40,
   "interactsh_server": "oast.pro",
 
-  "_brain_comment": "Set BRAIN_PROVIDER env var to force a specific LLM provider. Auto-detect picks the first available.",
+  "_brain_comment": "Set BRAIN_PROVIDER / BRAIN_MODEL env vars, or run bughunter setup. Auto-detect picks the first available provider; model falls back to the provider default.",
+  "_brain_model_example": "model: anthropic/claude-sonnet-4.6  (or x-ai/grok-4.5 via OpenRouter)",
   "_brain_providers": {
     "ollama":      "OLLAMA_HOST=http://localhost:11434  (free, local)",
     "groq":        "GROQ_API_KEY=...  (free tier — llama-3.3-70b)",
@@ -23,6 +24,6 @@
     "claude":      "ANTHROPIC_API_KEY=...  (claude-sonnet-4-6 / opus-4-8)",
     "openai":      "OPENAI_API_KEY=...  (gpt-4o / o1)",
     "grok":        "XAI_API_KEY=...  (grok-3 / grok-2-latest)",
-    "openrouter":  "OPENROUTER_API_KEY=...  (anthropic/claude-sonnet-4.6 / openai/gpt-4o / …)"
+    "openrouter":  "OPENROUTER_API_KEY=...  (anthropic/claude-sonnet-4.6 / x-ai/grok-4.5 / …)"
   }
 }

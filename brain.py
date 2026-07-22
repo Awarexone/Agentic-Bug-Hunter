@@ -26,6 +26,8 @@ API keys (env vars):
   CEREBRAS_API_KEY    — Cerebras (fastest inference — llama3.3-70b)
   PERPLEXITY_API_KEY  — Perplexity (sonar-pro — live web search)
   OPENROUTER_API_KEY  — OpenRouter (multi-model gateway — anthropic/claude-sonnet-4.6, etc.)
+  BRAIN_MODEL         — Override default model for the active cloud provider
+                        (e.g. anthropic/claude-sonnet-4.6, x-ai/grok-4.5)
   OLLAMA_HOST         — Ollama base URL (default: http://localhost:11434)
 
 Default model priority (uses first available):
@@ -335,6 +337,16 @@ class LLMClient:
             self.available   = True
             self.description = "OpenRouter (multi-model gateway)"
 
+    @classmethod
+    def resolve_model(cls, provider: str, model: str | None = None) -> str | None:
+        """Resolve cloud model: explicit arg > BRAIN_MODEL env > provider default."""
+        if model and str(model).strip():
+            return str(model).strip()
+        env = os.environ.get("BRAIN_MODEL", "").strip()
+        if env:
+            return env
+        return cls.DEFAULT_MODELS.get(provider)
+
     def chat(self, model: str | None, system: str, user: str,
              max_tokens: int = 4000, temperature: float = 0.1) -> str:
         """Send a chat request; return the assistant reply as a string."""
@@ -358,8 +370,12 @@ class LLMClient:
 
     def _chat_ollama(self, model, system, user, max_tokens, temperature) -> str:
         if not model:
-            available = self.list_models()
-            model = available[0] if available else "qwen2.5:14b"
+            env = os.environ.get("BRAIN_MODEL", "").strip()
+            if env:
+                model = env
+            else:
+                available = self.list_models()
+                model = available[0] if available else "qwen2.5:14b"
         resp = self._ollama.chat(
             model=model,
             messages=[{"role": "system", "content": system},
@@ -370,7 +386,7 @@ class LLMClient:
         return (resp.get("message", {}).get("content") or "").strip()
 
     def _chat_claude(self, model, system, user, max_tokens, temperature) -> str:
-        m = model or self.DEFAULT_MODELS["claude"]
+        m = self.resolve_model("claude", model)
         if hasattr(self, "_anthropic_client"):
             resp = self._anthropic_client.messages.create(
                 model=m,
@@ -391,7 +407,7 @@ class LLMClient:
     def _chat_openai_compat(self, model, system, user, max_tokens, temperature) -> str:
         import json as _json
         base = self._api_base
-        m    = model or self.DEFAULT_MODELS[self.provider]
+        m    = self.resolve_model(self.provider, model)
         body = {"model": m, "max_tokens": max_tokens, "temperature": temperature,
                 "messages": [{"role": "system", "content": system},
                              {"role": "user",   "content": user}]}
@@ -438,6 +454,7 @@ class LLMClient:
             return [
                 "anthropic/claude-sonnet-4.6",
                 "anthropic/claude-opus-4",
+                "x-ai/grok-4.5",
                 "openai/gpt-4o",
                 "openai/gpt-4o-mini",
                 "google/gemini-2.0-flash-001",
@@ -600,9 +617,9 @@ class Brain:
             self.client  = None
             return
 
-        # Resolve model name
+        # Resolve model name (explicit arg > BRAIN_MODEL env > provider default)
         if self._llm.provider == "ollama":
-            self.model = _pick_model(model)
+            self.model = _pick_model(model or os.environ.get("BRAIN_MODEL") or None)
             if not self.model:
                 print(f"{YELLOW}[!] No models found in Ollama. Pull one: ollama pull qwen2.5:14b{NC}")
                 self.enabled = False
@@ -610,7 +627,7 @@ class Brain:
             self.client = self._llm._ollama  # backward compat for code that uses self.client
             self.triage_model = _pick_triage_model() or self.model
         else:
-            self.model        = model or LLMClient.DEFAULT_MODELS.get(self._llm.provider)
+            self.model        = LLMClient.resolve_model(self._llm.provider, model)
             self.triage_model = self.model
             self.client       = None  # not used for cloud providers
 

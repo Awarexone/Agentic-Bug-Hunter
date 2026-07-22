@@ -27,6 +27,8 @@ Usage:
   ./engine.py triage "<finding>"           fast triage (pass/kill/downgrade)
   ./engine.py chat                         interactive Q&A shell
   ./engine.py models                       list available models
+  ./engine.py models <model-id>            set active model (saved to config)
+  ./engine.py --model <id> chat            one-shot model override
   ./engine.py status                       show hunt status
   ./engine.py providers                    show all providers + API key status
 """
@@ -109,6 +111,8 @@ def _print_quick_help():
 
     bughunter help                 Show full help
     bughunter setup                Configure your AI provider
+    bughunter models               List / set AI model
+    bughunter models x-ai/grok-4.5 Set active model
     bughunter recon target.com     Map the attack surface
     bughunter hunt target.com      Run the full hunt pipeline
     bughunter validate "finding"   Run the 7-Question Gate
@@ -157,22 +161,91 @@ def _get_client(provider: str | None = None):
     """Return an LLMClient, applying saved config if no env override."""
     _, LLMClient = _import_brain()
     cfg = load_config()
-    if not provider and not os.environ.get("BRAIN_PROVIDER"):
-        provider = cfg.get("provider")
-    if provider:
-        os.environ["BRAIN_PROVIDER"] = provider
-    return LLMClient(provider)
+    _apply_saved_env(cfg, provider=provider)
+    return LLMClient(provider or os.environ.get("BRAIN_PROVIDER") or None)
 
 
-def _get_brain(provider: str | None = None):
+def _get_brain(provider: str | None = None, model: str | None = None):
     """Return a Brain instance."""
     Brain, _ = _import_brain()
     cfg = load_config()
-    if not provider and not os.environ.get("BRAIN_PROVIDER"):
-        provider = cfg.get("provider")
+    _apply_saved_env(cfg, provider=provider, model=model)
+    return Brain(model=model or os.environ.get("BRAIN_MODEL") or None)
+
+
+def _apply_saved_env(cfg: dict, provider: str | None = None, model: str | None = None):
+    """Push saved/config overrides into env for the brain layer."""
     if provider:
         os.environ["BRAIN_PROVIDER"] = provider
-    return Brain()
+    elif not os.environ.get("BRAIN_PROVIDER") and cfg.get("provider"):
+        os.environ["BRAIN_PROVIDER"] = cfg["provider"]
+
+    if model and str(model).strip():
+        os.environ["BRAIN_MODEL"] = str(model).strip()
+    elif not os.environ.get("BRAIN_MODEL") and cfg.get("model"):
+        os.environ["BRAIN_MODEL"] = str(cfg["model"]).strip()
+
+    for env_var in ("GROQ_API_KEY", "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY",
+                    "OPENAI_API_KEY", "XAI_API_KEY", "OPENROUTER_API_KEY"):
+        if not os.environ.get(env_var) and cfg.get(env_var):
+            os.environ[env_var] = cfg[env_var]
+
+
+def _active_model(cfg: dict, provider: str | None, client) -> str | None:
+    """Return the model id that chat/brain will use right now."""
+    _, LLMClient = _import_brain()
+    if provider == "ollama" or (client and client.provider == "ollama"):
+        return os.environ.get("BRAIN_MODEL") or cfg.get("model") or "(auto from Ollama)"
+    prov = provider or (client.provider if client else cfg.get("provider")) or "openai"
+    return LLMClient.resolve_model(prov, os.environ.get("BRAIN_MODEL") or cfg.get("model"))
+
+
+def _prompt_model_choice(client, cfg: dict) -> str | None:
+    """Interactive model picker for setup. Returns chosen model id or None."""
+    default = client.DEFAULT_MODELS.get(client.provider) if client else None
+    models = client.list_models() if client and client.available else []
+    current = cfg.get("model") or os.environ.get("BRAIN_MODEL") or default
+
+    if not models and not default:
+        print(f"\nEnter model id (blank = keep {current or 'provider default'}): ", end="")
+        custom = input().strip()
+        return custom or current
+
+    print("\nChoose model:\n")
+    options: list[str] = []
+    # Prefer curated list; ensure default is first if present
+    ordered = list(models) if models else ([default] if default else [])
+    if default and default in ordered:
+        ordered.remove(default)
+        ordered.insert(0, default)
+    elif default and default not in ordered:
+        ordered.insert(0, default)
+
+    for i, mid in enumerate(ordered, 1):
+        marker = " (default)" if mid == default else ""
+        active = " <- current" if mid == current else ""
+        print(f"  {i}) {mid}{marker}{active}")
+        options.append(mid)
+    print("  c) Custom model id")
+    print()
+
+    default_choice = "1"
+    if current and current in options:
+        default_choice = str(options.index(current) + 1)
+
+    choice = input(f"Enter number or model id [{default_choice}]: ").strip() or default_choice
+    if choice.lower() in ("c", "custom"):
+        print("Enter model id: ", end="")
+        custom = input().strip()
+        return custom or current
+    if choice.isdigit():
+        idx = int(choice) - 1
+        if 0 <= idx < len(options):
+            return options[idx]
+    # Treat as raw model id
+    if choice and not choice.isdigit():
+        return choice
+    return current or default
 
 
 def _run_shell(cmd: str, cwd: str | None = None, timeout: int = 3600) -> tuple[bool, str]:
@@ -204,7 +277,7 @@ def cmd_setup(args):
     providers = {
         "1": ("ollama",     "Ollama     (local, FREE)       — needs ollama running locally"),
         "2": ("groq",       "Groq       (cloud, FREE tier)  — needs GROQ_API_KEY"),
-        "3": ("deepseek",   "DeepSeek   (cloud, very cheap)— needs DEEPSEEK_API_KEY"),
+        "3": ("deepseek",   "DeepSeek   (cloud, very cheap) — needs DEEPSEEK_API_KEY"),
         "4": ("claude",     "Claude     (paid)              — needs ANTHROPIC_API_KEY"),
         "5": ("openai",     "OpenAI     (paid)              — needs OPENAI_API_KEY"),
         "6": ("grok",       "Grok/xAI   (paid)              — needs XAI_API_KEY"),
@@ -233,32 +306,48 @@ def cmd_setup(args):
 
     if provider in env_map:
         env_var = env_map[provider]
-        existing = os.environ.get(env_var, "")
+        existing = os.environ.get(env_var, "") or cfg.get(env_var, "")
         print(f"\nEnter {env_var} (blank = keep existing): ", end="")
         api_key = input().strip()
         if api_key:
             cfg[env_var] = api_key
             os.environ[env_var] = api_key
         elif existing:
-            info(f"Using existing {env_var} from environment")
+            os.environ[env_var] = existing
+            if not cfg.get(env_var):
+                cfg[env_var] = existing
+            info(f"Using existing {env_var}")
         else:
             warn(f"No {env_var} set — provider may not work")
+
+    # Model picker (cloud + openrouter; ollama can still override via BRAIN_MODEL)
+    _, LLMClient = _import_brain()
+    if provider in env_map and cfg.get(env_map.get(provider, ""), os.environ.get(env_map.get(provider, ""), "")):
+        os.environ[env_map[provider]] = cfg.get(env_map[provider]) or os.environ.get(env_map[provider], "")
+    os.environ["BRAIN_PROVIDER"] = provider
+    probe = LLMClient(provider)
+    if provider != "ollama" or probe.available:
+        chosen_model = _prompt_model_choice(probe, cfg)
+        if chosen_model:
+            cfg["model"] = chosen_model
+            os.environ["BRAIN_MODEL"] = chosen_model
+            ok(f"Model: {chosen_model}")
 
     save_config(cfg)
     ok(f"Config saved to {CONFIG}")
 
     # Test connection
     info("Testing connection...")
-    _, LLMClient = _import_brain()
     if provider in env_map and cfg.get(env_map[provider]):
         os.environ[env_map[provider]] = cfg[env_map[provider]]
 
     client = LLMClient(provider)
     if client.available:
         ok(f"Connected: {client.description}")
-        reply = client.chat(None, "You are a helpful assistant.",
+        model = cfg.get("model") or LLMClient.resolve_model(provider)
+        reply = client.chat(model, "You are a helpful assistant.",
                             "Reply with exactly: READY", max_tokens=10)
-        ok(f"Model responded: {reply.strip()}" if reply else "Connected (no reply — pull a model if using Ollama)")
+        ok(f"Model responded ({model}): {reply.strip()}" if reply else f"Connected (no reply — check model id: {model})")
     else:
         err(f"Provider '{provider}' not available")
         if provider == "ollama":
@@ -274,6 +363,7 @@ def cmd_providers(args):
     _, LLMClient = _import_brain()
     cfg = load_config()
     saved = cfg.get("provider", "")
+    active_model = cfg.get("model") or os.environ.get("BRAIN_MODEL") or ""
 
     env_map = {
         "ollama":     None,
@@ -312,27 +402,48 @@ def cmd_providers(args):
         marker = f" {BOLD}<- active{NC}" if prov == saved else ""
         print(f"  {BOLD}{prov:<12}{NC} {tier[prov]:<16} {status:<30} {DIM}{note}{NC}{marker}")
 
-    print(f"\n  Config: {CONFIG}")
-    print(f"  Change: ./engine.py setup\n")
+    if saved:
+        shown = active_model or LLMClient.resolve_model(saved) or "(provider default)"
+        print(f"\n  Active model: {BOLD}{shown}{NC}")
+    print(f"  Config: {CONFIG}")
+    print(f"  Change provider: ./engine.py setup")
+    print(f"  Change model:    ./engine.py models <model-id>\n")
 
 
 def cmd_models(args):
-    """List available models for the active provider."""
+    """List models for the active provider, or set the active model."""
     cfg = load_config()
     provider = getattr(args, "provider", None) or cfg.get("provider")
+    set_model = getattr(args, "model", None) or getattr(args, "set_model", None)
+
+    # `bughunter models x-ai/grok-4.5` — save and exit
+    if set_model:
+        cfg["model"] = set_model.strip()
+        save_config(cfg)
+        os.environ["BRAIN_MODEL"] = cfg["model"]
+        ok(f"Active model set to: {cfg['model']}")
+        ok(f"Saved to {CONFIG}")
+        return
+
     client = _get_client(provider)
     if not client.available:
         err(f"Provider '{client.provider}' not available. Run: ./engine.py setup")
         return
     models = client.list_models()
+    active = _active_model(cfg, client.provider, client)
     info(f"Provider: {client.description}")
+    info(f"Active model: {active}")
     if models:
         for m in models:
-            print(f"  {GREEN}•{NC} {m}")
+            marker = f"  {BOLD}<- active{NC}" if m == active else ""
+            print(f"  {GREEN}•{NC} {m}{marker}")
     else:
         warn("No models found")
         if client.provider == "ollama":
             print("  Pull a model: ollama pull qwen2.5:14b")
+    print(f"\n  Set model:  bughunter models <model-id>")
+    print(f"  Or:         export BRAIN_MODEL=<model-id>")
+    print(f"  Or:         bughunter setup  (interactive picker)\n")
 
 
 def cmd_recon(args):
@@ -496,6 +607,10 @@ def cmd_chat(args):
     from brain import BRAIN_SYSTEM  # noqa: PLC0415
 
     ok(f"Connected: {client.description}")
+    cfg = load_config()
+    active = _active_model(cfg, client.provider, client)
+    if active:
+        info(f"Model: {active}")
     print(f"{DIM}Type 'exit' or Ctrl+C to quit{NC}\n")
 
     history: list[dict] = []
@@ -630,13 +745,18 @@ def main():
     )
     parser.add_argument("--provider", "-p",
                         help="Force provider: ollama / groq / deepseek / claude / openai / grok / openrouter")
+    parser.add_argument("--model", dest="force_model",
+                        help="Force model id (e.g. anthropic/claude-sonnet-4.6, x-ai/grok-4.5)")
     parser.add_argument("--no-banner", action="store_true", help="Suppress banner")
 
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
 
     sub.add_parser("setup",     aliases=["init"], help="One-time config wizard")
     sub.add_parser("providers", aliases=["p"], help="Show all providers + API key status")
-    sub.add_parser("models",    aliases=["m"], help="List available models for active provider")
+    p_models = sub.add_parser("models", aliases=["m"],
+                              help="List models, or set active model: models <model-id>")
+    p_models.add_argument("model", nargs="?", default=None,
+                          help="Model id to save as active (OpenRouter/cloud providers)")
     sub.add_parser("status",    aliases=["s"], help="Show hunt pipeline status")
     sub.add_parser("chat",      aliases=["ask"], help="Interactive AI shell")
 
@@ -662,16 +782,13 @@ def main():
 
     args = parser.parse_args(argv)
 
-    # Apply provider override
-    if getattr(args, "provider", None):
-        os.environ["BRAIN_PROVIDER"] = args.provider
-
-    # Load saved API keys into environment before any LLM call
+    # Load config + keys, then apply provider/model overrides
     cfg = load_config()
-    for env_var in ("GROQ_API_KEY", "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY",
-                    "OPENAI_API_KEY", "XAI_API_KEY", "OPENROUTER_API_KEY"):
-        if not os.environ.get(env_var) and cfg.get(env_var):
-            os.environ[env_var] = cfg[env_var]
+    _apply_saved_env(
+        cfg,
+        provider=getattr(args, "provider", None),
+        model=getattr(args, "force_model", None),
+    )
 
     quiet_cmds = {"status", "providers", "models", None}
     if not getattr(args, "no_banner", False) and args.command not in quiet_cmds:

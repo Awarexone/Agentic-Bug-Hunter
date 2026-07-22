@@ -18,7 +18,8 @@ sys.path.insert(0, ROOT)
 @pytest.fixture
 def brain_module(monkeypatch):
     for env in (
-        "BRAIN_PROVIDER", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY",
+        "BRAIN_PROVIDER", "BRAIN_MODEL",
+        "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY",
         "OPENROUTER_API_KEY",
     ):
         monkeypatch.delenv(env, raising=False)
@@ -128,3 +129,21 @@ def test_openrouter_init_sets_api_base(brain_module, monkeypatch):
     assert "openrouter" in client.description.lower()
     assert brain_module.LLMClient.DEFAULT_MODELS["openrouter"] == "anthropic/claude-sonnet-4.6"
     assert "anthropic/claude-sonnet-4.6" in brain_module.LLMClient.list_models(client)
+    assert "x-ai/grok-4.5" in brain_module.LLMClient.list_models(client)
+
+
+def test_resolve_model_precedence(brain_module, monkeypatch):
+    LLM = brain_module.LLMClient
+    assert LLM.resolve_model("openrouter", "x-ai/grok-4.5") == "x-ai/grok-4.5"
+    monkeypatch.setenv("BRAIN_MODEL", "openai/gpt-4o-mini")
+    assert LLM.resolve_model("openrouter", None) == "openai/gpt-4o-mini"
+    monkeypatch.delenv("BRAIN_MODEL", raising=False)
+    assert LLM.resolve_model("openrouter", None) == "anthropic/claude-sonnet-4.6"
+    assert LLM.resolve_model("openrouter", "  ") == "anthropic/claude-sonnet-4.6"
+
+
+def test_resolve_model_explicit_beats_env(brain_module, monkeypatch):
+    monkeypatch.setenv("BRAIN_MODEL", "openai/gpt-4o-mini")
+    assert brain_module.LLMClient.resolve_model(
+        "openrouter", "x-ai/grok-4.5"
+    ) == "x-ai/grok-4.5"

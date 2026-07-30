@@ -161,6 +161,26 @@ python3 -m memory.vuln_intelligence priority --vuln-class idor --tech "express,p
 
 **Pivot to the next candidate when** the current one is abandoned or exhausted: re-run `priority` across the remaining P1 queue (scores shift as failures accumulate) and take the highest score that isn't a hard kill. A hypothesis-lead or chain-lead candidate (`attack_chain_probability` 60–90) should usually win a pivot over a same-score single-signal candidate — more independent evidence backs it.
 
+### Experiment Tracking (the objective stop/pivot check)
+
+The two rules above ("5 minutes pass with no signal", "pivot to the next candidate") shouldn't be a vibe call — log every payload/technique attempt and let `memory/experiment_memory.py` answer "stop?" from an actual count:
+
+```bash
+# After each payload category attempt on the current endpoint:
+python3 -m memory.experiment_memory record --target <target> --endpoint <endpoint> \
+  --vuln-class <class> --payload-category <category> --result success|fail|inconclusive \
+  --tech-stack "<stack>" --time-spent <minutes> --memory-dir hunt-memory
+
+# Before starting a payload category, check what's worked on this tech combo before:
+python3 -m memory.experiment_memory payload-stats --tech "<stack>" --vuln-class <class> --memory-dir hunt-memory
+
+# Instead of eyeballing the clock, ask directly:
+python3 -m memory.experiment_memory should-stop --target <target> --endpoint <endpoint> \
+  --elapsed-minutes <n> --memory-dir hunt-memory
+```
+
+`should-stop` returns `stop: true` once 5 minutes have passed with zero successes OR 3 distinct payload categories have been burned with zero successes — whichever comes first — and `stop: false` immediately if any experiment on this endpoint already succeeded. `payload-stats` is the "GraphQL + Node + missing authorization checks produced findings before" learning made concrete: a payload category with wins on 2+ overlapping technologies outranks one with a single overlapping technology or none.
+
 ## Step 4: Hunt
 
 For each P1 target endpoint:
@@ -174,7 +194,9 @@ For each P1 target endpoint:
 
 ## Step 5: Validate
 
-For each finding, run the 7-Question Gate:
+For each finding, first run the `validation-engine` agent's technical check (reproducibility, proven impact, authorization boundary crossed, clean PoC, duplicate/noise against hunt memory via `python3 -m memory.vuln_intelligence duplicate-check`). A REJECT verdict kills the finding before the 7-Question Gate even runs — no point spending policy-gate effort on evidence that doesn't hold up.
+
+Then, for anything `validation-engine` marked STRONG or WEAK-but-fixable, run the 7-Question Gate:
 - Q1: Can attacker do this RIGHT NOW? (must have exact request/response)
 - Q2-Q7: Standard validation gates
 

@@ -43,6 +43,20 @@ REPORT_OUTCOME_OPTIONAL = {
 }
 REPORT_OUTCOME_ALL = REPORT_OUTCOME_REQUIRED | REPORT_OUTCOME_OPTIONAL
 
+# A single test attempt — one payload category tried against one endpoint —
+# the granular log beneath patterns.jsonl/failed_patterns.jsonl. Those two
+# files record the *outcome* of a target+vuln_class+technique; this records
+# every individual attempt along the way, which is what the stop/pivot
+# decisions in memory/experiment_memory.py need (patterns.jsonl alone can't
+# tell you "3 payload categories tried here with 0 successes").
+EXPERIMENT_REQUIRED = {
+    "ts", "target", "endpoint", "vuln_class", "payload_category", "result", "schema_version",
+}
+EXPERIMENT_OPTIONAL = {
+    "technique", "tech_stack", "time_spent_minutes", "notes", "tags", "session_id",
+}
+EXPERIMENT_ALL = EXPERIMENT_REQUIRED | EXPERIMENT_OPTIONAL
+
 
 def _current_session_id() -> str | None:
     """Return the BBHUNT_SESSION_ID env var if set (the auth-aware hash).
@@ -71,6 +85,7 @@ VALID_ACTIONS = {"hunt", "recon", "validate", "report", "remember", "resume", "i
 VALID_METHODS = {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"}
 VALID_SCOPE_CHECKS = {"pass", "fail", "skip"}
 VALID_REPORT_OUTCOMES = {"accepted", "triaged", "duplicate", "informative", "not_applicable", "resolved"}
+VALID_EXPERIMENT_RESULTS = {"success", "fail", "inconclusive"}
 
 
 class SchemaError(Exception):
@@ -287,6 +302,62 @@ def validate_report_outcome_entry(entry: dict) -> dict:
     if "session_id" in entry:
         if not isinstance(entry["session_id"], str) or not entry["session_id"].strip():
             raise SchemaError("Report outcome entry: 'session_id' must be a non-empty string")
+
+    return entry
+
+
+def validate_experiment_entry(entry: dict) -> dict:
+    """Validate an experiment entry. Returns the entry if valid, raises SchemaError if not.
+
+    One attempt: a specific payload_category tried against a specific
+    endpoint. Not deduplicated on a narrow key — the same combination
+    legitimately recurs every time that surface gets re-tested, and each
+    attempt is its own data point for should_stop()/suggest_pivot().
+    """
+    if not isinstance(entry, dict):
+        raise SchemaError(f"Experiment entry must be a dict, got {type(entry).__name__}")
+
+    _check_required(entry, EXPERIMENT_REQUIRED, "Experiment entry")
+    _check_unknown_fields(entry, EXPERIMENT_ALL, "Experiment entry")
+    _check_schema_version(entry)
+    _check_timestamp(entry["ts"], "ts")
+
+    if not isinstance(entry["target"], str) or not entry["target"].strip():
+        raise SchemaError("Experiment entry: 'target' must be a non-empty string")
+
+    if not isinstance(entry["endpoint"], str) or not entry["endpoint"].strip():
+        raise SchemaError("Experiment entry: 'endpoint' must be a non-empty string")
+
+    if not isinstance(entry["vuln_class"], str) or not entry["vuln_class"].strip():
+        raise SchemaError("Experiment entry: 'vuln_class' must be a non-empty string")
+
+    if not isinstance(entry["payload_category"], str) or not entry["payload_category"].strip():
+        raise SchemaError("Experiment entry: 'payload_category' must be a non-empty string")
+
+    if entry["result"] not in VALID_EXPERIMENT_RESULTS:
+        raise SchemaError(
+            f"Experiment entry: 'result' must be one of {sorted(VALID_EXPERIMENT_RESULTS)}, got {entry['result']!r}"
+        )
+
+    if "tech_stack" in entry:
+        if not isinstance(entry["tech_stack"], list) or not all(isinstance(t, str) for t in entry["tech_stack"]):
+            raise SchemaError("Experiment entry: 'tech_stack' must be a list of strings")
+
+    if "technique" in entry:
+        if not isinstance(entry["technique"], str) or not entry["technique"].strip():
+            raise SchemaError("Experiment entry: 'technique' must be a non-empty string")
+
+    if "time_spent_minutes" in entry:
+        if not isinstance(entry["time_spent_minutes"], (int, float)) or entry["time_spent_minutes"] < 0:
+            raise SchemaError("Experiment entry: 'time_spent_minutes' must be a non-negative number")
+
+    if "tags" in entry:
+        if not isinstance(entry["tags"], list) or not all(isinstance(t, str) for t in entry["tags"]):
+            raise SchemaError("Experiment entry: 'tags' must be a list of strings")
+
+    if "session_id" in entry:
+        if not isinstance(entry["session_id"], str) or not entry["session_id"].strip():
+            raise SchemaError("Experiment entry: 'session_id' must be a non-empty string")
 
     return entry
 
@@ -528,6 +599,47 @@ def make_report_outcome_entry(
         entry["session_id"] = session_id
 
     return validate_report_outcome_entry(entry)
+
+
+def make_experiment_entry(
+    target: str,
+    endpoint: str,
+    vuln_class: str,
+    payload_category: str,
+    result: str,
+    technique: str | None = None,
+    tech_stack: list[str] | None = None,
+    time_spent_minutes: int | float | None = None,
+    notes: str | None = None,
+    tags: list[str] | None = None,
+    session_id: str | None = None,
+) -> dict:
+    """Create and validate a new experiment entry with current timestamp."""
+    entry = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "target": target,
+        "endpoint": endpoint,
+        "vuln_class": vuln_class,
+        "payload_category": payload_category,
+        "result": result,
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+    if technique is not None:
+        entry["technique"] = technique
+    if tech_stack is not None:
+        entry["tech_stack"] = tech_stack
+    if time_spent_minutes is not None:
+        entry["time_spent_minutes"] = time_spent_minutes
+    if notes is not None:
+        entry["notes"] = notes
+    if tags is not None:
+        entry["tags"] = tags
+    if session_id is None:
+        session_id = _current_session_id()
+    if session_id is not None:
+        entry["session_id"] = session_id
+
+    return validate_experiment_entry(entry)
 
 
 def validate_audit_entry(entry: dict) -> dict:

@@ -139,6 +139,29 @@ def sample_report_outcome_entry():
 
 
 @pytest.fixture
+def experiments_path(tmp_hunt_dir):
+    """Path to a temporary experiments.jsonl file."""
+    return tmp_hunt_dir / "experiments.jsonl"
+
+
+@pytest.fixture
+def sample_experiment_entry():
+    """A valid experiment entry dict."""
+    return {
+        "ts": "2026-03-24T21:00:00Z",
+        "target": "target.com",
+        "endpoint": "/api/v2/users/{id}/orders",
+        "vuln_class": "idor",
+        "payload_category": "numeric_id_swap",
+        "result": "success",
+        "technique": "numeric_id_swap_with_put_method",
+        "tech_stack": ["express", "postgresql"],
+        "time_spent_minutes": 8,
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+
+
+@pytest.fixture
 def sample_target_profile():
     """A valid target profile dict."""
     return {

@@ -1,6 +1,6 @@
 ---
 name: recon-ranker
-description: Attack surface ranking agent. Takes recon output, the vulnerability-intelligence briefing, and the lead board, and produces a scored, confidence-rated, memory-informed prioritized attack plan. Ranks by IDOR likelihood, API surface, tech stack match with past successes, feature age, chain correlation, and nuclei findings. Use after recon to decide what to test first.
+description: Attack surface ranking agent. Takes recon output, the vulnerability-intelligence briefing, and the lead board, and produces a scored, confidence-rated, memory-informed prioritized attack plan, plus an Expected Value per Hour for each P1/P2 (score × payout probability × time cost). Ranks by IDOR likelihood, API surface, tech stack match with past successes, feature age, chain correlation, and nuclei findings. Use after recon to decide what to test first — and in what order.
 tools:
   read: true
   bash: true
@@ -89,6 +89,22 @@ Zero memory hits = confidence stays at the 20 floor, meaning "this is mindmap.py
 - **P2**: 30 ≤ score < 60
 - **Kill list**: score < 30, OR a failed-pattern match, OR an explicit kill signal (CDN-only, static asset, third-party-hosted, out of scope)
 
+## Expected Value per Hour
+
+Score answers "how strong is this candidate." EV/hour answers "which strong candidate pays off *first*" — two P1s at the same score can have very different time costs (a GraphQL mutation IDOR is often a 20-minute test; a SAML signature-wrapping bug is 35+). Compute it for every P1 and P2 via the CLI instead of eyeballing:
+
+```bash
+python3 -m memory.vuln_intelligence ev --vuln-class idor --tech "express,postgresql" \
+  --target target.com --technique numeric_id_swap --memory-dir hunt-memory
+```
+
+This wraps the same `priority_score` used for the base score and adds:
+- **payout_probability** — from `report_outcomes.jsonl`'s acceptance rate for this vuln class when there's data, otherwise the score's own `historical_success_probability` component (say "heuristic" when falling back)
+- **estimated_minutes** — a per-vuln-class static prior (`TESTING_TIME_ESTIMATES` in `memory/vuln_intelligence.py`), override with `--minutes` when you have a better estimate for this specific endpoint (e.g. an auth flow that needs two accounts takes longer than the class average)
+- **ev_per_hour** — `score × (payout_probability / 100) × (60 / estimated_minutes)`, labeled High (≥60) / Medium (≥25) / Low. A `hard_kill` candidate is always EV 0 / label "Kill" regardless of score.
+
+Order the P1 list by score first (it's the confidence-weighted signal strength), but call out EV/hour explicitly on each entry — a lower-scored, fast, high-probability P2 sometimes deserves testing before a slow P1 if the hunter is optimizing for throughput rather than a single best shot. State this trade-off when it's non-obvious; don't silently reorder the list by EV alone.
+
 ## Feature Age Detection
 
 Infer feature age from available signals:
@@ -110,10 +126,12 @@ Every P1/P2 entry's "why" must name the specific score components that fired —
    Why: IDOR-candidate base (+18) · chain lead: secret+API detected (+25) ·
         tech affinity idor net_score +4 on [express, postgresql] (+8) · feature age 9d (+10)
    Tech: Express + PostgreSQL | First seen 9 days ago
+   Estimated time: 20 min | Payout probability: 82% (report_outcomes.jsonl, n=6) | Expected value: High (ev/hr 234.5)
    Suggested: numeric ID swap on GET/PUT/DELETE — chain leg B was `/api/v2/users?id=1001`
 
 2. api.target.com/graphql — score 71, confidence 45 (heuristic — no prior GraphQL data on this target)
    Why: GraphQL base (+25) · non-standard port (+6) · no memory match, mindmap.py static prior only
+   Estimated time: 25 min | Payout probability: 50% (heuristic, no report-outcome data) | Expected value: Medium (ev/hr 85.2)
    Suggested: introspection → field-level auth check on sensitive mutations
 
 ## Priority 2 (after P1 exhausted)

@@ -7,12 +7,14 @@ from memory.schemas import (
     validate_failed_pattern_entry,
     validate_chain_entry,
     validate_report_outcome_entry,
+    validate_experiment_entry,
     validate_target_profile,
     make_journal_entry,
     make_pattern_entry,
     make_failed_pattern_entry,
     make_chain_entry,
     make_report_outcome_entry,
+    make_experiment_entry,
     SchemaError,
     CURRENT_SCHEMA_VERSION,
 )
@@ -338,3 +340,75 @@ class TestFactoryFunctions:
         assert entry["outcome"] == "accepted"
         assert entry["platform"] == "hackerone"
         assert entry["schema_version"] == CURRENT_SCHEMA_VERSION
+
+    def test_make_experiment_entry(self):
+        entry = make_experiment_entry(
+            target="target.com",
+            endpoint="/api/v2/users/{id}/orders",
+            vuln_class="idor",
+            payload_category="numeric_id_swap",
+            result="success",
+            tech_stack=["express"],
+            time_spent_minutes=8,
+        )
+        assert entry["payload_category"] == "numeric_id_swap"
+        assert entry["result"] == "success"
+        assert entry["schema_version"] == CURRENT_SCHEMA_VERSION
+
+
+class TestExperimentValidation:
+
+    def test_valid_full_entry(self, sample_experiment_entry):
+        result = validate_experiment_entry(sample_experiment_entry)
+        assert result == sample_experiment_entry
+
+    def test_valid_minimal_entry(self):
+        entry = {
+            "ts": "2026-03-24T21:00:00Z",
+            "target": "target.com",
+            "endpoint": "/api/v2/users/1",
+            "vuln_class": "idor",
+            "payload_category": "numeric_id_swap",
+            "result": "fail",
+            "schema_version": CURRENT_SCHEMA_VERSION,
+        }
+        assert validate_experiment_entry(entry) == entry
+
+    def test_missing_required_field(self, sample_experiment_entry):
+        del sample_experiment_entry["payload_category"]
+        with pytest.raises(SchemaError, match="missing required fields.*payload_category"):
+            validate_experiment_entry(sample_experiment_entry)
+
+    def test_invalid_result_value(self, sample_experiment_entry):
+        sample_experiment_entry["result"] = "maybe"
+        with pytest.raises(SchemaError, match="'result' must be one of"):
+            validate_experiment_entry(sample_experiment_entry)
+
+    def test_empty_endpoint_rejected(self, sample_experiment_entry):
+        sample_experiment_entry["endpoint"] = "  "
+        with pytest.raises(SchemaError, match="'endpoint' must be a non-empty"):
+            validate_experiment_entry(sample_experiment_entry)
+
+    def test_empty_payload_category_rejected(self, sample_experiment_entry):
+        sample_experiment_entry["payload_category"] = ""
+        with pytest.raises(SchemaError, match="'payload_category' must be a non-empty"):
+            validate_experiment_entry(sample_experiment_entry)
+
+    def test_negative_time_spent_rejected(self, sample_experiment_entry):
+        sample_experiment_entry["time_spent_minutes"] = -5
+        with pytest.raises(SchemaError, match="'time_spent_minutes' must be a non-negative"):
+            validate_experiment_entry(sample_experiment_entry)
+
+    def test_tech_stack_not_list_rejected(self, sample_experiment_entry):
+        sample_experiment_entry["tech_stack"] = "express"
+        with pytest.raises(SchemaError, match="'tech_stack' must be a list"):
+            validate_experiment_entry(sample_experiment_entry)
+
+    def test_unknown_field_rejected(self, sample_experiment_entry):
+        sample_experiment_entry["extra_field"] = "oops"
+        with pytest.raises(SchemaError, match="unknown fields"):
+            validate_experiment_entry(sample_experiment_entry)
+
+    def test_not_a_dict(self):
+        with pytest.raises(SchemaError, match="must be a dict"):
+            validate_experiment_entry("not a dict")

@@ -58,18 +58,19 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `/spray` | `/spray <url> --mode http-form\|oauth\|o365\|okta --users <f> --passes <f>` — password spray with hard guards (typed-host confirm, lockout warn, audit log) |
 | `/graphql-audit` | `/graphql-audit <url>` — full GraphQL audit: introspection, batching DoS, IDOR, injection, alias bomb, graphw00f fingerprint |
 
-### Agents (12 specialized agents)
+### Agents (13 specialized agents)
 
 - `recon-agent` — subdomain enum + live host discovery
 - `js-intelligence` — mines JS bundles/source maps for hidden endpoints, feature flags, debug routes, leaked config, auth flows
 - `vulnerability-intelligence` — builds the memory-driven intelligence briefing (tech→vuln affinity, known chains, don't-retry list) before ranking; writes learned failed-patterns/chains back after a hunt
 - `hypothesis-engine` — synthesizes recon + JS intel + memory + the attack graph into ranked, evidence-backed vulnerability hypotheses before any testing starts
 - `report-writer` — generates H1/Bugcrowd/Immunefi reports; validates exploitability/impact/evidence first and checks report-outcome acceptance history
+- `validation-engine` — technical proof gate before `validator`: reproducibility, proven impact, authorization boundary crossed, clean PoC, duplicate/noise against hunt memory
 - `validator` — 4-gate checklist on a finding
 - `web3-auditor` — smart contract bug class analysis
 - `chain-builder` — builds A→B→C exploit chains
-- `autopilot` — autonomous hunt loop (scope→recon→rank→hunt→validate→report), decision-engine-driven priority scoring
-- `recon-ranker` — scored, confidence-rated attack surface ranking from recon output + hypotheses + the intelligence briefing + lead-board chains
+- `autopilot` — autonomous hunt loop (scope→recon→rank→hunt→validate→report), decision-engine-driven priority scoring, experiment-tracked stop/pivot decisions
+- `recon-ranker` — scored, confidence-rated attack surface ranking from recon output + hypotheses + the intelligence briefing + lead-board chains, plus Expected Value per Hour per candidate
 - `token-auditor` — fast meme coin/token rug pull and security analysis
 - `credential-hunter` — orchestrates wordlist-gen + osint-employees + breach-check; HARD STOPS at spray for human go/no-go
 
@@ -118,7 +119,8 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 ### Hunt Memory (in `memory/`)
 
 - `memory/pattern_db.py` — cross-target pattern learning
-- `memory/vuln_intelligence.py` — failed-pattern + confirmed-chain + report-outcome memory, tech→vuln affinity, endpoint-shape scoring, and the `priority_score()` decision-engine formula (CLI: `python3 -m memory.vuln_intelligence <cmd>`)
+- `memory/vuln_intelligence.py` — failed-pattern + confirmed-chain + report-outcome memory, tech→vuln affinity, endpoint-shape scoring, the `priority_score()` decision-engine formula, `expected_value_per_hour()` (score × payout probability × time cost), and `duplicate_or_noise_check()` (CLI: `python3 -m memory.vuln_intelligence <cmd>`)
+- `memory/experiment_memory.py` — granular per-payload-attempt log (`experiments.jsonl`) beneath patterns/failed_patterns; `payload_category_affinity()`, `should_stop()` (5-min-rule + diminishing-returns), `suggest_pivot()` (CLI: `python3 -m memory.experiment_memory <cmd>`)
 - `memory/audit_log.py` — request audit log, rate limiter, circuit breaker
 - `memory/rotation.py` — size-based JSONL rotation (10MB cap, keep 3 backups), auto-fired on append
 - `memory/schemas.py` — schema validation for all data

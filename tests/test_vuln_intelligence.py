@@ -6,7 +6,9 @@ from memory.vuln_intelligence import (
     ChainDB,
     FailedPatternDB,
     ReportOutcomeDB,
+    duplicate_or_noise_check,
     endpoint_shape_stats,
+    expected_value_per_hour,
     normalize_endpoint,
     priority_score,
     tech_vuln_affinity,
@@ -330,3 +332,116 @@ class TestPriorityScore:
         result = priority_score("x", ["express"], "a.com", technique="t", patterns=[],
                                  failed_patterns=failed, chains=[], impact_override=0)
         assert result["score"] == 0
+
+
+class TestExpectedValuePerHour:
+
+    def test_hard_kill_gives_zero_ev(self):
+        failed = [{"target": "a.com", "vuln_class": "ssrf", "technique": "webhook_url",
+                   "tech_stack": ["express"], "reason": "egress filtered"}]
+        result = expected_value_per_hour("ssrf", ["express"], "a.com", technique="webhook_url",
+                                          patterns=[], failed_patterns=failed, chains=[])
+        assert result["hard_kill"] is True
+        assert result["ev_per_hour"] == 0
+        assert result["ev_label"] == "Kill"
+
+    def test_uses_report_outcome_payout_probability_when_available(self):
+        outcomes = [
+            {"vuln_class": "idor", "outcome": "accepted"},
+            {"vuln_class": "idor", "outcome": "accepted"},
+            {"vuln_class": "idor", "outcome": "not_applicable"},
+        ]
+        result = expected_value_per_hour("idor", ["express"], "a.com", patterns=[],
+                                          failed_patterns=[], chains=[], report_outcomes=outcomes)
+        assert result["payout_probability"] == 67
+        assert result["payout_probability_source"] == "report_outcomes.jsonl"
+
+    def test_falls_back_to_heuristic_without_report_outcomes(self):
+        result = expected_value_per_hour("idor", ["express"], "a.com", patterns=[],
+                                          failed_patterns=[], chains=[])
+        assert result["payout_probability_source"] == "heuristic (no report-outcome data)"
+        assert result["payout_probability"] == result["priority_components"]["historical_success_probability"]
+
+    def test_default_time_estimate_used_when_not_overridden(self):
+        result = expected_value_per_hour("idor", ["express"], "a.com", patterns=[],
+                                          failed_patterns=[], chains=[])
+        assert result["estimated_minutes"] == 20  # TESTING_TIME_ESTIMATES["idor"]
+
+    def test_explicit_minutes_overrides_default(self):
+        result = expected_value_per_hour("idor", ["express"], "a.com", patterns=[],
+                                          failed_patterns=[], chains=[], estimated_minutes=5)
+        assert result["estimated_minutes"] == 5
+
+    def test_faster_test_gives_higher_ev_at_same_score(self):
+        fast = expected_value_per_hour("idor", ["express"], "a.com", patterns=[],
+                                        failed_patterns=[], chains=[], estimated_minutes=10)
+        slow = expected_value_per_hour("idor", ["express"], "a.com", patterns=[],
+                                        failed_patterns=[], chains=[], estimated_minutes=40)
+        assert fast["score"] == slow["score"]
+        assert fast["ev_per_hour"] > slow["ev_per_hour"]
+
+    def test_zero_minutes_rejected(self):
+        with pytest.raises(ValueError):
+            expected_value_per_hour("idor", ["express"], "a.com", patterns=[],
+                                     failed_patterns=[], chains=[], estimated_minutes=0)
+
+    def test_ev_label_thresholds(self):
+        high = expected_value_per_hour("idor", ["express"], "a.com", patterns=[
+            {"vuln_class": "idor", "tech_stack": ["express"], "payout": 1000, "target": "a.com"},
+        ], failed_patterns=[], chains=[], estimated_minutes=5, impact_override=100)
+        assert high["ev_label"] == "High"
+
+
+class TestDuplicateOrNoiseCheck:
+
+    def test_clean_when_nothing_matches(self):
+        result = duplicate_or_noise_check("a.com", "idor", "/api/users/1")
+        assert result == {
+            "is_duplicate": False,
+            "is_noise": False,
+            "clean": True,
+            "matching_journal_entries": 0,
+            "matching_report_outcomes": [],
+            "matching_failed_patterns": 0,
+        }
+
+    def test_duplicate_from_confirmed_journal_entry(self):
+        journal = [{"target": "a.com", "vuln_class": "idor", "result": "confirmed", "endpoint": "/api/users/1"}]
+        result = duplicate_or_noise_check("a.com", "idor", "/api/users/1", journal_entries=journal)
+        assert result["is_duplicate"] is True
+        assert result["clean"] is False
+
+    def test_duplicate_matches_by_normalized_endpoint_shape(self):
+        journal = [{"target": "a.com", "vuln_class": "idor", "result": "confirmed", "endpoint": "/api/users/482"}]
+        result = duplicate_or_noise_check("a.com", "idor", "/api/users/9107", journal_entries=journal)
+        assert result["is_duplicate"] is True
+
+    def test_duplicate_from_report_outcome(self):
+        outcomes = [{"target": "a.com", "vuln_class": "idor", "outcome": "accepted"}]
+        result = duplicate_or_noise_check("a.com", "idor", "/api/users/1", report_outcomes=outcomes)
+        assert result["is_duplicate"] is True
+        assert result["matching_report_outcomes"] == ["accepted"]
+
+    def test_noise_from_failed_pattern_with_no_duplicate(self):
+        failed = [{"target": "a.com", "vuln_class": "ssrf", "endpoint": "/api/webhook"}]
+        result = duplicate_or_noise_check("a.com", "ssrf", "/api/webhook", failed_patterns=failed)
+        assert result["is_noise"] is True
+        assert result["is_duplicate"] is False
+        assert result["clean"] is False
+
+    def test_duplicate_takes_precedence_over_noise(self):
+        journal = [{"target": "a.com", "vuln_class": "ssrf", "result": "confirmed", "endpoint": "/api/webhook"}]
+        failed = [{"target": "a.com", "vuln_class": "ssrf", "endpoint": "/api/webhook"}]
+        result = duplicate_or_noise_check("a.com", "ssrf", "/api/webhook", journal_entries=journal, failed_patterns=failed)
+        assert result["is_duplicate"] is True
+        assert result["is_noise"] is False
+
+    def test_different_target_not_matched(self):
+        journal = [{"target": "b.com", "vuln_class": "idor", "result": "confirmed", "endpoint": "/api/users/1"}]
+        result = duplicate_or_noise_check("a.com", "idor", "/api/users/1", journal_entries=journal)
+        assert result["clean"] is True
+
+    def test_rejected_journal_entry_does_not_count_as_duplicate(self):
+        journal = [{"target": "a.com", "vuln_class": "idor", "result": "rejected", "endpoint": "/api/users/1"}]
+        result = duplicate_or_noise_check("a.com", "idor", "/api/users/1", journal_entries=journal)
+        assert result["is_duplicate"] is False

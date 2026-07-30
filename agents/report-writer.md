@@ -32,6 +32,11 @@ You are not the last line of defense (`validator` and the 7-Question Gate alread
 
 If you can't answer all four concretely, stop and say so — don't paper over a gap with softer language. A report with a gap sent back for clarification is slower than a report that admits the gap up front and asks the hunter to fill it before submission.
 
+If the `validation-engine` agent hasn't already run on this finding, run its duplicate/noise check yourself before writing — a well-written report for a finding that's already in `report_outcomes.jsonl` is still wasted effort:
+```bash
+python3 -m memory.vuln_intelligence duplicate-check --target <target> --vuln-class <class> --endpoint <endpoint> --memory-dir hunt-memory
+```
+
 ## Memory-Informed Writing
 
 Before choosing wording/severity framing, check what's actually converted to paid reports before:

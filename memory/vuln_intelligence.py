@@ -23,6 +23,16 @@ but adds three things patterns.jsonl alone can't give you:
                          failure penalty), one canonical implementation shared
                          by recon-ranker and autopilot instead of two
                          independently-drifting scoring formulas.
+  * expected_value_per_hour — wraps priority_score with real payout
+                         probability (report_outcomes.jsonl) and an
+                         estimated-testing-time cost, so recon-ranker can
+                         answer "which P1 pays off fastest," not just
+                         "which P1 scores highest."
+  * duplicate_or_noise_check — has this target+vuln_class+endpoint already
+                         been found (journal.jsonl), reported
+                         (report_outcomes.jsonl), or already died here
+                         (failed_patterns.jsonl)? The memory-backed half of
+                         validation-engine's duplicate/noise filter.
 
 Agents that only have bash/read/glob/grep (no python execution) reach this
 through the CLI at the bottom: `python3 -m memory.vuln_intelligence <cmd>`.
@@ -425,6 +435,147 @@ def priority_score(
     }
 
 
+# Rough per-vuln-class testing time, used only when the caller doesn't
+# supply --minutes. Same role as VULN_IMPACT_POTENTIAL above: a static
+# prior, overridden the moment real data (or a caller's own estimate) exists.
+TESTING_TIME_ESTIMATES = {
+    "rce": 40, "sqli": 30, "auth-bypass": 30, "ato": 35, "ssrf": 25,
+    "ssti": 30, "saml": 35, "idor": 20, "file-upload": 25, "xxe": 25,
+    "oauth": 30, "graphql": 25, "race-condition": 20, "cors": 15,
+    "xss": 15, "misconfig": 15, "open-redirect": 10, "info-disclosure": 10,
+}
+DEFAULT_TESTING_TIME_MINUTES = 20
+
+
+def expected_value_per_hour(
+    vuln_class: str,
+    tech_stack: list[str],
+    target: str,
+    technique: str | None = None,
+    patterns: list[dict] | None = None,
+    failed_patterns: list[dict] | None = None,
+    chains: list[dict] | None = None,
+    chain_detected: bool = False,
+    impact_override: float | None = None,
+    report_outcomes: list[dict] | None = None,
+    estimated_minutes: float | None = None,
+) -> dict:
+    """Expected-value-per-hour: which candidate pays off *fastest*, not just highest.
+
+    Wraps priority_score() — the single source of truth for the 0-100
+    score — and adds the two axes that formula alone doesn't have: real
+    conversion probability (from report_outcomes.jsonl when there's data,
+    the same historical_success_probability heuristic otherwise) and time
+    cost. Two P1s with the same score can have very different EV/hr once
+    one takes 45 minutes to test and the other takes 15.
+    """
+    report_outcomes = report_outcomes or []
+    score_result = priority_score(
+        vuln_class, tech_stack, target, technique,
+        patterns, failed_patterns, chains, chain_detected, impact_override,
+    )
+
+    outcomes_for_class = [o for o in report_outcomes if o.get("vuln_class") == vuln_class]
+    if outcomes_for_class:
+        good = {"accepted", "triaged", "resolved"}
+        accepted = sum(1 for o in outcomes_for_class if o.get("outcome") in good)
+        payout_probability = round(100 * accepted / len(outcomes_for_class))
+        payout_probability_source = "report_outcomes.jsonl"
+    else:
+        # No conversion data yet: fall back to the score's own
+        # historical_success_probability component — same "heuristic-only"
+        # convention priority_score itself uses when memory is empty.
+        payout_probability = score_result["components"]["historical_success_probability"]
+        payout_probability_source = "heuristic (no report-outcome data)"
+
+    minutes = (
+        estimated_minutes if estimated_minutes is not None
+        else TESTING_TIME_ESTIMATES.get(vuln_class.lower(), DEFAULT_TESTING_TIME_MINUTES)
+    )
+    if minutes <= 0:
+        raise ValueError("estimated_minutes must be positive")
+
+    hard_kill = score_result["hard_kill"]
+    ev_per_hour = 0 if hard_kill else round(score_result["score"] * (payout_probability / 100) * (60 / minutes), 1)
+
+    if hard_kill:
+        ev_label = "Kill"
+    elif ev_per_hour >= 60:
+        ev_label = "High"
+    elif ev_per_hour >= 25:
+        ev_label = "Medium"
+    else:
+        ev_label = "Low"
+
+    return {
+        "vuln_class": vuln_class,
+        "score": score_result["score"],
+        "hard_kill": hard_kill,
+        "estimated_minutes": minutes,
+        "payout_probability": payout_probability,
+        "payout_probability_source": payout_probability_source,
+        "ev_per_hour": ev_per_hour,
+        "ev_label": ev_label,
+        "priority_components": score_result["components"],
+    }
+
+
+def duplicate_or_noise_check(
+    target: str,
+    vuln_class: str,
+    endpoint: str,
+    journal_entries: list[dict] | None = None,
+    report_outcomes: list[dict] | None = None,
+    failed_patterns: list[dict] | None = None,
+) -> dict:
+    """Has this exact finding already been logged, reported, or already died here?
+
+    The memory-backed half of validation-engine's "is it duplicate/noise"
+    check — cheap and instant against data already on disk, run before the
+    more expensive external Hacktivity/GitHub search that stays part of
+    validator's Gate 2. Matches by exact endpoint OR normalized shape, so
+    `/api/users/12/orders` and `/api/users/9107/orders` count as the same
+    surface for this check.
+    """
+    journal_entries = journal_entries or []
+    report_outcomes = report_outcomes or []
+    failed_patterns = failed_patterns or []
+    shape = normalize_endpoint(endpoint) if endpoint else None
+
+    def _same_endpoint(candidate: str | None) -> bool:
+        if not candidate:
+            return False
+        return candidate == endpoint or (shape is not None and normalize_endpoint(candidate) == shape)
+
+    already_found = [
+        j for j in journal_entries
+        if j.get("target") == target and j.get("vuln_class") == vuln_class
+        and j.get("result") in ("confirmed", "partial")
+        and _same_endpoint(j.get("endpoint"))
+    ]
+    already_reported = [
+        o for o in report_outcomes
+        if o.get("target") == target and o.get("vuln_class") == vuln_class
+    ]
+    already_failed = [
+        f for f in failed_patterns
+        if f.get("target") == target and f.get("vuln_class") == vuln_class
+        and _same_endpoint(f.get("endpoint"))
+    ]
+
+    is_duplicate = bool(already_found) or bool(already_reported)
+    is_noise = bool(already_failed) and not is_duplicate
+
+    return {
+        "is_duplicate": is_duplicate,
+        "is_noise": is_noise,
+        "clean": not is_duplicate and not is_noise,
+        "matching_journal_entries": len(already_found),
+        "matching_report_outcomes": [o.get("outcome") for o in already_reported],
+        "matching_failed_patterns": len(already_failed),
+    }
+
+
 def _read_jsonl_best_effort(path: Path) -> list[dict]:
     if not path.exists():
         return []
@@ -621,6 +772,49 @@ def _cmd_outcomes(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_ev(args: argparse.Namespace) -> int:
+    from memory.pattern_db import PatternDB
+
+    paths = _memory_paths(args.memory_dir)
+    patterns = PatternDB(paths["patterns"]).read_all()
+    failed = FailedPatternDB(paths["failed_patterns"]).read_all()
+    chains = ChainDB(paths["chains"]).read_all()
+    outcomes = ReportOutcomeDB(paths["report_outcomes"]).read_all()
+    tech_stack = [t.strip() for t in args.tech.split(",") if t.strip()]
+    result = expected_value_per_hour(
+        vuln_class=args.vuln_class,
+        tech_stack=tech_stack,
+        target=args.target,
+        technique=args.technique,
+        patterns=patterns,
+        failed_patterns=failed,
+        chains=chains,
+        chain_detected=args.chain_detected,
+        impact_override=args.impact_override,
+        report_outcomes=outcomes,
+        estimated_minutes=args.minutes,
+    )
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+def _cmd_duplicate_check(args: argparse.Namespace) -> int:
+    paths = _memory_paths(args.memory_dir)
+    journal = _read_jsonl_best_effort(paths["journal"])
+    outcomes = ReportOutcomeDB(paths["report_outcomes"]).read_all()
+    failed = FailedPatternDB(paths["failed_patterns"]).read_all()
+    result = duplicate_or_noise_check(
+        target=args.target,
+        vuln_class=args.vuln_class,
+        endpoint=args.endpoint,
+        journal_entries=journal,
+        report_outcomes=outcomes,
+        failed_patterns=failed,
+    )
+    print(json.dumps(result, indent=2))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Vulnerability intelligence layer — query/update hunt memory")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -697,6 +891,24 @@ def main() -> int:
     p.add_argument("--vuln-class", default=None)
     p.add_argument("--memory-dir", default="hunt-memory")
     p.set_defaults(func=_cmd_outcomes)
+
+    p = sub.add_parser("ev", help="Expected value per hour: priority_score + payout probability + time cost")
+    p.add_argument("--vuln-class", required=True)
+    p.add_argument("--tech", required=True, help="Comma-separated tech stack")
+    p.add_argument("--target", required=True)
+    p.add_argument("--technique", default=None)
+    p.add_argument("--chain-detected", action="store_true")
+    p.add_argument("--impact-override", type=float, default=None)
+    p.add_argument("--minutes", type=float, default=None, help="Override the static per-vuln-class time estimate")
+    p.add_argument("--memory-dir", default="hunt-memory")
+    p.set_defaults(func=_cmd_ev)
+
+    p = sub.add_parser("duplicate-check", help="Is this finding already in journal/report_outcomes/failed_patterns?")
+    p.add_argument("--target", required=True)
+    p.add_argument("--vuln-class", required=True)
+    p.add_argument("--endpoint", required=True)
+    p.add_argument("--memory-dir", default="hunt-memory")
+    p.set_defaults(func=_cmd_duplicate_check)
 
     args = ap.parse_args()
     try:

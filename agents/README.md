@@ -13,7 +13,7 @@ Thirteen specialized AI agents, each built for exactly one job in the hunt pipel
 | `report-writer` | Writes impact-first reports that get paid, not N/A'd — validates exploitability/impact/evidence first, and checks report-outcome history for acceptance-rate signal |
 | `validator` | Runs the 7-Question Gate and 4 pre-submission gates |
 | `web3-auditor` | Smart contract audit across 10 bug classes |
-| `chain-builder` | Bug A → finds bugs B and C that chain with it |
+| `chain-builder` | Bug A → finds bugs B and C that chain with it, checking confirmed chains.jsonl and the lead-board graph before the static A→B table, saving every chain it confirms |
 | `autopilot` | Full autonomous hunt loop with safety checkpoints, decision-engine-driven priority scoring, experiment-tracked stop/pivot decisions |
 | `token-auditor` | Meme coin / token rug pull and security scan |
 | `credential-hunter` | Wordlist gen → OSINT → breach-check → hard-stop before spray |

@@ -68,7 +68,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 - `validation-engine` — technical proof gate before `validator`: reproducibility, proven impact, authorization boundary crossed, clean PoC, duplicate/noise against hunt memory
 - `validator` — 4-gate checklist on a finding
 - `web3-auditor` — smart contract bug class analysis
-- `chain-builder` — builds A→B→C exploit chains
+- `chain-builder` — builds A→B→C exploit chains, memory-first (chains.jsonl + lead-board graph before the static table), saves every chain it confirms
 - `autopilot` — autonomous hunt loop (scope→recon→rank→hunt→validate→report), decision-engine-driven priority scoring, experiment-tracked stop/pivot decisions
 - `recon-ranker` — scored, confidence-rated attack surface ranking from recon output + hypotheses + the intelligence briefing + lead-board chains, plus Expected Value per Hour per candidate
 - `token-auditor` — fast meme coin/token rug pull and security analysis

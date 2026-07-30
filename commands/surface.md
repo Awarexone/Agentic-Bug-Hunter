@@ -1,5 +1,5 @@
 ---
-description: Show ranked attack surface for a target based on recon output + hunt memory. Invokes vulnerability-intelligence then recon-ranker. Usage: /surface target.com
+description: Show ranked attack surface for a target based on recon output + hunt memory. Invokes js-intelligence, vulnerability-intelligence, hypothesis-engine, then recon-ranker. Usage: /surface target.com
 ---
 
 # /surface
@@ -9,11 +9,13 @@ View the prioritized attack surface for a target.
 ## What This Does
 
 1. Reads cached recon output from `recon/<target>/`
-2. Invokes the `vulnerability-intelligence` agent to build `recon/<target>/intelligence-briefing.md` — tech→vuln affinity, known chains matching this tech stack, and a don't-retry list, pulled from `hunt-memory/` (see `memory/vuln_intelligence.py`)
-3. Invokes the `recon-ranker` agent, which consumes that briefing plus the lead board (`memory/leads/<target>.jsonl`, including any correlation chains `lead_board.py` already detected during `/recon`) to produce a **scored, confidence-rated** ranking
-4. Outputs P1 (start here), P2 (after P1), and Kill List (skip) — every entry states the score components behind it, not just a label
+2. Invokes the `js-intelligence` agent to mine JS bundles/source maps for hidden endpoints, feature flags, debug routes, leaked config, and auth flow details, writing `recon/<target>/js-intelligence.md`
+3. Invokes the `vulnerability-intelligence` agent to build `recon/<target>/intelligence-briefing.md` — tech→vuln affinity, known chains matching this tech stack, and a don't-retry list, pulled from `hunt-memory/` (see `memory/vuln_intelligence.py`)
+4. Invokes the `hypothesis-engine` agent, which synthesizes recon + js-intelligence + the briefing + the lead board's attack graph (`tools/lead_board.py graph`) into ranked, evidence-backed vulnerability hypotheses, writing `recon/<target>/hypotheses.md`
+5. Invokes the `recon-ranker` agent, which scores everything above plus the lead board (`memory/leads/<target>.jsonl`, including any correlation chains/hypotheses `lead_board.py` already detected during `/recon`) to produce a **scored, confidence-rated** ranking
+6. Outputs P1 (start here), P2 (after P1), and Kill List (skip) — every entry states the score components behind it, not just a label
 
-Steps 2–3 are two separate agents on purpose: `vulnerability-intelligence` does the heavier cross-target memory reasoning once, up front; `recon-ranker` stays fast/cheap and just applies the scoring formula using what it's handed.
+Four separate agents on purpose: `js-intelligence` and `vulnerability-intelligence` do the heavier extraction/memory-reasoning work once, up front; `hypothesis-engine` turns that into falsifiable claims; `recon-ranker` stays fast/cheap and just applies the scoring formula using what it's handed. Skip any step whose output already exists and is fresh — this pipeline is meant to run incrementally, not from scratch every time.
 
 ## Usage
 
@@ -55,5 +57,6 @@ Kill List (skip):
 Memory:
 - Tech-vuln affinity: 3 patterns, 0 failed for [express, postgresql] on this target's stack
 - Chain applied: secret_plus_api (confirmed elsewhere, $4000, critical) — same shape matched here
+- Hypothesis: account_takeover_via_leaked_secret (hypotheses.md, confidence 78%, impact critical)
 - 3 endpoints tested in previous session, 5 remain
 ```

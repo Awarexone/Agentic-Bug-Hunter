@@ -33,6 +33,16 @@ CHAIN_REQUIRED = {"ts", "target", "chain_name", "steps", "schema_version"}
 CHAIN_OPTIONAL = {"tech_stack", "endpoint", "payout", "severity", "notes", "tags", "session_id"}
 CHAIN_ALL = CHAIN_REQUIRED | CHAIN_OPTIONAL
 
+# What happened to a submitted report — the triage/acceptance outcome, kept
+# separate from journal.jsonl's pre-submission result so report-writer can
+# learn which vuln_class/technique/wording actually gets paid vs N/A'd,
+# not just which techniques found something.
+REPORT_OUTCOME_REQUIRED = {"ts", "target", "vuln_class", "outcome", "schema_version"}
+REPORT_OUTCOME_OPTIONAL = {
+    "technique", "platform", "severity", "payout", "report_id", "notes", "tags", "session_id",
+}
+REPORT_OUTCOME_ALL = REPORT_OUTCOME_REQUIRED | REPORT_OUTCOME_OPTIONAL
+
 
 def _current_session_id() -> str | None:
     """Return the BBHUNT_SESSION_ID env var if set (the auth-aware hash).
@@ -60,6 +70,7 @@ VALID_SEVERITIES = {"critical", "high", "medium", "low", "informational", "none"
 VALID_ACTIONS = {"hunt", "recon", "validate", "report", "remember", "resume", "intel"}
 VALID_METHODS = {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"}
 VALID_SCOPE_CHECKS = {"pass", "fail", "skip"}
+VALID_REPORT_OUTCOMES = {"accepted", "triaged", "duplicate", "informative", "not_applicable", "resolved"}
 
 
 class SchemaError(Exception):
@@ -230,6 +241,52 @@ def validate_chain_entry(entry: dict) -> dict:
     if "session_id" in entry:
         if not isinstance(entry["session_id"], str) or not entry["session_id"].strip():
             raise SchemaError("Chain entry: 'session_id' must be a non-empty string")
+
+    return entry
+
+
+def validate_report_outcome_entry(entry: dict) -> dict:
+    """Validate a report-outcome entry. Returns the entry if valid, raises SchemaError if not.
+
+    Logged once a platform triages/pays/N-A's a submitted report, so
+    report-writer can learn which vuln_class + technique + wording actually
+    converts to a paid report versus one that gets closed as informative.
+    """
+    if not isinstance(entry, dict):
+        raise SchemaError(f"Report outcome entry must be a dict, got {type(entry).__name__}")
+
+    _check_required(entry, REPORT_OUTCOME_REQUIRED, "Report outcome entry")
+    _check_unknown_fields(entry, REPORT_OUTCOME_ALL, "Report outcome entry")
+    _check_schema_version(entry)
+    _check_timestamp(entry["ts"], "ts")
+
+    if not isinstance(entry["target"], str) or not entry["target"].strip():
+        raise SchemaError("Report outcome entry: 'target' must be a non-empty string")
+
+    if not isinstance(entry["vuln_class"], str) or not entry["vuln_class"].strip():
+        raise SchemaError("Report outcome entry: 'vuln_class' must be a non-empty string")
+
+    if entry["outcome"] not in VALID_REPORT_OUTCOMES:
+        raise SchemaError(
+            f"Report outcome entry: 'outcome' must be one of {sorted(VALID_REPORT_OUTCOMES)}, got {entry['outcome']!r}"
+        )
+
+    if "severity" in entry and entry["severity"] not in VALID_SEVERITIES:
+        raise SchemaError(
+            f"Report outcome entry: 'severity' must be one of {sorted(VALID_SEVERITIES)}, got {entry['severity']!r}"
+        )
+
+    if "payout" in entry:
+        if not isinstance(entry["payout"], (int, float)) or entry["payout"] < 0:
+            raise SchemaError(f"Report outcome entry: 'payout' must be a non-negative number, got {entry['payout']!r}")
+
+    if "technique" in entry:
+        if not isinstance(entry["technique"], str) or not entry["technique"].strip():
+            raise SchemaError("Report outcome entry: 'technique' must be a non-empty string")
+
+    if "session_id" in entry:
+        if not isinstance(entry["session_id"], str) or not entry["session_id"].strip():
+            raise SchemaError("Report outcome entry: 'session_id' must be a non-empty string")
 
     return entry
 
@@ -428,6 +485,49 @@ def make_chain_entry(
         entry["session_id"] = session_id
 
     return validate_chain_entry(entry)
+
+
+def make_report_outcome_entry(
+    target: str,
+    vuln_class: str,
+    outcome: str,
+    technique: str | None = None,
+    platform: str | None = None,
+    severity: str | None = None,
+    payout: int | float | None = None,
+    report_id: str | None = None,
+    notes: str | None = None,
+    tags: list[str] | None = None,
+    session_id: str | None = None,
+) -> dict:
+    """Create and validate a new report-outcome entry with current timestamp."""
+    entry = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "target": target,
+        "vuln_class": vuln_class,
+        "outcome": outcome,
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+    if technique is not None:
+        entry["technique"] = technique
+    if platform is not None:
+        entry["platform"] = platform
+    if severity is not None:
+        entry["severity"] = severity
+    if payout is not None:
+        entry["payout"] = payout
+    if report_id is not None:
+        entry["report_id"] = report_id
+    if notes is not None:
+        entry["notes"] = notes
+    if tags is not None:
+        entry["tags"] = tags
+    if session_id is None:
+        session_id = _current_session_id()
+    if session_id is not None:
+        entry["session_id"] = session_id
+
+    return validate_report_outcome_entry(entry)
 
 
 def validate_audit_entry(entry: dict) -> dict:

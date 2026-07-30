@@ -23,9 +23,11 @@ Read these files from `recon/<target>/`:
 - `ssrf-candidates.txt` — URLs with URL parameters
 - `nuclei.txt` — known CVE/misconfig findings
 - `intelligence-briefing.md` — written by the `vulnerability-intelligence` agent. **Read this first.** It already contains the tech->vuln affinity table, known chains, and the don't-retry list — you consume it, you don't recompute it.
+- `hypotheses.md` — written by the `hypothesis-engine` agent. Each hypothesis names a vuln class, an affected endpoint, and its own confidence estimate — treat these as pre-qualified candidates, not raw signals you have to re-derive from scratch.
 
 Also read:
-- `memory/leads/<target>.jsonl` — the lead board. Any lead with `"source": "chain"` is a pre-detected correlation (secret+API, IDOR+account surface, CORS+sensitive endpoint, upload+processing) and gets the chain boost below.
+- `memory/leads/<target>.jsonl` — the lead board. Any lead with `"source": "chain"` is a pre-detected 2-signal correlation (secret+API, IDOR+account surface, CORS+sensitive endpoint, upload+processing) and gets the chain boost below. Any lead with `"source": "hypothesis"` is a same-host 3-signal correlation with a declared `impact` — these are hypothesis-engine's highest-confidence input and should nearly always land P1.
+- `python3 tools/lead_board.py graph <target>` — the attack surface graph (Asset -> Endpoint -> Technology -> Vulnerability Hypothesis -> Impact). Use it to see which endpoints already have a declared impact chain instead of scoring them in isolation.
 - `hunt-memory/targets/<target>.json` — previous hunt data for this target (tested endpoints, findings)
 - `tools/mindmap.py` — tech stack → vuln class priority mappings for tech not covered by memory yet (reuse, don't duplicate)
 
@@ -59,6 +61,7 @@ Every endpoint/host gets an additive **score** (0–100+, uncapped on the high e
 
 | Modifier | Points | Source |
 |---|---|---|
+| Hypothesis lead (`source: "hypothesis"` in lead board — named vuln + declared impact) | **+35** | lead board / hypotheses.md |
 | Chain lead (`source: "chain"` in lead board matching this endpoint) | **+25** | lead board |
 | Tech-vuln affinity: net_score > 0 for this vuln class on this tech stack | `+2 × net_score`, capped at +20 | briefing |
 | Known chain from another target matches this tech stack | +15 | briefing |
@@ -74,6 +77,7 @@ Every endpoint/host gets an additive **score** (0–100+, uncapped on the high e
 confidence = 20 (heuristic floor)
            + 15 × number of matching memory patterns (wins + losses, capped at 4 → +60 max)
            + 15 if this endpoint is part of a detected chain
+           + 20 if this endpoint is part of a detected hypothesis (3-signal, same-host, declared impact)
            + 10 if nuclei directly confirmed it
 capped at 100
 ```
@@ -137,7 +141,7 @@ Every P1/P2 entry's "why" must name the specific score components that fired —
 
 1. Read `intelligence-briefing.md` before scoring anything — it's the memory layer, don't re-derive it from raw JSONL by hand.
 2. A failed-pattern match is a hard kill (score floor, not just a penalty) — never place a known dead end in P1 or P2 even if other signals are strong. State which technique failed and when.
-3. Chain leads from the lead board always get the +25 boost and must be called out by name in the "why" line — that's the whole point of the correlation layer surfacing them.
+3. Chain leads from the lead board always get the +25 boost and must be called out by name in the "why" line — that's the whole point of the correlation layer surfacing them. Hypothesis leads (+35) outrank them — a same-host 3-signal correlation with a declared impact is stronger evidence than a 2-signal pairing.
 4. GraphQL and WebSocket endpoints keep their base-signal floor (25 pts) even with zero memory — they're P1-by-default unless another rule (kill signal, failed pattern) overrides it.
 5. Admin panels behind auth are P2 (need creds). Unauthenticated admin panels are P1 via the base-signal table above.
 6. If two endpoints tie on score, break the tie by confidence, then by chain involvement.

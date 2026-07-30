@@ -116,6 +116,29 @@ def sample_chain_entry():
 
 
 @pytest.fixture
+def report_outcomes_path(tmp_hunt_dir):
+    """Path to a temporary report_outcomes.jsonl file."""
+    return tmp_hunt_dir / "report_outcomes.jsonl"
+
+
+@pytest.fixture
+def sample_report_outcome_entry():
+    """A valid report-outcome entry dict."""
+    return {
+        "ts": "2026-03-24T21:00:00Z",
+        "target": "target.com",
+        "vuln_class": "idor",
+        "outcome": "accepted",
+        "technique": "numeric_id_swap_with_put_method",
+        "platform": "hackerone",
+        "severity": "high",
+        "payout": 1500,
+        "report_id": "H1-12345",
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+
+
+@pytest.fixture
 def sample_target_profile():
     """A valid target profile dict."""
     return {

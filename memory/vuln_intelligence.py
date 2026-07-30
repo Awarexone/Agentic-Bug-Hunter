@@ -10,10 +10,19 @@ but adds three things patterns.jsonl alone can't give you:
   * ChainDB           — confirmed multi-signal exploit chains
                          (hunt-memory/chains.jsonl), so a chain shape that paid
                          off on one target can be recognized on the next.
+  * ReportOutcomeDB   — what submitted reports actually turned into
+                         (hunt-memory/report_outcomes.jsonl): accepted, N/A'd,
+                         duplicate. Lets report-writer learn which vuln
+                         classes/wording convert to paid reports.
   * tech_vuln_affinity / endpoint_shape_stats — pure query functions that turn
     patterns.jsonl + failed_patterns.jsonl (+ optionally journal.jsonl) into a
     tech-stack -> vuln-class affinity ranking and an endpoint-shape hit rate,
     without a separate cache file. The intelligence is derived, not duplicated.
+  * priority_score    — the autopilot decision-engine formula (impact +
+                         historical success + tech match + chain probability -
+                         failure penalty), one canonical implementation shared
+                         by recon-ranker and autopilot instead of two
+                         independently-drifting scoring formulas.
 
 Agents that only have bash/read/glob/grep (no python execution) reach this
 through the CLI at the bottom: `python3 -m memory.vuln_intelligence <cmd>`.
@@ -33,8 +42,10 @@ from memory.schemas import (
     SchemaError,
     make_chain_entry,
     make_failed_pattern_entry,
+    make_report_outcome_entry,
     validate_chain_entry,
     validate_failed_pattern_entry,
+    validate_report_outcome_entry,
 )
 
 _NUMERIC_RE = re.compile(r"^\d+$")
@@ -213,6 +224,56 @@ class ChainDB(_JsonlDB):
         return chains
 
 
+class ReportOutcomeDB(_JsonlDB):
+    """What happened to submitted reports — feeds report-writer's acceptance-pattern learning.
+
+    Not deduplicated on a narrow key like the other two DBs: the same
+    vuln_class can (and should) accumulate many outcome data points over
+    time on the same target as different reports come back triaged.
+    """
+
+    dedup_fields = ("target", "vuln_class", "outcome", "ts")
+
+    def _validate(self, entry: dict) -> dict:
+        return validate_report_outcome_entry(entry)
+
+    def acceptance_rate(self, vuln_class: str | None = None) -> dict:
+        """Fraction of outcomes that were accepted/triaged (paid) vs closed as noise.
+
+        Groups by vuln_class so report-writer can see "idor reports get
+        accepted 90% of the time, xss reports get closed informative 60% of
+        the time" and weight its wording/evidence bar accordingly.
+        """
+        entries = self.read_all()
+        if vuln_class is not None:
+            entries = [e for e in entries if e.get("vuln_class") == vuln_class]
+
+        by_class: dict[str, dict] = {}
+        good = {"accepted", "triaged", "resolved"}
+        for e in entries:
+            vc = e.get("vuln_class", "unknown")
+            d = by_class.setdefault(vc, {"vuln_class": vc, "accepted": 0, "closed_no_action": 0, "payout_total": 0.0})
+            if e.get("outcome") in good:
+                d["accepted"] += 1
+                d["payout_total"] += e.get("payout", 0) or 0
+            else:
+                d["closed_no_action"] += 1
+
+        results = []
+        for vc, d in by_class.items():
+            total = d["accepted"] + d["closed_no_action"]
+            results.append({
+                "vuln_class": vc,
+                "accepted": d["accepted"],
+                "closed_no_action": d["closed_no_action"],
+                "acceptance_rate": round(100 * d["accepted"] / total) if total else None,
+                "avg_payout": round(d["payout_total"] / d["accepted"], 2) if d["accepted"] else 0,
+                "sample_size": total,
+            })
+        results.sort(key=lambda r: (r["acceptance_rate"] or 0, r["sample_size"]), reverse=True)
+        return {"by_vuln_class": results}
+
+
 def tech_vuln_affinity(
     tech_stack: list[str],
     patterns: list[dict],
@@ -266,6 +327,102 @@ def tech_vuln_affinity(
 
     results.sort(key=lambda r: (r["net_score"], r["wins"]), reverse=True)
     return results[:top] if top else results
+
+
+# Static impact prior per vuln class, used only when no memory data exists
+# yet to derive it from — same role as mindmap.py's static priors for
+# tech_vuln_affinity. Override with impact_override once real report-outcome
+# payout data exists for a vuln class.
+VULN_IMPACT_POTENTIAL = {
+    "rce": 100, "sqli": 95, "auth-bypass": 90, "ato": 90, "ssrf": 85,
+    "ssti": 85, "saml": 85, "idor": 80, "file-upload": 80, "xxe": 80,
+    "oauth": 80, "graphql": 75, "race-condition": 65, "cors": 60,
+    "xss": 55, "misconfig": 40, "open-redirect": 35, "info-disclosure": 30,
+}
+DEFAULT_IMPACT_POTENTIAL = 50
+
+
+def priority_score(
+    vuln_class: str,
+    tech_stack: list[str],
+    target: str,
+    technique: str | None = None,
+    patterns: list[dict] | None = None,
+    failed_patterns: list[dict] | None = None,
+    chains: list[dict] | None = None,
+    chain_detected: bool = False,
+    impact_override: float | None = None,
+) -> dict:
+    """The autopilot decision-engine formula:
+
+        Priority = impact_potential + historical_success_probability
+                 + technology_match + attack_chain_probability
+                 - failure_penalty
+
+    Every positive component is scaled 0-100, so the base score is their
+    average; failure_penalty (100 when this exact target+technique already
+    failed) then pulls it down — a real hit drives the score to 0, a hard
+    kill signal matching recon-ranker's failed-pattern rule.
+
+    This is the single source of truth for "which endpoint/vuln-class goes
+    first" — both recon-ranker and autopilot call this (via the CLI) instead
+    of each re-deriving their own formula.
+    """
+    patterns = patterns or []
+    failed_patterns = failed_patterns or []
+    chains = chains or []
+
+    impact = (
+        impact_override if impact_override is not None
+        else VULN_IMPACT_POTENTIAL.get(vuln_class.lower(), DEFAULT_IMPACT_POTENTIAL)
+    )
+
+    affinity_list = tech_vuln_affinity(tech_stack, patterns, failed_patterns)
+    affinity = next((a for a in affinity_list if a["vuln_class"] == vuln_class), None)
+
+    if affinity and (affinity["wins"] + affinity["losses"]) > 0:
+        sample = affinity["wins"] + affinity["losses"]
+        historical_success = round(100 * affinity["wins"] / sample)
+        technology_match = affinity["confidence"]
+    else:
+        # No data either way: neutral on success probability, floor on tech
+        # match confidence — mirrors recon-ranker's "heuristic-only" convention.
+        historical_success = 50
+        technology_match = 20
+
+    matching_chains = [c for c in chains if _tech_overlap(tech_stack, c.get("tech_stack", []))]
+    if chain_detected:
+        attack_chain_probability = 90
+    elif matching_chains:
+        attack_chain_probability = 60
+    else:
+        attack_chain_probability = 0
+
+    failed_entry = None
+    if technique:
+        failed_entry = next(
+            (f for f in failed_patterns if f.get("target") == target and f.get("technique") == technique),
+            None,
+        )
+    failure_penalty = 100 if failed_entry else 0
+
+    base = (impact + historical_success + technology_match + attack_chain_probability) / 4
+    score = max(0, min(100, round(base - failure_penalty)))
+
+    return {
+        "vuln_class": vuln_class,
+        "score": score,
+        "hard_kill": failure_penalty >= 100,
+        "components": {
+            "impact_potential": impact,
+            "historical_success_probability": historical_success,
+            "technology_match": technology_match,
+            "attack_chain_probability": attack_chain_probability,
+            "failure_penalty": failure_penalty,
+        },
+        "failed_pattern_reason": failed_entry.get("reason") if failed_entry else None,
+        "matching_chains": [c["chain_name"] for c in matching_chains],
+    }
 
 
 def _read_jsonl_best_effort(path: Path) -> list[dict]:
@@ -342,6 +499,7 @@ def _memory_paths(memory_dir: str) -> dict[str, Path]:
         "failed_patterns": base / "failed_patterns.jsonl",
         "chains": base / "chains.jsonl",
         "journal": base / "journal.jsonl",
+        "report_outcomes": base / "report_outcomes.jsonl",
     }
 
 
@@ -415,6 +573,54 @@ def _cmd_save_chain(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_priority(args: argparse.Namespace) -> int:
+    from memory.pattern_db import PatternDB
+
+    paths = _memory_paths(args.memory_dir)
+    patterns = PatternDB(paths["patterns"]).read_all()
+    failed = FailedPatternDB(paths["failed_patterns"]).read_all()
+    chains = ChainDB(paths["chains"]).read_all()
+    tech_stack = [t.strip() for t in args.tech.split(",") if t.strip()]
+    result = priority_score(
+        vuln_class=args.vuln_class,
+        tech_stack=tech_stack,
+        target=args.target,
+        technique=args.technique,
+        patterns=patterns,
+        failed_patterns=failed,
+        chains=chains,
+        chain_detected=args.chain_detected,
+        impact_override=args.impact_override,
+    )
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+def _cmd_save_outcome(args: argparse.Namespace) -> int:
+    paths = _memory_paths(args.memory_dir)
+    entry = make_report_outcome_entry(
+        target=args.target,
+        vuln_class=args.vuln_class,
+        outcome=args.outcome,
+        technique=args.technique,
+        platform=args.platform,
+        severity=args.severity,
+        payout=args.payout,
+        report_id=args.report_id,
+        notes=args.notes,
+    )
+    saved = ReportOutcomeDB(paths["report_outcomes"]).save(entry)
+    print(json.dumps({"saved": saved, "entry": entry}, indent=2))
+    return 0
+
+
+def _cmd_outcomes(args: argparse.Namespace) -> int:
+    paths = _memory_paths(args.memory_dir)
+    result = ReportOutcomeDB(paths["report_outcomes"]).acceptance_rate(args.vuln_class or None)
+    print(json.dumps(result, indent=2))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Vulnerability intelligence layer — query/update hunt memory")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -461,6 +667,36 @@ def main() -> int:
     p.add_argument("--severity", default=None)
     p.add_argument("--memory-dir", default="hunt-memory")
     p.set_defaults(func=_cmd_save_chain)
+
+    p = sub.add_parser("priority", help="Decision-engine score: impact + success + tech match + chain - failure penalty")
+    p.add_argument("--vuln-class", required=True)
+    p.add_argument("--tech", required=True, help="Comma-separated tech stack")
+    p.add_argument("--target", required=True)
+    p.add_argument("--technique", default=None, help="Checked against failed_patterns.jsonl for a hard kill")
+    p.add_argument("--chain-detected", action="store_true", help="This candidate is part of a lead-board chain")
+    p.add_argument("--impact-override", type=float, default=None)
+    p.add_argument("--memory-dir", default="hunt-memory")
+    p.set_defaults(func=_cmd_priority)
+
+    p = sub.add_parser("save-outcome", help="Record what a submitted report turned into (accepted/N-A/duplicate/...)")
+    p.add_argument("--target", required=True)
+    p.add_argument("--vuln-class", required=True)
+    p.add_argument("--outcome", required=True, choices=sorted(
+        {"accepted", "triaged", "duplicate", "informative", "not_applicable", "resolved"}
+    ))
+    p.add_argument("--technique", default=None)
+    p.add_argument("--platform", default=None, help="hackerone / bugcrowd / intigriti / immunefi")
+    p.add_argument("--severity", default=None)
+    p.add_argument("--payout", type=float, default=None)
+    p.add_argument("--report-id", default=None)
+    p.add_argument("--notes", default=None)
+    p.add_argument("--memory-dir", default="hunt-memory")
+    p.set_defaults(func=_cmd_save_outcome)
+
+    p = sub.add_parser("outcomes", help="Acceptance rate by vuln class, from report_outcomes.jsonl")
+    p.add_argument("--vuln-class", default=None)
+    p.add_argument("--memory-dir", default="hunt-memory")
+    p.set_defaults(func=_cmd_outcomes)
 
     args = ap.parse_args()
     try:

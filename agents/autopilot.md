@@ -132,21 +132,45 @@ scope.filter_file("recon/target/urls.txt")
 
 ## Step 3: Rank
 
-Invoke the `vulnerability-intelligence` agent first — it writes `recon/<target>/intelligence-briefing.md` (tech→vuln affinity, known chains, don't-retry list) from `hunt-memory/`. Then invoke `recon-ranker`, which scores the surface using that briefing plus the lead board (`memory/leads/<target>.jsonl`, including any chain leads `lead_board.py` detected during recon ingest). It produces:
+Invoke, in order: `js-intelligence` (hidden endpoints/config from JS, writes `recon/<target>/js-intelligence.md`) → `vulnerability-intelligence` (writes `recon/<target>/intelligence-briefing.md` — tech→vuln affinity, known chains, don't-retry list, from `hunt-memory/`) → `hypothesis-engine` (writes `recon/<target>/hypotheses.md` — ranked, evidence-backed vulnerability hypotheses) → `recon-ranker` (scores everything above plus the lead board, including any chain/hypothesis leads `lead_board.py` detected during recon ingest). Final output:
 - P1 targets (score ≥ 60 — start here)
 - P2 targets (score 30–59, after P1 exhausted)
 - Kill list (score < 30, or a hard failed-pattern match)
+
+## Decision Engine
+
+This is what "which target/endpoint/vuln-class to test first" actually means in code, not just prose — the same formula backs both `recon-ranker`'s scoring and your own in-loop decisions:
+
+```
+Priority = impact_potential + historical_success_probability
+         + technology_match + attack_chain_probability
+         - failure_penalty
+```
+
+Call it directly instead of eyeballing:
+```bash
+python3 -m memory.vuln_intelligence priority --vuln-class idor --tech "express,postgresql" \
+  --target target.com --technique numeric_id_swap --memory-dir hunt-memory
+```
+`failure_penalty` is 100 (hard kill, `hard_kill: true` in the output) when this exact target+technique already failed — treat that as non-negotiable, not a mere deprioritization. Pass `--chain-detected` when the candidate is a lead-board chain/hypothesis lead.
+
+**Abandon a path when:**
+- `priority --technique X` comes back `hard_kill: true` — don't start it
+- 5 minutes pass with no signal on the current endpoint (the standing 5-minute rule, `rules/hunting.md`) — after abandoning, log it: `python3 -m memory.vuln_intelligence save-failed --target <target> --vuln-class <class> --technique <technique> --tech-stack <stack> --reason "<why>" --memory-dir hunt-memory`, so the next run's `priority` call already reflects it
+- 5 consecutive requests to the host return 403/429/timeout — this is the existing Circuit Breaker below, not a new rule
+
+**Pivot to the next candidate when** the current one is abandoned or exhausted: re-run `priority` across the remaining P1 queue (scores shift as failures accumulate) and take the highest score that isn't a hard kill. A hypothesis-lead or chain-lead candidate (`attack_chain_probability` 60–90) should usually win a pivot over a same-score single-signal candidate — more independent evidence backs it.
 
 ## Step 4: Hunt
 
 For each P1 target endpoint:
 
 1. Check hunt memory — "Have I tested this before?" Run `python3 -m memory.vuln_intelligence failed-check --target <target> --technique <technique> --memory-dir hunt-memory` before testing a technique the ranker didn't already kill; a hit means skip it, no exceptions.
-2. Select vuln class based on tech stack + URL pattern + memory. Prefer P1 entries the ranker flagged as chain-boosted — those are correlated signals, not isolated guesses.
+2. Select vuln class based on tech stack + URL pattern + memory, using the Decision Engine's `priority` score. Prefer P1 entries the ranker flagged as hypothesis- or chain-boosted — those are correlated signals, not isolated guesses.
 3. Test with appropriate technique
 4. Log every request to audit.jsonl
 5. If signal found → check chain table (A→B)
-6. If 5 minutes with no progress → rotate to next endpoint
+6. If 5 minutes with no progress → rotate to next endpoint (see Decision Engine's abandon/pivot rules)
 
 ## Step 5: Validate
 

@@ -6,11 +6,13 @@ from memory.schemas import (
     validate_pattern_entry,
     validate_failed_pattern_entry,
     validate_chain_entry,
+    validate_report_outcome_entry,
     validate_target_profile,
     make_journal_entry,
     make_pattern_entry,
     make_failed_pattern_entry,
     make_chain_entry,
+    make_report_outcome_entry,
     SchemaError,
     CURRENT_SCHEMA_VERSION,
 )
@@ -196,6 +198,64 @@ class TestChainValidation:
             validate_chain_entry(sample_chain_entry)
 
 
+class TestReportOutcomeValidation:
+
+    def test_valid_report_outcome(self, sample_report_outcome_entry):
+        result = validate_report_outcome_entry(sample_report_outcome_entry)
+        assert result == sample_report_outcome_entry
+
+    def test_valid_minimal_report_outcome(self):
+        entry = {
+            "ts": "2026-03-24T21:00:00Z",
+            "target": "target.com",
+            "vuln_class": "idor",
+            "outcome": "accepted",
+            "schema_version": CURRENT_SCHEMA_VERSION,
+        }
+        assert validate_report_outcome_entry(entry) == entry
+
+    def test_missing_outcome(self, sample_report_outcome_entry):
+        del sample_report_outcome_entry["outcome"]
+        with pytest.raises(SchemaError, match="missing required fields"):
+            validate_report_outcome_entry(sample_report_outcome_entry)
+
+    def test_invalid_outcome_value(self, sample_report_outcome_entry):
+        sample_report_outcome_entry["outcome"] = "maybe_paid"
+        with pytest.raises(SchemaError, match="'outcome' must be one of"):
+            validate_report_outcome_entry(sample_report_outcome_entry)
+
+    def test_all_valid_outcomes_accepted(self):
+        for outcome in ("accepted", "triaged", "duplicate", "informative", "not_applicable", "resolved"):
+            entry = {
+                "ts": "2026-03-24T21:00:00Z",
+                "target": "target.com",
+                "vuln_class": "idor",
+                "outcome": outcome,
+                "schema_version": CURRENT_SCHEMA_VERSION,
+            }
+            assert validate_report_outcome_entry(entry)["outcome"] == outcome
+
+    def test_invalid_severity(self, sample_report_outcome_entry):
+        sample_report_outcome_entry["severity"] = "super_critical"
+        with pytest.raises(SchemaError, match="'severity' must be one of"):
+            validate_report_outcome_entry(sample_report_outcome_entry)
+
+    def test_negative_payout(self, sample_report_outcome_entry):
+        sample_report_outcome_entry["payout"] = -1
+        with pytest.raises(SchemaError, match="'payout' must be a non-negative"):
+            validate_report_outcome_entry(sample_report_outcome_entry)
+
+    def test_empty_target_rejected(self, sample_report_outcome_entry):
+        sample_report_outcome_entry["target"] = ""
+        with pytest.raises(SchemaError, match="'target' must be a non-empty"):
+            validate_report_outcome_entry(sample_report_outcome_entry)
+
+    def test_unknown_field_rejected(self, sample_report_outcome_entry):
+        sample_report_outcome_entry["extra"] = "oops"
+        with pytest.raises(SchemaError, match="unknown fields"):
+            validate_report_outcome_entry(sample_report_outcome_entry)
+
+
 class TestTargetProfileValidation:
 
     def test_valid_profile(self, sample_target_profile):
@@ -265,4 +325,16 @@ class TestFactoryFunctions:
         )
         assert entry["chain_name"] == "secret_plus_api"
         assert len(entry["steps"]) == 2
+        assert entry["schema_version"] == CURRENT_SCHEMA_VERSION
+
+    def test_make_report_outcome_entry(self):
+        entry = make_report_outcome_entry(
+            target="target.com",
+            vuln_class="idor",
+            outcome="accepted",
+            payout=1500,
+            platform="hackerone",
+        )
+        assert entry["outcome"] == "accepted"
+        assert entry["platform"] == "hackerone"
         assert entry["schema_version"] == CURRENT_SCHEMA_VERSION

@@ -5,8 +5,10 @@ import pytest
 from memory.vuln_intelligence import (
     ChainDB,
     FailedPatternDB,
+    ReportOutcomeDB,
     endpoint_shape_stats,
     normalize_endpoint,
+    priority_score,
     tech_vuln_affinity,
 )
 
@@ -205,3 +207,126 @@ class TestEndpointShapeStats:
         ]
         result = endpoint_shape_stats("/api/orders/2", patterns, [])
         assert result["by_vuln_class"]["idor"]["wins"] == 1
+
+
+class TestReportOutcomeDB:
+
+    def test_save_and_read(self, report_outcomes_path, sample_report_outcome_entry):
+        db = ReportOutcomeDB(report_outcomes_path)
+        assert db.save(sample_report_outcome_entry) is True
+        entries = db.read_all()
+        assert len(entries) == 1
+        assert entries[0]["outcome"] == "accepted"
+
+    def test_accumulates_multiple_outcomes_same_target_class(self, report_outcomes_path, sample_report_outcome_entry):
+        # Report outcomes are NOT deduped like patterns/chains -- the same
+        # vuln_class should accumulate many data points over time.
+        db = ReportOutcomeDB(report_outcomes_path)
+        db.save(sample_report_outcome_entry)
+        entry2 = dict(sample_report_outcome_entry)
+        entry2["ts"] = "2026-04-01T10:00:00Z"
+        entry2["outcome"] = "duplicate"
+        assert db.save(entry2) is True
+        assert len(db.read_all()) == 2
+
+    def test_exact_duplicate_save_rejected(self, report_outcomes_path, sample_report_outcome_entry):
+        db = ReportOutcomeDB(report_outcomes_path)
+        db.save(sample_report_outcome_entry)
+        assert db.save(dict(sample_report_outcome_entry)) is False
+
+    def test_acceptance_rate_computed_correctly(self, report_outcomes_path):
+        db = ReportOutcomeDB(report_outcomes_path)
+        db.save({"ts": "2026-01-01T00:00:00Z", "target": "a.com", "vuln_class": "idor",
+                  "outcome": "accepted", "payout": 1000, "schema_version": 1})
+        db.save({"ts": "2026-01-02T00:00:00Z", "target": "b.com", "vuln_class": "idor",
+                  "outcome": "triaged", "payout": 500, "schema_version": 1})
+        db.save({"ts": "2026-01-03T00:00:00Z", "target": "c.com", "vuln_class": "idor",
+                  "outcome": "informative", "schema_version": 1})
+        result = db.acceptance_rate()
+        idor = next(r for r in result["by_vuln_class"] if r["vuln_class"] == "idor")
+        assert idor["accepted"] == 2
+        assert idor["closed_no_action"] == 1
+        assert idor["acceptance_rate"] == 67  # round(100 * 2/3)
+        assert idor["avg_payout"] == 750.0
+
+    def test_acceptance_rate_filters_by_vuln_class(self, report_outcomes_path):
+        db = ReportOutcomeDB(report_outcomes_path)
+        db.save({"ts": "2026-01-01T00:00:00Z", "target": "a.com", "vuln_class": "idor",
+                  "outcome": "accepted", "schema_version": 1})
+        db.save({"ts": "2026-01-01T00:00:00Z", "target": "a.com", "vuln_class": "xss",
+                  "outcome": "not_applicable", "schema_version": 1})
+        result = db.acceptance_rate("idor")
+        assert len(result["by_vuln_class"]) == 1
+        assert result["by_vuln_class"][0]["vuln_class"] == "idor"
+
+    def test_acceptance_rate_empty_db(self, report_outcomes_path):
+        db = ReportOutcomeDB(report_outcomes_path)
+        assert db.acceptance_rate() == {"by_vuln_class": []}
+
+
+class TestPriorityScore:
+
+    def test_hard_kill_on_failed_technique(self):
+        failed = [{"target": "a.com", "vuln_class": "ssrf", "technique": "webhook_url",
+                   "tech_stack": ["express"], "reason": "egress filtered"}]
+        result = priority_score("ssrf", ["express"], "a.com", technique="webhook_url",
+                                 patterns=[], failed_patterns=failed, chains=[])
+        assert result["hard_kill"] is True
+        assert result["score"] == 0
+        assert result["failed_pattern_reason"] == "egress filtered"
+
+    def test_no_hard_kill_for_different_technique(self):
+        failed = [{"target": "a.com", "vuln_class": "ssrf", "technique": "webhook_url",
+                   "tech_stack": ["express"]}]
+        result = priority_score("ssrf", ["express"], "a.com", technique="different_technique",
+                                 patterns=[], failed_patterns=failed, chains=[])
+        assert result["hard_kill"] is False
+
+    def test_wins_boost_historical_success(self):
+        patterns = [{"vuln_class": "idor", "tech_stack": ["express"], "payout": 1000, "target": "a.com"}]
+        result = priority_score("idor", ["express"], "a.com", patterns=patterns, failed_patterns=[], chains=[])
+        assert result["components"]["historical_success_probability"] == 100
+
+    def test_no_data_gives_neutral_baseline(self):
+        result = priority_score("idor", ["express"], "a.com", patterns=[], failed_patterns=[], chains=[])
+        assert result["components"]["historical_success_probability"] == 50
+        assert result["components"]["technology_match"] == 20
+
+    def test_chain_detected_flag_boosts_attack_chain_probability(self):
+        result = priority_score("idor", ["express"], "a.com", patterns=[], failed_patterns=[],
+                                 chains=[], chain_detected=True)
+        assert result["components"]["attack_chain_probability"] == 90
+
+    def test_matching_chain_without_detection_flag_gives_partial_boost(self):
+        chains = [{"chain_name": "secret_plus_api", "tech_stack": ["express"]}]
+        result = priority_score("idor", ["express"], "a.com", patterns=[], failed_patterns=[], chains=chains)
+        assert result["components"]["attack_chain_probability"] == 60
+        assert "secret_plus_api" in result["matching_chains"]
+
+    def test_no_matching_chain_gives_zero(self):
+        chains = [{"chain_name": "secret_plus_api", "tech_stack": ["django"]}]
+        result = priority_score("idor", ["express"], "a.com", patterns=[], failed_patterns=[], chains=chains)
+        assert result["components"]["attack_chain_probability"] == 0
+
+    def test_impact_override_used_directly(self):
+        result = priority_score("some_custom_class", ["express"], "a.com", patterns=[],
+                                 failed_patterns=[], chains=[], impact_override=99)
+        assert result["components"]["impact_potential"] == 99
+
+    def test_unknown_vuln_class_uses_default_impact(self):
+        result = priority_score("totally_unknown_class", [], "a.com", patterns=[], failed_patterns=[], chains=[])
+        assert result["components"]["impact_potential"] == 50
+
+    def test_score_bounded_0_to_100(self):
+        # Even with every positive component maxed and no failure penalty,
+        # score must stay within [0, 100].
+        patterns = [{"vuln_class": "idor", "tech_stack": ["express"], "payout": 1000, "target": "a.com"}]
+        result = priority_score("idor", ["express"], "a.com", patterns=patterns, failed_patterns=[],
+                                 chains=[], chain_detected=True, impact_override=100)
+        assert 0 <= result["score"] <= 100
+
+    def test_score_never_negative_even_with_low_impact_and_kill(self):
+        failed = [{"target": "a.com", "vuln_class": "x", "technique": "t", "tech_stack": ["express"]}]
+        result = priority_score("x", ["express"], "a.com", technique="t", patterns=[],
+                                 failed_patterns=failed, chains=[], impact_override=0)
+        assert result["score"] == 0

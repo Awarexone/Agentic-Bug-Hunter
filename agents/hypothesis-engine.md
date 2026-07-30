@@ -48,7 +48,7 @@ For every candidate endpoint/surface, ask: what vuln class would explain this co
 |---|---|
 | URL shape | numeric/UUID object IDs, REST resource nouns (`/users/`, `/orders/`, `/accounts/`), GraphQL/WebSocket endpoints |
 | Tech stack | framework-specific weak points (see `tools/mindmap.py`'s `TECH_CHECKS`) |
-| js-intelligence.md | hidden endpoints not in public recon, debug routes, feature flags, auth flow details |
+| js-intelligence.md | hidden endpoints not in public recon, debug routes, feature flags, auth flow details, browser-required surface (SPA routing / client-only auth / WebSocket-only) |
 | Lead board | chain/hypothesis leads (multi-signal correlation), nuclei-confirmed findings |
 | intelligence-briefing.md | vuln classes with a positive `net_score` for this tech stack, known chains matching this stack |
 | `failed_patterns.jsonl` (via briefing) | techniques already dead here — never generate a hypothesis that's already a confirmed dead end |
@@ -117,6 +117,11 @@ Expected Impact:
 - ssrf on /api/webhooks — failed_patterns.jsonl shows this exact technique already
   rejected here on 2026-03-01 ("egress filtered"). Not re-hypothesized.
 
+## Needs Browser-Driven Testing (not curl-testable — not killed, just blocked on tooling)
+- React Router SPA + client-side-only OAuth (js-intelligence.md: hunt-browser-required lb-xxxxxx) —
+  no hypothesis generated because there's no curl-based testing strategy for it, but this is
+  untested surface, not ruled out. Recommended: `/hunt <target> --chrome` (Chrome MCP mode).
+
 ## Stats
 - Hypotheses generated: N (P1: N, P2: N)
 - Backed by a lead-board correlation: N
@@ -124,6 +129,7 @@ Expected Impact:
 - Heuristic-only (no memory, mindmap.py priors): N
 - Suppressed by failed-pattern match: N
 - Confidence adjusted down by calibration: N (name which vuln classes and by how much)
+- Flagged needs-browser (untested, not killed): N
 ```
 
 ## Log Every Hypothesis (after writing hypotheses.md, before finishing)
@@ -146,3 +152,4 @@ For a hypothesis promoted from a lead-board correlation, set `--source lead-boar
 4. Never generate a hypothesis for a target+technique combination already in `failed_patterns.jsonl` — list it under "Killed / Not Generated" instead, with the reason.
 5. You generate hypotheses; you do not test them and you do not decide final P1/P2 ordering — that's `recon-ranker`'s job, using your output as one of its inputs.
 6. Log every hypothesis via `save-hypothesis`, even ones you're not fully confident in — an unresolved or wrong hypothesis is still a calibration data point. Only exception: don't log ones you suppressed under "Killed / Not Generated" (those never became a real confidence claim).
+7. A `hunt-browser-required` lead is not the same as a dead end — don't file it under "Killed / Not Generated" (that's for things actively ruled out). File it under "Needs Browser-Driven Testing" instead, so it stays visible as untested surface rather than silently disappearing because the curl-based pipeline has no strategy for it.

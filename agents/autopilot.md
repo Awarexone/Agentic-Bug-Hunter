@@ -154,6 +154,8 @@ python3 -m memory.vuln_intelligence priority --vuln-class idor --tech "express,p
 ```
 `failure_penalty` is 100 (hard kill, `hard_kill: true` in the output) when this exact target+technique already failed — treat that as non-negotiable, not a mere deprioritization. Pass `--chain-detected` when the candidate is a lead-board chain/hypothesis lead.
 
+`impact_potential` isn't a fixed constant forever — once `report_outcomes.jsonl` has 5+ samples for a vuln_class, it's bounded-blended toward that class's real observed acceptance rate (capped at pulling the static prior at most halfway, never fully overwritten by a handful of outcomes). Check the output's `impact_recalibration` field: `recalibrated: true` means real data is already nudging this score, `static_prior` vs `impact` shows how far.
+
 **Abandon a path when:**
 - `priority --technique X` comes back `hard_kill: true` — don't start it
 - 5 minutes pass with no signal on the current endpoint (the standing 5-minute rule, `rules/hunting.md`) — after abandoning, log it: `python3 -m memory.vuln_intelligence save-failed --target <target> --vuln-class <class> --technique <technique> --tech-stack <stack> --reason "<why>" --memory-dir hunt-memory`, so the next run's `priority` call already reflects it
@@ -189,7 +191,7 @@ For each P1 target endpoint:
 2. Select vuln class based on tech stack + URL pattern + memory, using the Decision Engine's `priority` score. Prefer P1 entries the ranker flagged as hypothesis- or chain-boosted — those are correlated signals, not isolated guesses.
 3. Test with appropriate technique
 4. Log every request to audit.jsonl
-5. If signal found → check chain table (A→B)
+5. **If a finding confirms (HIGH/CRITICAL), immediately invoke the `chain-builder` agent** — don't just mentally "check the chain table." `chain-builder` already consults `chains --tech` (confirmed chains from other targets on this stack) and the lead-board graph before falling back to its static A→B table, and it saves whatever it confirms back to `chains.jsonl` for the next target. Running it inline, right when A is fresh, is strictly better than noting "chain candidate" and coming back to it later — the session context for A is warmest right now.
 6. If 5 minutes with no progress → rotate to next endpoint (see Decision Engine's abandon/pivot rules)
 
 ## Step 5: Validate

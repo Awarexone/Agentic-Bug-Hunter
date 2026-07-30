@@ -119,7 +119,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 ### Hunt Memory (in `memory/`)
 
 - `memory/pattern_db.py` — cross-target pattern learning
-- `memory/vuln_intelligence.py` — failed-pattern + confirmed-chain + report-outcome + hypothesis memory, tech→vuln affinity, endpoint-shape scoring, the `priority_score()` decision-engine formula, `expected_value_per_hour()` (score × payout probability × time cost), `duplicate_or_noise_check()`, and `hypothesis_calibration()` (does stated confidence match actual outcomes) (CLI: `python3 -m memory.vuln_intelligence <cmd>`)
+- `memory/vuln_intelligence.py` — failed-pattern + confirmed-chain + report-outcome + hypothesis memory, tech→vuln affinity, endpoint-shape scoring, the `priority_score()` decision-engine formula (self-learning: its `impact_potential` prior bounded-blends toward observed `report_outcomes.jsonl` acceptance rate once 5+ samples exist per vuln_class), `expected_value_per_hour()` (score × payout probability × time cost), `duplicate_or_noise_check()`, and `hypothesis_calibration()` (does stated confidence match actual outcomes) (CLI: `python3 -m memory.vuln_intelligence <cmd>`)
 - `memory/experiment_memory.py` — granular per-payload-attempt log (`experiments.jsonl`) beneath patterns/failed_patterns; `payload_category_affinity()`, `should_stop()` (5-min-rule + diminishing-returns), `suggest_pivot()` (CLI: `python3 -m memory.experiment_memory <cmd>`)
 - `memory/audit_log.py` — request audit log, rate limiter, circuit breaker
 - `memory/rotation.py` — size-based JSONL rotation (10MB cap, keep 3 backups), auto-fired on append

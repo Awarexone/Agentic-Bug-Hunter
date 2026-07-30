@@ -465,6 +465,44 @@ VULN_IMPACT_POTENTIAL = {
 }
 DEFAULT_IMPACT_POTENTIAL = 50
 
+# How much real report_outcomes.jsonl data it takes before it's trusted to
+# nudge the static impact prior at all, and how far it's ever allowed to pull
+# it (bounded — a handful of noisy outcomes shouldn't overwrite a reasonable
+# starting point, only lean on it).
+MIN_SAMPLES_FOR_IMPACT_RECALIBRATION = 5
+MAX_IMPACT_RECALIBRATION_WEIGHT = 0.5
+
+
+def _recalibrated_impact(vuln_class: str, static_prior: float, report_outcomes: list[dict]) -> dict:
+    """Blend the static VULN_IMPACT_POTENTIAL prior toward this vuln_class's
+    observed acceptance rate once report_outcomes.jsonl has enough samples,
+    instead of trusting a hand-written constant forever — the self-learning
+    half of the decision engine. A vuln class whose accepted/triaged rate is
+    consistently below its assumed impact should get less trust over time;
+    one that consistently converts should get more, capped so real data can
+    pull the prior at most halfway even with a huge sample.
+    """
+    matching = [o for o in report_outcomes if o.get("vuln_class") == vuln_class]
+    sample_size = len(matching)
+    if sample_size < MIN_SAMPLES_FOR_IMPACT_RECALIBRATION:
+        return {"impact": static_prior, "recalibrated": False, "sample_size": sample_size}
+
+    good = {"accepted", "triaged", "resolved"}
+    accepted = sum(1 for o in matching if o.get("outcome") in good)
+    observed_acceptance_rate = 100 * accepted / sample_size
+
+    weight = min(MAX_IMPACT_RECALIBRATION_WEIGHT, sample_size * 0.05)
+    blended = round(static_prior * (1 - weight) + observed_acceptance_rate * weight, 1)
+
+    return {
+        "impact": blended,
+        "recalibrated": True,
+        "sample_size": sample_size,
+        "observed_acceptance_rate": round(observed_acceptance_rate),
+        "blend_weight": round(weight, 2),
+        "static_prior": static_prior,
+    }
+
 
 def priority_score(
     vuln_class: str,
@@ -476,6 +514,7 @@ def priority_score(
     chains: list[dict] | None = None,
     chain_detected: bool = False,
     impact_override: float | None = None,
+    report_outcomes: list[dict] | None = None,
 ) -> dict:
     """The autopilot decision-engine formula:
 
@@ -495,11 +534,18 @@ def priority_score(
     patterns = patterns or []
     failed_patterns = failed_patterns or []
     chains = chains or []
+    report_outcomes = report_outcomes or []
 
-    impact = (
-        impact_override if impact_override is not None
-        else VULN_IMPACT_POTENTIAL.get(vuln_class.lower(), DEFAULT_IMPACT_POTENTIAL)
-    )
+    static_impact = VULN_IMPACT_POTENTIAL.get(vuln_class.lower(), DEFAULT_IMPACT_POTENTIAL)
+    if impact_override is not None:
+        impact = impact_override
+        impact_recalibration = {"impact": impact, "recalibrated": False, "sample_size": 0}
+    elif report_outcomes:
+        impact_recalibration = _recalibrated_impact(vuln_class, static_impact, report_outcomes)
+        impact = impact_recalibration["impact"]
+    else:
+        impact = static_impact
+        impact_recalibration = {"impact": impact, "recalibrated": False, "sample_size": 0}
 
     affinity_list = tech_vuln_affinity(tech_stack, patterns, failed_patterns)
     affinity = next((a for a in affinity_list if a["vuln_class"] == vuln_class), None)
@@ -546,6 +592,7 @@ def priority_score(
         },
         "failed_pattern_reason": failed_entry.get("reason") if failed_entry else None,
         "matching_chains": [c["chain_name"] for c in matching_chains],
+        "impact_recalibration": impact_recalibration,
     }
 
 
@@ -587,6 +634,7 @@ def expected_value_per_hour(
     score_result = priority_score(
         vuln_class, tech_stack, target, technique,
         patterns, failed_patterns, chains, chain_detected, impact_override,
+        report_outcomes=report_outcomes,
     )
 
     outcomes_for_class = [o for o in report_outcomes if o.get("vuln_class") == vuln_class]
@@ -631,6 +679,7 @@ def expected_value_per_hour(
         "ev_per_hour": ev_per_hour,
         "ev_label": ev_label,
         "priority_components": score_result["components"],
+        "impact_recalibration": score_result["impact_recalibration"],
     }
 
 
@@ -846,6 +895,7 @@ def _cmd_priority(args: argparse.Namespace) -> int:
     patterns = PatternDB(paths["patterns"]).read_all()
     failed = FailedPatternDB(paths["failed_patterns"]).read_all()
     chains = ChainDB(paths["chains"]).read_all()
+    outcomes = ReportOutcomeDB(paths["report_outcomes"]).read_all()
     tech_stack = [t.strip() for t in args.tech.split(",") if t.strip()]
     result = priority_score(
         vuln_class=args.vuln_class,
@@ -857,6 +907,7 @@ def _cmd_priority(args: argparse.Namespace) -> int:
         chains=chains,
         chain_detected=args.chain_detected,
         impact_override=args.impact_override,
+        report_outcomes=outcomes,
     )
     print(json.dumps(result, indent=2))
     return 0

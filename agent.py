@@ -376,12 +376,13 @@ class HuntMemory:
         if len(self.observation_buf) > 15:
             self.observation_buf = self.observation_buf[-10:]
 
-    def add_finding(self, tool: str, severity: str, text: str) -> None:
+    def add_finding(self, tool: str, severity: str, text: str, confirmed: bool = False) -> None:
         self.findings_log.append({
-            "tool":     tool,
-            "severity": severity,
-            "text":     text[:500],
-            "ts":       datetime.now().isoformat(),
+            "tool":      tool,
+            "severity":  severity,
+            "text":      text[:500],
+            "confirmed": confirmed,  # PoC-verified via vuln_scanner.sh's own [CONFIRMED] tag
+            "ts":        datetime.now().isoformat(),
         })
 
     def findings_summary(self) -> str:
@@ -423,6 +424,7 @@ class ToolDispatcher:
         self.memory          = memory
         self.scope_lock      = scope_lock
         self.default_cookies = default_cookies
+        self.session_start   = time.time()  # for should_stop()'s elapsed_minutes
 
     def _run_shell_tool(self, script_name: str, args_str: str,
                          timeout: int = 900, extra_env: dict | None = None) -> bool:
@@ -479,6 +481,90 @@ class ToolDispatcher:
                 break
         return sorted(techs)
 
+    # Maps vuln_scanner.sh's own FINDINGS_DIR subcategories (it always
+    # mkdir -p's all of them, so "empty vs has content" is a real success/fail
+    # signal) to the vuln_class names used elsewhere in this codebase.
+    _VULN_SCAN_SUBDIRS = {
+        "upload": "file-upload", "xss": "xss", "sqli": "sqli", "takeover": "misconfig",
+        "misconfig": "misconfig", "exposure": "info-disclosure", "ssrf": "ssrf",
+        "cves": "misconfig", "redirects": "open-redirect", "idor": "idor",
+        "auth_bypass": "auth-bypass", "lfi": "lfi", "ssti": "ssti", "graphql": "graphql",
+        "cors": "cors", "jwt": "auth-bypass", "smuggling": "misconfig", "cloud": "misconfig",
+    }
+    # secrets_hunter.sh writes to its own --out dir (see run_secret_hunt dispatch),
+    # not one of vuln_scanner.sh's subdirs, so it gets its own small map.
+    _SECRET_HUNT_SUBDIRS = {"secrets": "info-disclosure"}
+
+    def _log_experiments_from_findings(self, tool_name: str, subdir_map: dict[str, str]) -> None:
+        """After a real test tool completes, log one experiments.jsonl entry per
+        relevant findings subcategory (content = success, still-empty = fail) —
+        the granular per-attempt signal should_stop()/payload_category_affinity()
+        need, which this loop never wrote before (findings_log only ever had
+        whole-tool-run text summaries, nothing structured). Best-effort."""
+        try:
+            from memory.experiment_memory import ExperimentDB
+            from memory.schemas import make_experiment_entry
+        except ImportError:
+            return
+
+        findings_dir = _findings_dir_for(self.domain)
+        if not os.path.isdir(findings_dir):
+            return
+
+        tech_stack = self._detect_tech_stack()
+        h = _h()
+        db = ExperimentDB(os.path.join(h.BASE_DIR, "hunt-memory", "experiments.jsonl"))
+        endpoint = f"https://{self.domain}/"
+
+        for subdir, vuln_class in subdir_map.items():
+            d = os.path.join(findings_dir, subdir)
+            if not os.path.isdir(d):
+                continue
+            has_content = any(
+                os.path.isfile(os.path.join(d, fn)) and os.path.getsize(os.path.join(d, fn)) > 0
+                for fn in os.listdir(d)
+            )
+            try:
+                entry = make_experiment_entry(
+                    target=self.domain, endpoint=endpoint, vuln_class=vuln_class,
+                    payload_category=f"vuln_scan_{subdir}",
+                    result="success" if has_content else "fail",
+                    technique=tool_name, tech_stack=tech_stack or None,
+                )
+                db.save(entry)
+            except Exception:
+                pass
+
+    def _experiment_signal(self, tech_stack: list[str]) -> str:
+        """should_stop() + payload_category_affinity() folded into one line for
+        priority_briefing() — grounds the loop's stop/pivot instinct in an actual
+        count instead of only the time/step budget."""
+        try:
+            from memory.experiment_memory import ExperimentDB, payload_category_affinity, should_stop
+        except ImportError:
+            return ""
+
+        h = _h()
+        db = ExperimentDB(os.path.join(h.BASE_DIR, "hunt-memory", "experiments.jsonl"))
+        endpoint = f"https://{self.domain}/"
+        experiments = db.for_endpoint(self.domain, endpoint)
+        if not experiments:
+            return ""
+
+        elapsed_min = round((time.time() - self.session_start) / 60, 1)
+        stop = should_stop(experiments, elapsed_min)
+        lines = [f"Experiment memory: {stop['reason']}"]
+
+        if tech_stack:
+            top = payload_category_affinity(tech_stack, experiments, top=3)
+            for p in top:
+                if p["successes"]:
+                    lines.append(
+                        f"  {p['payload_category']} ({p['vuln_class']}): "
+                        f"{p['successes']}W/{p['failures']}L on this stack before"
+                    )
+        return "\n".join(lines)
+
     def priority_briefing(self) -> str:
         """Live tech->vuln affinity + EV/hour ranking from hunt-memory/, the
         same memory-driven signal recon-ranker/priority_score give the
@@ -486,7 +572,9 @@ class ToolDispatcher:
         hardcoded 'CMS > RCE > SQLi' guess that never learns anything."""
         try:
             from memory.pattern_db import PatternDB
-            from memory.vuln_intelligence import ChainDB, FailedPatternDB, expected_value_per_hour, tech_vuln_affinity
+            from memory.vuln_intelligence import (
+                ChainDB, FailedPatternDB, ReportOutcomeDB, expected_value_per_hour, tech_vuln_affinity,
+            )
         except ImportError as e:
             return f"(memory.vuln_intelligence not importable — {e})"
 
@@ -499,21 +587,34 @@ class ToolDispatcher:
         patterns = PatternDB(os.path.join(memory_dir, "patterns.jsonl")).read_all()
         failed   = FailedPatternDB(os.path.join(memory_dir, "failed_patterns.jsonl")).read_all()
         chains   = ChainDB(os.path.join(memory_dir, "chains.jsonl")).read_all()
+        outcomes = ReportOutcomeDB(os.path.join(memory_dir, "report_outcomes.jsonl")).read_all()
 
         affinity = tech_vuln_affinity(tech_stack, patterns, failed, top=6)
         if not affinity:
-            return f"(tech stack {tech_stack} — no prior hunt-memory data for this combination yet)"
+            base = f"(tech stack {tech_stack} — no prior hunt-memory data for this combination yet)"
+            signal = self._experiment_signal(tech_stack)
+            return f"{base}\n{signal}" if signal else base
 
         lines = [f"Tech stack detected: {', '.join(tech_stack)}"]
         for a in affinity:
             ev = expected_value_per_hour(
                 a["vuln_class"], tech_stack, self.domain,
-                patterns=patterns, failed_patterns=failed, chains=chains,
+                patterns=patterns, failed_patterns=failed, chains=chains, report_outcomes=outcomes,
+            )
+            recal = ev["impact_recalibration"]
+            recal_note = (
+                f", impact recalibrated {recal['static_prior']}->{recal['impact']} "
+                f"(n={recal['sample_size']} report outcomes)"
+                if recal["recalibrated"] else ""
             )
             lines.append(
                 f"  {a['vuln_class']}: {a['wins']}W/{a['losses']}L (confidence {a['confidence']}) "
-                f"— EV/hr {ev['ev_per_hour']} [{ev['ev_label']}]"
+                f"— EV/hr {ev['ev_per_hour']} [{ev['ev_label']}]{recal_note}"
             )
+        signal = self._experiment_signal(tech_stack)
+        if signal:
+            lines.append("")
+            lines.append(signal)
         return "\n".join(lines)
 
     # ── Duplicate/noise gate on finish (Phase B2) ───────────────────────────
@@ -596,6 +697,32 @@ class ToolDispatcher:
             }
         return {"blocked": False, "reason": f"{checked} finding(s) checked, at least one is new"}
 
+    def check_finish_for_unconfirmed(self) -> dict:
+        """Before accepting `finish`, check whether every HIGH/CRITICAL finding this
+        session is still unverified — only keyword-guessed, or tagged [POSSIBLE]/
+        [INFORMATIONAL] rather than vuln_scanner.sh's own [CONFIRMED] PoC tag.
+
+        This is this loop's version of validation-engine's "impact proven?" check:
+        don't let it declare victory on a claim nothing actually verified. It's a
+        soft gate (warn once, then allow) — a real HIGH finding without a
+        [CONFIRMED] tag can still be real, it just hasn't been proven yet, and the
+        loop may be out of budget to re-verify it.
+        """
+        notable = [f for f in self.memory.findings_log if f.get("severity") in ("HIGH", "CRITICAL")]
+        if not notable:
+            return {"blocked": False, "reason": "no HIGH/CRITICAL findings to check"}
+        if any(f.get("confirmed") for f in notable):
+            return {"blocked": False, "reason": "at least one finding carries a scanner-verified [CONFIRMED] tag"}
+        return {
+            "blocked": True,
+            "reason": (
+                f"{len(notable)} HIGH/CRITICAL finding(s) this session, none carry vuln_scanner.sh's "
+                f"own [CONFIRMED] PoC-verification tag — only keyword-guessed severity or "
+                f"[POSSIBLE]/manual-review signal. Re-run the relevant check or manually verify "
+                f"before finishing, if time allows."
+            ),
+        }
+
     # ── Memory write-back on finish (Phase B3) ──────────────────────────────
 
     def _log_session_summary(self) -> None:
@@ -653,6 +780,7 @@ class ToolDispatcher:
                     full=bool(args.get("full", False)),
                 )
                 obs = self._summarize_findings(domain, "scan", ok)
+                self._log_experiments_from_findings(name, self._VULN_SCAN_SUBDIRS)
 
             elif name == "run_secret_hunt":
                 recon_dir = _recon_dir_for(domain)
@@ -663,6 +791,7 @@ class ToolDispatcher:
                     "secrets_hunter.sh", f'--js-bundle "{recon_dir}" --out "{out_dir}"'
                 )
                 obs = self._summarize_findings(domain, "secrets", ok)
+                self._log_experiments_from_findings(name, self._SECRET_HUNT_SUBDIRS)
 
             elif name == "run_param_discovery":
                 recon_dir = _recon_dir_for(domain)
@@ -835,26 +964,111 @@ class ToolDispatcher:
             combined = combined[:MAX_CTX_CHARS] + "\n...[truncated]"
         return combined
 
+    @staticmethod
+    def _keyword_severity(text_lower: str) -> str | None:
+        """Weak-signal severity guess from free text — the only option when no
+        scanner tag is present. Severity (how bad, if real) is deliberately kept
+        separate from `confirmed` (do we have proof) — see _classify_obs."""
+        if any(kw in text_lower for kw in ("rce_confirmed", "injectable", "critical")):
+            return "CRITICAL"
+        if any(kw in text_lower for kw in ("high", "sql injection", "sqli", "rce", "default cred")):
+            return "HIGH"
+        if any(kw in text_lower for kw in ("medium", "exposed", "open redirect", "cors")):
+            return "MEDIUM"
+        if any(kw in text_lower for kw in ("low", "info")):
+            return "LOW"
+        return None
+
     def _classify_obs(self, tool: str, obs: str) -> None:
-        """Extract severity labels from observation text and add to findings_log."""
-        obs_l = obs.lower()
-        if any(kw in obs_l for kw in ("rce_confirmed", "injectable", "critical")):
-            sev = "CRITICAL"
-        elif any(kw in obs_l for kw in ("high", "sql injection", "rce", "default cred")):
-            sev = "HIGH"
-        elif any(kw in obs_l for kw in ("medium", "exposed", "open redirect", "cors")):
-            sev = "MEDIUM"
-        elif any(kw in obs_l for kw in ("low", "info")):
-            sev = "LOW"
-        else:
+        """Extract a severity label from observation text and add to findings_log.
+
+        Prefers vuln_scanner.sh's own [CONFIRMED]/[POSSIBLE] tags (see
+        verify_sqli_poc/verify_rce_poc/SSTI-CONFIRMED/SAML-SIG-STRIP in
+        tools/vuln_scanner.sh — real PoC verification, not a guess) over keyword
+        matching, which this loop used to rely on for everything, discarding the
+        verification work the scanner already did every time.
+
+        [CONFIRMED] is ground truth: severity=CRITICAL, confirmed=True, no
+        further judgment needed. [POSSIBLE] means "real signal, not yet proven" —
+        severity still comes from that line's own content (a SQLI-CANDIDATE is
+        still potentially HIGH, just unconfirmed), only `confirmed` stays False.
+        Untagged output (or [INFORMATIONAL], which reads as LOW via the normal
+        keyword pass since the tag text itself contains "info") falls back to
+        the old whole-observation keyword guess — the weakest signal, never
+        confirmed.
+        """
+        lines = obs.splitlines()
+
+        for ln in lines:
+            if "[CONFIRMED]" in ln:
+                text = ln.strip()[:300]
+                hint = self._chain_signal_for_finding(text)
+                if hint:
+                    text = f"{text} | {hint}"
+                self.memory.add_finding(tool, "CRITICAL", text, confirmed=True)
+                return
+
+        for ln in lines:
+            if "[POSSIBLE]" in ln:
+                sev = self._keyword_severity(ln.lower()) or "MEDIUM"
+                text = ln.strip()[:300]
+                if sev in ("HIGH", "CRITICAL"):
+                    hint = self._chain_signal_for_finding(text)
+                    if hint:
+                        text = f"{text} | {hint}"
+                self.memory.add_finding(tool, sev, text, confirmed=False)
+                return
+
+        sev = self._keyword_severity(obs.lower())
+        if not sev:
             return  # not a finding, skip
 
-        # Take first relevant line as summary
-        for ln in obs.splitlines():
+        for ln in lines:
             if any(kw in ln.lower() for kw in
                    ("critical", "high", "injectable", "rce", "exposed", "found", "medium", "sql")):
-                self.memory.add_finding(tool, sev, ln.strip()[:300])
+                text = ln.strip()[:300]
+                if sev in ("HIGH", "CRITICAL"):
+                    hint = self._chain_signal_for_finding(text)
+                    if hint:
+                        text = f"{text} | {hint}"
+                self.memory.add_finding(tool, sev, text, confirmed=False)
                 break
+
+    def _chain_signal_for_finding(self, finding_text: str) -> str | None:
+        """When a HIGH/CRITICAL finding lands, check chains.jsonl for a confirmed
+        A->B(->C) shape already proven on this tech stack — the 'found A, now
+        check for B' step chain-builder.md does for Claude-Code sessions, ported
+        here since this loop has no way to invoke that agent directly. This is
+        context, not an assertion the current finding IS part of the chain —
+        worded that way in the output."""
+        try:
+            from memory.vuln_intelligence import ChainDB
+        except ImportError:
+            return None
+
+        vuln_class = self._guess_vuln_class(finding_text)
+        tech_stack = self._detect_tech_stack()
+        if not tech_stack:
+            return None
+
+        h = _h()
+        chains = ChainDB(os.path.join(h.BASE_DIR, "hunt-memory", "chains.jsonl")).match(tech_stack)
+        if not chains:
+            return None
+
+        # Prefer a chain whose steps actually mention this vuln class; fall back
+        # to the highest-payout chain for this tech stack as general context.
+        relevant = chains
+        if vuln_class:
+            keyword_matches = [c for c in chains if vuln_class in " ".join(c.get("steps", [])).lower()]
+            if keyword_matches:
+                relevant = keyword_matches
+
+        top = relevant[0]
+        steps = " -> ".join(top.get("steps", []))
+        payout = f", ${top['payout']} elsewhere" if top.get("payout") else ""
+        return (f"CHAIN CONTEXT: confirmed chain '{top.get('chain_name')}' exists for this tech "
+                f"stack ({steps}{payout}) — worth checking whether this finding extends into it")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1057,7 +1271,8 @@ class ReActAgent:
         self.time_budget_secs = time_budget_hours * 3600
         self.done       = False
         self.verdict    = ""
-        self._finish_duplicate_warned = False  # warn once, then let finish through
+        self._finish_duplicate_warned = False    # warn once, then let finish through
+        self._finish_unconfirmed_warned = False  # same, for the confirmed-PoC gate
 
         # ctf-agent techniques
         self.loop_detector = LoopDetector()
@@ -1238,6 +1453,16 @@ class ReActAgent:
                         results.append(f"[SYSTEM] {gate['reason']} If you've confirmed this is "
                                         f"genuinely new (different endpoint, changed since last time), "
                                         f"call finish again to proceed.")
+                        continue
+
+                # ── Exploit-validation gate: don't finish on unverified claims ──
+                if name == "finish" and not self._finish_unconfirmed_warned:
+                    gate = self.dispatcher.check_finish_for_unconfirmed()
+                    if gate["blocked"]:
+                        self._finish_unconfirmed_warned = True
+                        print(f"{YELLOW}[Agent] Finish gate: {gate['reason']}{NC}", flush=True)
+                        results.append(f"[SYSTEM] {gate['reason']} Call finish again once you've "
+                                        f"done what you can, or to proceed anyway.")
                         continue
 
                 # ── Loop detection ───────────────────────────────────────

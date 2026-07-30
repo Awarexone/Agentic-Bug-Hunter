@@ -269,3 +269,272 @@ class TestSessionSummaryWriteback:
         journal_path = os.path.join(h.BASE_DIR, "hunt-memory", "journal.jsonl")
         entry = json.loads(open(journal_path).readline())
         validate_journal_entry(entry)  # raises SchemaError if invalid
+
+
+class TestExperimentMemoryWiring:
+    """Item 1 — agent.py now writes granular per-category experiments.jsonl
+    entries (vuln_scanner.sh's own FINDINGS_DIR subdirs, content vs empty) and
+    surfaces should_stop()/payload_category_affinity() in priority_briefing()."""
+
+    @pytest.fixture
+    def findings_dir(self, h, domain):
+        d = os.path.join(h.FINDINGS_DIR, domain)
+        for sub in agent.ToolDispatcher._VULN_SCAN_SUBDIRS:
+            os.makedirs(os.path.join(d, sub), exist_ok=True)
+        return d
+
+    def test_logs_one_entry_per_subdir(self, dispatcher, findings_dir):
+        dispatcher._log_experiments_from_findings("run_vuln_scan", agent.ToolDispatcher._VULN_SCAN_SUBDIRS)
+        from memory.experiment_memory import ExperimentDB
+        db = ExperimentDB(os.path.join(_hunt_memory_dir(dispatcher), "experiments.jsonl"))
+        entries = db.read_all()
+        assert len(entries) == len(agent.ToolDispatcher._VULN_SCAN_SUBDIRS)
+
+    def test_nonempty_subdir_logs_success_empty_logs_fail(self, dispatcher, findings_dir):
+        with open(os.path.join(findings_dir, "sqli", "hit.txt"), "w") as f:
+            f.write("[CONFIRMED] [SQLI-POC-VERIFIED] url=https://test.example/api?id=1\n")
+
+        dispatcher._log_experiments_from_findings("run_vuln_scan", agent.ToolDispatcher._VULN_SCAN_SUBDIRS)
+
+        from memory.experiment_memory import ExperimentDB
+        db = ExperimentDB(os.path.join(_hunt_memory_dir(dispatcher), "experiments.jsonl"))
+        entries = {e["payload_category"]: e for e in db.read_all()}
+        assert entries["vuln_scan_sqli"]["result"] == "success"
+        assert entries["vuln_scan_xss"]["result"] == "fail"
+
+    def test_secret_hunt_uses_its_own_subdir_map(self, dispatcher, h, domain):
+        secrets_dir = os.path.join(h.FINDINGS_DIR, domain, "secrets")
+        os.makedirs(secrets_dir, exist_ok=True)
+        with open(os.path.join(secrets_dir, "trufflehog.jsonl"), "w") as f:
+            f.write('{"key": "leaked"}\n')
+
+        dispatcher._log_experiments_from_findings("run_secret_hunt", agent.ToolDispatcher._SECRET_HUNT_SUBDIRS)
+
+        from memory.experiment_memory import ExperimentDB
+        db = ExperimentDB(os.path.join(_hunt_memory_dir(dispatcher), "experiments.jsonl"))
+        entries = db.read_all()
+        assert len(entries) == 1
+        assert entries[0]["payload_category"] == "vuln_scan_secrets"
+        assert entries[0]["vuln_class"] == "info-disclosure"
+        assert entries[0]["result"] == "success"
+
+    def test_priority_briefing_includes_experiment_signal(self, dispatcher, findings_dir, h, domain):
+        os.makedirs(os.path.join(h.RECON_DIR, domain, "live"), exist_ok=True)
+        with open(os.path.join(h.RECON_DIR, domain, "live", "httpx_full.txt"), "w") as f:
+            f.write("https://test.example [express]\n")
+
+        dispatcher._log_experiments_from_findings("run_vuln_scan", agent.ToolDispatcher._VULN_SCAN_SUBDIRS)
+        briefing = dispatcher.priority_briefing()
+        assert "Experiment memory:" in briefing
+
+    def test_no_experiments_yet_no_signal_line(self, dispatcher, h, domain):
+        os.makedirs(os.path.join(h.RECON_DIR, domain, "live"), exist_ok=True)
+        with open(os.path.join(h.RECON_DIR, domain, "live", "httpx_full.txt"), "w") as f:
+            f.write("https://test.example [express]\n")
+        briefing = dispatcher.priority_briefing()
+        assert "Experiment memory:" not in briefing
+
+    def test_dispatch_run_vuln_scan_logs_experiments(self, monkeypatch, h, dispatcher, findings_dir):
+        monkeypatch.setattr(h, "run_vuln_scan", lambda d, quick=False, full=False: True)
+        dispatcher.dispatch("run_vuln_scan", {})
+        exp_path = os.path.join(_hunt_memory_dir(dispatcher), "experiments.jsonl")
+        assert os.path.isfile(exp_path)
+
+
+def _hunt_memory_dir(dispatcher) -> str:
+    return os.path.join(agent._h().BASE_DIR, "hunt-memory")
+
+
+class TestChainSignal:
+    """Item 2 — a HIGH/CRITICAL finding checks chains.jsonl for a confirmed
+    A->B shape already proven on this tech stack (chain-builder.md's own
+    memory consultation, ported into this loop since it can't invoke that
+    agent directly)."""
+
+    def _seed_recon(self, h, domain, tech_line="https://test.example [express] [postgresql]\n"):
+        live_dir = os.path.join(h.RECON_DIR, domain, "live")
+        os.makedirs(live_dir, exist_ok=True)
+        with open(os.path.join(live_dir, "httpx_full.txt"), "w") as f:
+            f.write(tech_line)
+
+    def _seed_chain(self, h, **overrides):
+        from memory.vuln_intelligence import ChainDB
+        from memory.schemas import make_chain_entry
+
+        kwargs = dict(
+            target="other.com", chain_name="idor_read_write_asymmetry",
+            steps=["idor read on /api/orders/{id}", "same endpoint PUT with attacker session"],
+            tech_stack=["express", "postgresql"], payout=3000, severity="critical",
+        )
+        kwargs.update(overrides)
+        ChainDB(os.path.join(h.BASE_DIR, "hunt-memory", "chains.jsonl")).save(make_chain_entry(**kwargs))
+
+    def test_critical_finding_gets_chain_hint(self, h, dispatcher, domain):
+        self._seed_recon(h, domain)
+        self._seed_chain(h)
+        dispatcher._classify_obs("run_vuln_scan", "CRITICAL: IDOR confirmed on /api/orders/42")
+        assert len(dispatcher.memory.findings_log) == 1
+        text = dispatcher.memory.findings_log[0]["text"]
+        assert "CHAIN CONTEXT" in text
+        assert "idor_read_write_asymmetry" in text
+
+    def test_medium_finding_gets_no_chain_hint(self, h, dispatcher, domain):
+        self._seed_recon(h, domain)
+        self._seed_chain(h)
+        dispatcher._classify_obs("run_vuln_scan", "MEDIUM: open redirect found at /go?url=x")
+        text = dispatcher.memory.findings_log[0]["text"]
+        assert "CHAIN CONTEXT" not in text
+
+    def test_no_chain_data_no_hint(self, h, dispatcher, domain):
+        self._seed_recon(h, domain)
+        dispatcher._classify_obs("run_vuln_scan", "CRITICAL: RCE confirmed via upload")
+        text = dispatcher.memory.findings_log[0]["text"]
+        assert "CHAIN CONTEXT" not in text
+
+    def test_no_tech_stack_no_hint(self, h, dispatcher, domain):
+        self._seed_chain(h)
+        dispatcher._classify_obs("run_vuln_scan", "CRITICAL: IDOR confirmed on /api/orders/42")
+        text = dispatcher.memory.findings_log[0]["text"]
+        assert "CHAIN CONTEXT" not in text
+
+    def test_chain_for_different_tech_stack_not_matched(self, h, dispatcher, domain):
+        self._seed_recon(h, domain)
+        self._seed_chain(h, tech_stack=["django", "mysql"])
+        dispatcher._classify_obs("run_vuln_scan", "CRITICAL: IDOR confirmed on /api/orders/42")
+        text = dispatcher.memory.findings_log[0]["text"]
+        assert "CHAIN CONTEXT" not in text
+
+
+class TestScannerTagClassification:
+    """Item 5 — vuln_scanner.sh's own [CONFIRMED]/[POSSIBLE] tags (real PoC
+    verification) must win over keyword guessing, which discarded that work."""
+
+    def test_confirmed_tag_is_always_critical_and_confirmed(self, dispatcher):
+        dispatcher._classify_obs(
+            "run_vuln_scan",
+            "[CONFIRMED] [SQLI-POC-VERIFIED] dialect=mysql param=1 url=https://test.example/api?id=1",
+        )
+        f = dispatcher.memory.findings_log[0]
+        assert f["severity"] == "CRITICAL"
+        assert f["confirmed"] is True
+
+    def test_possible_tag_severity_comes_from_content_not_flattened(self, dispatcher):
+        dispatcher._classify_obs(
+            "run_vuln_scan",
+            "[POSSIBLE] [SQLI-CANDIDATE] dialect=mysql param=2 url=https://test.example/api?id=2",
+        )
+        f = dispatcher.memory.findings_log[0]
+        assert f["severity"] == "HIGH"  # content-driven, not a fixed POSSIBLE->MEDIUM flattening
+        assert f["confirmed"] is False
+
+    def test_possible_tag_with_no_severity_keyword_defaults_medium(self, dispatcher):
+        dispatcher._classify_obs(
+            "run_vuln_scan", "[POSSIBLE] [UNCLASSIFIED-SIGNAL] endpoint returned 200 unexpectedly",
+        )
+        f = dispatcher.memory.findings_log[0]
+        assert f["severity"] == "MEDIUM"
+        assert f["confirmed"] is False
+
+    def test_untagged_output_falls_back_to_keyword_guess_unconfirmed(self, dispatcher):
+        dispatcher._classify_obs("run_vuln_scan", "CRITICAL: something bad happened, rce detected")
+        f = dispatcher.memory.findings_log[0]
+        assert f["severity"] == "CRITICAL"
+        assert f["confirmed"] is False
+
+    def test_confirmed_takes_priority_over_possible_in_same_observation(self, dispatcher):
+        obs = (
+            "[POSSIBLE] [SQLI-CANDIDATE] url=https://test.example/api?id=1\n"
+            "[CONFIRMED] [RCE-POC] url=https://test.example/upload/shell.php"
+        )
+        dispatcher._classify_obs("run_vuln_scan", obs)
+        assert len(dispatcher.memory.findings_log) == 1
+        f = dispatcher.memory.findings_log[0]
+        assert f["confirmed"] is True
+        assert "RCE-POC" in f["text"]
+
+    def test_no_tag_no_keyword_no_finding_logged(self, dispatcher):
+        dispatcher._classify_obs("run_vuln_scan", "scan completed, nothing notable")
+        assert dispatcher.memory.findings_log == []
+
+
+class TestFinishUnconfirmedGate:
+    """Item 5 — don't let the loop finish declaring HIGH/CRITICAL impact when
+    nothing verified it (agent.py's version of validation-engine's impact-proven
+    check)."""
+
+    def test_no_findings_not_blocked(self, dispatcher):
+        assert dispatcher.check_finish_for_unconfirmed()["blocked"] is False
+
+    def test_unconfirmed_high_finding_blocks(self, dispatcher):
+        dispatcher._classify_obs(
+            "run_vuln_scan", "[POSSIBLE] [SQLI-CANDIDATE] url=https://test.example/api?id=1",
+        )
+        result = dispatcher.check_finish_for_unconfirmed()
+        assert result["blocked"] is True
+        assert "[CONFIRMED]" in result["reason"]
+
+    def test_confirmed_finding_among_notable_unblocks(self, dispatcher):
+        dispatcher._classify_obs(
+            "run_vuln_scan", "[POSSIBLE] [SQLI-CANDIDATE] url=https://test.example/api?id=1",
+        )
+        dispatcher._classify_obs(
+            "run_vuln_scan", "[CONFIRMED] [RCE-POC] url=https://test.example/upload/shell.php",
+        )
+        result = dispatcher.check_finish_for_unconfirmed()
+        assert result["blocked"] is False
+
+    def test_medium_finding_not_checked(self, dispatcher):
+        dispatcher._classify_obs(
+            "run_vuln_scan", "[POSSIBLE] [UNCLASSIFIED-SIGNAL] nothing severity-worthy here",
+        )
+        result = dispatcher.check_finish_for_unconfirmed()
+        assert result["blocked"] is False
+        assert "no HIGH/CRITICAL" in result["reason"]
+
+    def test_warn_flags_exist_on_react_agent_for_once_only_gating(self):
+        # ReActAgent.__init__ needs a live Ollama server to construct (not
+        # available in this test env) -- verify the warn-once flags it sets
+        # exist in source instead of constructing a real instance.
+        import inspect
+        src = inspect.getsource(agent.ReActAgent.__init__)
+        assert "_finish_duplicate_warned" in src
+        assert "_finish_unconfirmed_warned" in src
+
+
+class TestImpactRecalibrationInBriefing:
+    """Item 6 — priority_briefing() surfaces when the impact prior was
+    recalibrated from real report_outcomes.jsonl data, not just the score."""
+
+    def _seed_recon(self, h, domain):
+        live_dir = os.path.join(h.RECON_DIR, domain, "live")
+        os.makedirs(live_dir, exist_ok=True)
+        with open(os.path.join(live_dir, "httpx_full.txt"), "w") as f:
+            f.write("https://test.example [express] [postgresql]\n")
+
+    def _seed_pattern_and_outcomes(self, h, domain, n=5, outcome="accepted"):
+        from memory.pattern_db import PatternDB
+        from memory.schemas import make_pattern_entry, make_report_outcome_entry
+        from memory.vuln_intelligence import ReportOutcomeDB
+
+        memory_dir = os.path.join(h.BASE_DIR, "hunt-memory")
+        PatternDB(os.path.join(memory_dir, "patterns.jsonl")).save(
+            make_pattern_entry(target="other.com", vuln_class="idor", technique="id_swap",
+                                tech_stack=["express", "postgresql"], payout=1500)
+        )
+        odb = ReportOutcomeDB(os.path.join(memory_dir, "report_outcomes.jsonl"))
+        for i in range(n):
+            odb.save(make_report_outcome_entry(
+                target=f"target{i}.com", vuln_class="idor", outcome=outcome,
+            ))
+
+    def test_briefing_shows_recalibration_note_when_sample_large_enough(self, h, dispatcher, domain):
+        self._seed_recon(h, domain)
+        self._seed_pattern_and_outcomes(h, domain, n=5, outcome="accepted")
+        briefing = dispatcher.priority_briefing()
+        assert "impact recalibrated" in briefing
+
+    def test_briefing_has_no_recalibration_note_below_threshold(self, h, dispatcher, domain):
+        self._seed_recon(h, domain)
+        self._seed_pattern_and_outcomes(h, domain, n=2, outcome="accepted")
+        briefing = dispatcher.priority_briefing()
+        assert "impact recalibrated" not in briefing

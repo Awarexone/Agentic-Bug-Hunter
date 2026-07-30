@@ -7,6 +7,7 @@ from memory.vuln_intelligence import (
     FailedPatternDB,
     HypothesisDB,
     ReportOutcomeDB,
+    VULN_IMPACT_POTENTIAL,
     duplicate_or_noise_check,
     endpoint_shape_stats,
     expected_value_per_hour,
@@ -540,3 +541,63 @@ class TestHypothesisCalibration:
         result = hypothesis_calibration(hyps, journal_entries=journal)
         bucket = next(b for b in result["buckets"] if b["confidence_bucket"] == "60-80")
         assert bucket["actual_hit_rate"] == 100
+
+
+class TestImpactRecalibration:
+    """Item 6 — priority_score()'s static VULN_IMPACT_POTENTIAL prior gets
+    bounded-blended toward report_outcomes.jsonl's observed acceptance rate
+    once there's enough real data, instead of staying a fixed constant forever."""
+
+    def test_no_report_outcomes_uses_static_prior(self):
+        r = priority_score("idor", ["express"], "a.com")
+        assert r["components"]["impact_potential"] == VULN_IMPACT_POTENTIAL["idor"]
+        assert r["impact_recalibration"]["recalibrated"] is False
+        assert r["impact_recalibration"]["sample_size"] == 0
+
+    def test_below_min_sample_size_uses_static_prior(self):
+        outcomes = [{"vuln_class": "idor", "outcome": "accepted"}] * 4  # min is 5
+        r = priority_score("idor", ["express"], "a.com", report_outcomes=outcomes)
+        assert r["impact_recalibration"]["recalibrated"] is False
+        assert r["impact_recalibration"]["sample_size"] == 4
+
+    def test_high_acceptance_pulls_impact_up_but_bounded(self):
+        outcomes = [{"vuln_class": "idor", "outcome": "accepted"}] * 5
+        r = priority_score("idor", ["express"], "a.com", report_outcomes=outcomes)
+        assert r["impact_recalibration"]["recalibrated"] is True
+        assert r["components"]["impact_potential"] > VULN_IMPACT_POTENTIAL["idor"]
+        assert r["components"]["impact_potential"] < 100  # never fully overwritten
+
+    def test_low_acceptance_pulls_impact_down(self):
+        outcomes = [{"vuln_class": "idor", "outcome": "not_applicable"}] * 5
+        r = priority_score("idor", ["express"], "a.com", report_outcomes=outcomes)
+        assert r["components"]["impact_potential"] < VULN_IMPACT_POTENTIAL["idor"]
+
+    def test_impact_override_bypasses_recalibration(self):
+        outcomes = [{"vuln_class": "idor", "outcome": "not_applicable"}] * 20
+        r = priority_score("idor", ["express"], "a.com", report_outcomes=outcomes, impact_override=99)
+        assert r["components"]["impact_potential"] == 99
+        assert r["impact_recalibration"]["recalibrated"] is False
+
+    def test_blend_weight_capped_at_half_even_with_huge_sample(self):
+        outcomes = [{"vuln_class": "idor", "outcome": "accepted"}] * 100
+        r = priority_score("idor", ["express"], "a.com", report_outcomes=outcomes)
+        assert r["impact_recalibration"]["blend_weight"] == 0.5
+        expected = round(VULN_IMPACT_POTENTIAL["idor"] * 0.5 + 100 * 0.5, 1)
+        assert r["components"]["impact_potential"] == expected
+
+    def test_unrelated_vuln_class_does_not_cross_contaminate(self):
+        outcomes = [{"vuln_class": "xss", "outcome": "accepted"}] * 10
+        r = priority_score("idor", ["express"], "a.com", report_outcomes=outcomes)
+        assert r["impact_recalibration"]["recalibrated"] is False
+
+    def test_expected_value_per_hour_exposes_recalibration(self):
+        outcomes = [{"vuln_class": "idor", "outcome": "accepted"}] * 5
+        ev = expected_value_per_hour("idor", ["express"], "a.com", report_outcomes=outcomes)
+        assert ev["impact_recalibration"]["recalibrated"] is True
+        assert ev["impact_recalibration"]["sample_size"] == 5
+
+    def test_unknown_vuln_class_recalibrates_from_default_prior(self):
+        outcomes = [{"vuln_class": "totally_novel", "outcome": "accepted"}] * 5
+        r = priority_score("totally_novel", ["express"], "a.com", report_outcomes=outcomes)
+        assert r["impact_recalibration"]["static_prior"] == 50  # DEFAULT_IMPACT_POTENTIAL
+        assert r["impact_recalibration"]["recalibrated"] is True

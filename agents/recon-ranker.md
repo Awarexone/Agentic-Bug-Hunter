@@ -88,6 +88,7 @@ Zero memory hits = confidence stays at the 20 floor, meaning "this is mindmap.py
 - **P1**: score ≥ 60
 - **P2**: 30 ≤ score < 60
 - **Kill list**: score < 30, OR a failed-pattern match, OR an explicit kill signal (CDN-only, static asset, third-party-hosted, out of scope)
+- **Needs Browser**: any lead-board entry with skill `hunt-browser-required` (SPA routing / client-only auth / WebSocket-only, flagged by `js-intelligence`). Score it normally for reference, but list it in its own section, not Kill — a low score here means "curl can't reach it," not "not worth testing." Point at `/hunt <target> --chrome` as the next step.
 
 ## Expected Value per Hour
 
@@ -142,6 +143,11 @@ Every P1/P2 entry's "why" must name the specific score components that fired —
 - api.target.com/webhooks/retry — score −100, KILLED: failed-pattern match
   (ssrf/webhook_url_param already tried and rejected here on 2026-03-01: "egress filtered")
 
+## Needs Browser (Chrome MCP — curl can't reach these)
+- app.target.com — score 58 (reference only, not curl-testable), hunt-browser-required lb-xxxxxx
+  Why not curl-testable: React Router SPA + client-side-only OAuth (js-intelligence.md)
+  Next step: `/hunt target.com --chrome`
+
 ## Memory Context
 - Tech-vuln affinity source: N patterns, M failed attempts (from intelligence-briefing.md)
 - Chains applied: <list any chain leads that boosted a score>
@@ -149,7 +155,7 @@ Every P1/P2 entry's "why" must name the specific score components that fired —
 
 ## Stats
 - Total endpoints: N
-- P1 targets: N | P2 targets: N | Kill list: N
+- P1 targets: N | P2 targets: N | Kill list: N | Needs Browser: N
 - Boosted by chain correlation: N
 - Killed by failed-pattern match: N
 - Previously tested: N (from hunt memory)
@@ -163,3 +169,4 @@ Every P1/P2 entry's "why" must name the specific score components that fired —
 4. GraphQL and WebSocket endpoints keep their base-signal floor (25 pts) even with zero memory — they're P1-by-default unless another rule (kill signal, failed pattern) overrides it.
 5. Admin panels behind auth are P2 (need creds). Unauthenticated admin panels are P1 via the base-signal table above.
 6. If two endpoints tie on score, break the tie by confidence, then by chain involvement.
+7. Never fold a `hunt-browser-required` lead into the Kill List regardless of its score — a low score there means "wrong tool for the job," not "not worth testing." List it under "Needs Browser" with the concrete next step (`--chrome`), so it stays visible instead of reading as dismissed.

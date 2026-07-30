@@ -162,6 +162,29 @@ def sample_experiment_entry():
 
 
 @pytest.fixture
+def hypotheses_path(tmp_hunt_dir):
+    """Path to a temporary hypotheses.jsonl file."""
+    return tmp_hunt_dir / "hypotheses.jsonl"
+
+
+@pytest.fixture
+def sample_hypothesis_entry():
+    """A valid hypothesis entry dict."""
+    return {
+        "ts": "2026-03-24T21:00:00Z",
+        "target": "target.com",
+        "vuln_class": "idor",
+        "endpoint": "/api/v2/users/{id}/orders",
+        "confidence": 91,
+        "hypothesis_name": "bola",
+        "tech_stack": ["express", "postgresql"],
+        "signals": ["numeric object id", "user-management endpoint"],
+        "source": "hypothesis-engine",
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+
+
+@pytest.fixture
 def sample_target_profile():
     """A valid target profile dict."""
     return {

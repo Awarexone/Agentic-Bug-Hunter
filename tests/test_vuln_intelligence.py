@@ -5,10 +5,12 @@ import pytest
 from memory.vuln_intelligence import (
     ChainDB,
     FailedPatternDB,
+    HypothesisDB,
     ReportOutcomeDB,
     duplicate_or_noise_check,
     endpoint_shape_stats,
     expected_value_per_hour,
+    hypothesis_calibration,
     normalize_endpoint,
     priority_score,
     tech_vuln_affinity,
@@ -445,3 +447,96 @@ class TestDuplicateOrNoiseCheck:
         journal = [{"target": "a.com", "vuln_class": "idor", "result": "rejected", "endpoint": "/api/users/1"}]
         result = duplicate_or_noise_check("a.com", "idor", "/api/users/1", journal_entries=journal)
         assert result["is_duplicate"] is False
+
+
+class TestHypothesisDB:
+
+    def test_save_and_read(self, hypotheses_path, sample_hypothesis_entry):
+        db = HypothesisDB(hypotheses_path)
+        assert db.save(sample_hypothesis_entry) is True
+        entries = db.read_all()
+        assert len(entries) == 1
+        assert entries[0]["confidence"] == 91
+
+    def test_accumulates_multiple_hypotheses_same_target_class(self, hypotheses_path, sample_hypothesis_entry):
+        db = HypothesisDB(hypotheses_path)
+        db.save(sample_hypothesis_entry)
+        entry2 = dict(sample_hypothesis_entry)
+        entry2["ts"] = "2026-04-01T10:00:00Z"
+        entry2["confidence"] = 60
+        assert db.save(entry2) is True
+        assert len(db.read_all()) == 2
+
+    def test_exact_duplicate_save_rejected(self, hypotheses_path, sample_hypothesis_entry):
+        db = HypothesisDB(hypotheses_path)
+        db.save(sample_hypothesis_entry)
+        assert db.save(dict(sample_hypothesis_entry)) is False
+
+
+class TestHypothesisCalibration:
+
+    def test_hit_via_report_outcome(self):
+        hyps = [{"target": "a.com", "vuln_class": "idor", "endpoint": "/api/users/1", "confidence": 90}]
+        outcomes = [{"target": "a.com", "vuln_class": "idor", "outcome": "accepted"}]
+        result = hypothesis_calibration(hyps, report_outcomes=outcomes)
+        bucket = next(b for b in result["buckets"] if b["confidence_bucket"] == "80-101")
+        assert bucket["resolved_count"] == 1
+        assert bucket["actual_hit_rate"] == 100
+        assert bucket["calibration_gap"] == -10.0  # stated 90, actual 100 -> underconfident
+
+    def test_miss_via_report_outcome(self):
+        hyps = [{"target": "a.com", "vuln_class": "xss", "endpoint": "/search", "confidence": 85}]
+        outcomes = [{"target": "a.com", "vuln_class": "xss", "outcome": "not_applicable"}]
+        result = hypothesis_calibration(hyps, report_outcomes=outcomes)
+        bucket = next(b for b in result["buckets"] if b["confidence_bucket"] == "80-101")
+        assert bucket["actual_hit_rate"] == 0
+        assert bucket["calibration_gap"] == 85.0  # stated 85, actual 0 -> badly overconfident
+
+    def test_hit_via_journal_when_no_report_outcome(self):
+        hyps = [{"target": "a.com", "vuln_class": "idor", "endpoint": "/api/users/12/orders", "confidence": 70}]
+        journal = [{"target": "a.com", "vuln_class": "idor", "endpoint": "/api/users/99/orders", "result": "confirmed"}]
+        result = hypothesis_calibration(hyps, journal_entries=journal)
+        bucket = next(b for b in result["buckets"] if b["confidence_bucket"] == "60-80")
+        assert bucket["resolved_count"] == 1
+        assert bucket["actual_hit_rate"] == 100
+
+    def test_report_outcome_takes_precedence_over_journal(self):
+        # A rejected journal entry for the same vuln_class shouldn't win over
+        # a report_outcomes entry that says it was actually accepted.
+        hyps = [{"target": "a.com", "vuln_class": "idor", "endpoint": "/api/users/1", "confidence": 70}]
+        journal = [{"target": "a.com", "vuln_class": "idor", "endpoint": "/api/users/1", "result": "rejected"}]
+        outcomes = [{"target": "a.com", "vuln_class": "idor", "outcome": "accepted"}]
+        result = hypothesis_calibration(hyps, journal_entries=journal, report_outcomes=outcomes)
+        bucket = next(b for b in result["buckets"] if b["confidence_bucket"] == "60-80")
+        assert bucket["actual_hit_rate"] == 100
+
+    def test_unresolved_hypothesis_not_counted_as_miss(self):
+        hyps = [{"target": "a.com", "vuln_class": "idor", "endpoint": "/api/users/1", "confidence": 70}]
+        result = hypothesis_calibration(hyps)
+        bucket = next(b for b in result["buckets"] if b["confidence_bucket"] == "60-80")
+        assert bucket["resolved_count"] == 0
+        assert bucket["unresolved_count"] == 1
+        assert bucket["actual_hit_rate"] is None
+        assert bucket["calibration_gap"] is None
+
+    def test_buckets_are_separate_per_confidence_range(self):
+        hyps = [
+            {"target": "a.com", "vuln_class": "idor", "endpoint": "/x", "confidence": 10},
+            {"target": "b.com", "vuln_class": "idor", "endpoint": "/y", "confidence": 90},
+        ]
+        result = hypothesis_calibration(hyps)
+        buckets = {b["confidence_bucket"] for b in result["buckets"]}
+        assert buckets == {"0-20", "80-101"}
+
+    def test_empty_hypotheses_gives_no_buckets(self):
+        assert hypothesis_calibration([]) == {"buckets": []}
+
+    def test_endpoint_shape_matching_for_journal_resolution(self):
+        # /api/users/{id}/orders shape should match regardless of the
+        # specific numeric id, same normalize_endpoint() behavior used
+        # throughout the rest of the intelligence layer.
+        hyps = [{"target": "a.com", "vuln_class": "idor", "endpoint": "/api/users/12/orders", "confidence": 65}]
+        journal = [{"target": "a.com", "vuln_class": "idor", "endpoint": "/api/users/999/orders", "result": "partial"}]
+        result = hypothesis_calibration(hyps, journal_entries=journal)
+        bucket = next(b for b in result["buckets"] if b["confidence_bucket"] == "60-80")
+        assert bucket["actual_hit_rate"] == 100

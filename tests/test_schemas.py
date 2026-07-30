@@ -8,6 +8,7 @@ from memory.schemas import (
     validate_chain_entry,
     validate_report_outcome_entry,
     validate_experiment_entry,
+    validate_hypothesis_entry,
     validate_target_profile,
     make_journal_entry,
     make_pattern_entry,
@@ -15,6 +16,7 @@ from memory.schemas import (
     make_chain_entry,
     make_report_outcome_entry,
     make_experiment_entry,
+    make_hypothesis_entry,
     SchemaError,
     CURRENT_SCHEMA_VERSION,
 )
@@ -355,6 +357,21 @@ class TestFactoryFunctions:
         assert entry["result"] == "success"
         assert entry["schema_version"] == CURRENT_SCHEMA_VERSION
 
+    def test_make_hypothesis_entry(self):
+        entry = make_hypothesis_entry(
+            target="target.com",
+            vuln_class="idor",
+            endpoint="/api/v2/users/{id}/orders",
+            confidence=91,
+            hypothesis_name="bola",
+            tech_stack=["express"],
+            signals=["numeric object id"],
+            source="hypothesis-engine",
+        )
+        assert entry["confidence"] == 91
+        assert entry["hypothesis_name"] == "bola"
+        assert entry["schema_version"] == CURRENT_SCHEMA_VERSION
+
 
 class TestExperimentValidation:
 
@@ -412,3 +429,81 @@ class TestExperimentValidation:
     def test_not_a_dict(self):
         with pytest.raises(SchemaError, match="must be a dict"):
             validate_experiment_entry("not a dict")
+
+
+class TestHypothesisValidation:
+
+    def test_valid_full_entry(self, sample_hypothesis_entry):
+        result = validate_hypothesis_entry(sample_hypothesis_entry)
+        assert result == sample_hypothesis_entry
+
+    def test_valid_minimal_entry(self):
+        entry = {
+            "ts": "2026-03-24T21:00:00Z",
+            "target": "target.com",
+            "vuln_class": "idor",
+            "endpoint": "/api/v2/users/1",
+            "confidence": 50,
+            "schema_version": CURRENT_SCHEMA_VERSION,
+        }
+        assert validate_hypothesis_entry(entry) == entry
+
+    def test_missing_confidence(self, sample_hypothesis_entry):
+        del sample_hypothesis_entry["confidence"]
+        with pytest.raises(SchemaError, match="missing required fields.*confidence"):
+            validate_hypothesis_entry(sample_hypothesis_entry)
+
+    def test_confidence_above_100_rejected(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["confidence"] = 101
+        with pytest.raises(SchemaError, match="'confidence' must be a number 0-100"):
+            validate_hypothesis_entry(sample_hypothesis_entry)
+
+    def test_confidence_below_0_rejected(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["confidence"] = -1
+        with pytest.raises(SchemaError, match="'confidence' must be a number 0-100"):
+            validate_hypothesis_entry(sample_hypothesis_entry)
+
+    def test_confidence_boundary_values_accepted(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["confidence"] = 0
+        assert validate_hypothesis_entry(sample_hypothesis_entry)["confidence"] == 0
+        sample_hypothesis_entry["confidence"] = 100
+        assert validate_hypothesis_entry(sample_hypothesis_entry)["confidence"] == 100
+
+    def test_confidence_bool_rejected(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["confidence"] = True
+        with pytest.raises(SchemaError, match="'confidence' must be a number 0-100"):
+            validate_hypothesis_entry(sample_hypothesis_entry)
+
+    def test_confidence_non_numeric_rejected(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["confidence"] = "high"
+        with pytest.raises(SchemaError, match="'confidence' must be a number 0-100"):
+            validate_hypothesis_entry(sample_hypothesis_entry)
+
+    def test_empty_endpoint_rejected(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["endpoint"] = "  "
+        with pytest.raises(SchemaError, match="'endpoint' must be a non-empty"):
+            validate_hypothesis_entry(sample_hypothesis_entry)
+
+    def test_signals_not_list_rejected(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["signals"] = "one big signal"
+        with pytest.raises(SchemaError, match="'signals' must be a list of strings"):
+            validate_hypothesis_entry(sample_hypothesis_entry)
+
+    def test_tech_stack_not_list_rejected(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["tech_stack"] = "express"
+        with pytest.raises(SchemaError, match="'tech_stack' must be a list"):
+            validate_hypothesis_entry(sample_hypothesis_entry)
+
+    def test_empty_hypothesis_name_rejected(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["hypothesis_name"] = ""
+        with pytest.raises(SchemaError, match="'hypothesis_name' must be a non-empty"):
+            validate_hypothesis_entry(sample_hypothesis_entry)
+
+    def test_unknown_field_rejected(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["extra_field"] = "oops"
+        with pytest.raises(SchemaError, match="unknown fields"):
+            validate_hypothesis_entry(sample_hypothesis_entry)
+
+    def test_not_a_dict(self):
+        with pytest.raises(SchemaError, match="must be a dict"):
+            validate_hypothesis_entry("not a dict")

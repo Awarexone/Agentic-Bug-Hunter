@@ -33,6 +33,15 @@ but adds three things patterns.jsonl alone can't give you:
                          (report_outcomes.jsonl), or already died here
                          (failed_patterns.jsonl)? The memory-backed half of
                          validation-engine's duplicate/noise filter.
+  * HypothesisDB / hypothesis_calibration — logs every hypothesis
+                         hypothesis-engine generates with its stated
+                         confidence (hunt-memory/hypotheses.jsonl), then
+                         checks that confidence against what journal.jsonl /
+                         report_outcomes.jsonl say actually happened. Closes
+                         the reasoning-quality feedback loop: a vuln class
+                         whose 80-100%-confidence hypotheses only convert
+                         40% of the time should get less trust next time,
+                         not the same blind confidence forever.
 
 Agents that only have bash/read/glob/grep (no python execution) reach this
 through the CLI at the bottom: `python3 -m memory.vuln_intelligence <cmd>`.
@@ -52,9 +61,11 @@ from memory.schemas import (
     SchemaError,
     make_chain_entry,
     make_failed_pattern_entry,
+    make_hypothesis_entry,
     make_report_outcome_entry,
     validate_chain_entry,
     validate_failed_pattern_entry,
+    validate_hypothesis_entry,
     validate_report_outcome_entry,
 )
 
@@ -282,6 +293,109 @@ class ReportOutcomeDB(_JsonlDB):
             })
         results.sort(key=lambda r: (r["acceptance_rate"] or 0, r["sample_size"]), reverse=True)
         return {"by_vuln_class": results}
+
+
+class HypothesisDB(_JsonlDB):
+    """Every hypothesis hypothesis-engine generated, with its stated confidence.
+
+    Not deduplicated on a narrow key (same reasoning as ReportOutcomeDB): the
+    same target+vuln_class+endpoint can legitimately be re-hypothesized as
+    new signals accumulate, and each generation is its own calibration data
+    point. This is the *prediction* half of the calibration loop —
+    hypothesis_calibration() below joins it against journal.jsonl /
+    report_outcomes.jsonl (the *actual* half) by target+vuln_class+endpoint
+    shape, the same join key duplicate_or_noise_check() uses.
+    """
+
+    dedup_fields = ("target", "vuln_class", "endpoint", "confidence", "ts")
+
+    def _validate(self, entry: dict) -> dict:
+        return validate_hypothesis_entry(entry)
+
+
+def hypothesis_calibration(
+    hypotheses: list[dict],
+    journal_entries: list[dict] | None = None,
+    report_outcomes: list[dict] | None = None,
+) -> dict:
+    """Does hypothesis-engine's stated confidence match what actually happens?
+
+    Buckets hypotheses by confidence decile-ish range, and for each bucket
+    resolves whether the hypothesis panned out: a matching report_outcomes
+    entry (accepted/triaged/resolved) counts as a hit; failing that, a
+    matching journal entry (confirmed/partial) counts as a hit; a hypothesis
+    with neither is unresolved (not yet tested), not a miss — don't punish
+    the confidence score for something never actually tried.
+
+    `calibration_gap` = stated confidence average minus actual hit rate.
+    Positive = overconfident (says 90%, converts at 60%). Negative =
+    underconfident. hypothesis-engine should read this and adjust, not
+    just report raw signal counts as if every bucket is equally trustworthy.
+    """
+    journal_entries = journal_entries or []
+    report_outcomes = report_outcomes or []
+
+    def _resolved(h: dict) -> tuple[bool, bool]:
+        """Returns (hit, resolved)."""
+        target = h.get("target")
+        vuln_class = h.get("vuln_class")
+        shape = normalize_endpoint(h.get("endpoint", ""))
+
+        matching_outcomes = [
+            o for o in report_outcomes
+            if o.get("target") == target and o.get("vuln_class") == vuln_class
+        ]
+        if matching_outcomes:
+            good = {"accepted", "triaged", "resolved"}
+            return any(o.get("outcome") in good for o in matching_outcomes), True
+
+        matching_journal = [
+            j for j in journal_entries
+            if j.get("target") == target and j.get("vuln_class") == vuln_class
+            and normalize_endpoint(j.get("endpoint", "")) == shape
+        ]
+        if matching_journal:
+            good_results = {"confirmed", "partial"}
+            return any(j.get("result") in good_results for j in matching_journal), True
+
+        return False, False
+
+    bucket_edges = [(0, 20), (20, 40), (40, 60), (60, 80), (80, 101)]
+
+    def _bucket_for(confidence: float) -> tuple[int, int]:
+        for lo, hi in bucket_edges:
+            if lo <= confidence < hi:
+                return (lo, hi)
+        return bucket_edges[-1]
+
+    buckets: dict[tuple[int, int], dict] = {}
+    for h in hypotheses:
+        confidence = h.get("confidence", 0)
+        b = _bucket_for(confidence)
+        d = buckets.setdefault(b, {"count": 0, "resolved": 0, "hits": 0, "confidence_sum": 0.0})
+        d["count"] += 1
+        d["confidence_sum"] += confidence
+        hit, resolved = _resolved(h)
+        if resolved:
+            d["resolved"] += 1
+            if hit:
+                d["hits"] += 1
+
+    results = []
+    for (lo, hi), d in sorted(buckets.items()):
+        stated_avg = round(d["confidence_sum"] / d["count"], 1) if d["count"] else 0.0
+        actual_rate = round(100 * d["hits"] / d["resolved"]) if d["resolved"] else None
+        results.append({
+            "confidence_bucket": f"{lo}-{hi}",
+            "stated_confidence_avg": stated_avg,
+            "hypotheses_count": d["count"],
+            "resolved_count": d["resolved"],
+            "unresolved_count": d["count"] - d["resolved"],
+            "actual_hit_rate": actual_rate,
+            "calibration_gap": (round(stated_avg - actual_rate, 1) if actual_rate is not None else None),
+        })
+
+    return {"buckets": results}
 
 
 def tech_vuln_affinity(
@@ -651,6 +765,7 @@ def _memory_paths(memory_dir: str) -> dict[str, Path]:
         "chains": base / "chains.jsonl",
         "journal": base / "journal.jsonl",
         "report_outcomes": base / "report_outcomes.jsonl",
+        "hypotheses": base / "hypotheses.jsonl",
     }
 
 
@@ -815,6 +930,35 @@ def _cmd_duplicate_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_save_hypothesis(args: argparse.Namespace) -> int:
+    paths = _memory_paths(args.memory_dir)
+    entry = make_hypothesis_entry(
+        target=args.target,
+        vuln_class=args.vuln_class,
+        endpoint=args.endpoint,
+        confidence=args.confidence,
+        hypothesis_name=args.hypothesis_name,
+        tech_stack=[t.strip() for t in args.tech_stack.split(",") if t.strip()] if args.tech_stack else None,
+        signals=[s.strip() for s in args.signals.split("|") if s.strip()] if args.signals else None,
+        source=args.source,
+    )
+    saved = HypothesisDB(paths["hypotheses"]).save(entry)
+    print(json.dumps({"saved": saved, "entry": entry}, indent=2))
+    return 0
+
+
+def _cmd_calibration(args: argparse.Namespace) -> int:
+    paths = _memory_paths(args.memory_dir)
+    hypotheses = HypothesisDB(paths["hypotheses"]).read_all()
+    if args.vuln_class:
+        hypotheses = [h for h in hypotheses if h.get("vuln_class") == args.vuln_class]
+    journal = _read_jsonl_best_effort(paths["journal"])
+    outcomes = ReportOutcomeDB(paths["report_outcomes"]).read_all()
+    result = hypothesis_calibration(hypotheses, journal_entries=journal, report_outcomes=outcomes)
+    print(json.dumps(result, indent=2))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Vulnerability intelligence layer — query/update hunt memory")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -909,6 +1053,23 @@ def main() -> int:
     p.add_argument("--endpoint", required=True)
     p.add_argument("--memory-dir", default="hunt-memory")
     p.set_defaults(func=_cmd_duplicate_check)
+
+    p = sub.add_parser("save-hypothesis", help="Log a generated hypothesis with its stated confidence")
+    p.add_argument("--target", required=True)
+    p.add_argument("--vuln-class", required=True)
+    p.add_argument("--endpoint", required=True)
+    p.add_argument("--confidence", type=float, required=True, help="0-100")
+    p.add_argument("--hypothesis-name", default=None)
+    p.add_argument("--tech-stack", default=None, help="Comma-separated")
+    p.add_argument("--signals", default=None, help="Pipe-separated, e.g. 'signal one|signal two'")
+    p.add_argument("--source", default=None, help="e.g. hypothesis-engine, lead-board-chain, lead-board-hypothesis")
+    p.add_argument("--memory-dir", default="hunt-memory")
+    p.set_defaults(func=_cmd_save_hypothesis)
+
+    p = sub.add_parser("calibration", help="Does stated hypothesis confidence match actual outcomes?")
+    p.add_argument("--vuln-class", default=None)
+    p.add_argument("--memory-dir", default="hunt-memory")
+    p.set_defaults(func=_cmd_calibration)
 
     args = ap.parse_args()
     try:

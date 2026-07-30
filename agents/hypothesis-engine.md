@@ -61,6 +61,14 @@ python3 -m memory.vuln_intelligence priority --vuln-class <class> --tech "<stack
 ```
 `priority`'s returned `score` is a good confidence anchor — don't just eyeball a percentage, ground it in that number (adjusted by how much direct evidence you have beyond memory).
 
+## Calibration Check (before finalizing any confidence number)
+
+You are not the only judge of whether your own confidence numbers are trustworthy — check:
+```bash
+python3 -m memory.vuln_intelligence calibration --vuln-class <class> --memory-dir hunt-memory
+```
+This buckets every past hypothesis you've generated for this vuln class by stated confidence and compares it to what actually happened (paid report or confirmed finding vs. rejected/never-tested). A `calibration_gap` > 15 in the bucket your new hypothesis would land in means past hypotheses at this confidence level have been systematically overconfident — pull your stated confidence down toward the bucket's `actual_hit_rate` instead of restating the same optimistic number. A negative gap (underconfident) means you can trust this bucket's numbers, or even round up slightly. `unresolved_count` high relative to `resolved_count` means there isn't enough data yet to trust the gap — say so, don't treat a 1-sample bucket as settled science.
+
 ## Output: `recon/<target>/hypotheses.md`
 
 ```markdown
@@ -115,12 +123,26 @@ Expected Impact:
 - Backed by memory (tech affinity / endpoint-stats): N
 - Heuristic-only (no memory, mindmap.py priors): N
 - Suppressed by failed-pattern match: N
+- Confidence adjusted down by calibration: N (name which vuln classes and by how much)
 ```
+
+## Log Every Hypothesis (after writing hypotheses.md, before finishing)
+
+The markdown file is for the hunter to read; the memory log is what lets a *future* run check whether today's confidence numbers held up. Log every hypothesis you wrote to the file — P1 and P2 both, not just the ones that get tested:
+```bash
+python3 -m memory.vuln_intelligence save-hypothesis --target <target> --vuln-class idor \
+  --endpoint "/api/v2/users/{id}/orders" --confidence 91 --hypothesis-name bola \
+  --tech-stack "express,postgresql" \
+  --signals "REST API, numeric object IDs|user-management endpoint|idor net_score +8 on this stack" \
+  --source hypothesis-engine --memory-dir hunt-memory
+```
+For a hypothesis promoted from a lead-board correlation, set `--source lead-board-chain` or `--source lead-board-hypothesis` instead — this lets `calibration` later tell you whether lead-board-detected correlations are better-calibrated than hypotheses you generated from scratch.
 
 ## Rules
 
 1. Every hypothesis needs an affected endpoint. "This tech stack is generally risky" is not a hypothesis — pin it to a specific URL or lead-board entry.
-2. Confidence isn't vibes. Ground it in `priority_score`'s numeric output, the number of matching memory patterns, and whether a lead-board correlation backs it — state which of those you used.
+2. Confidence isn't vibes. Ground it in `priority_score`'s numeric output, the number of matching memory patterns, whether a lead-board correlation backs it, and the calibration check above — state which of those you used, and whether calibration pulled the number down.
 3. A `source: "hypothesis"` lead on the board (3-way same-host correlation) always outranks a single-signal hypothesis at the same confidence level — it has more independent evidence behind it.
 4. Never generate a hypothesis for a target+technique combination already in `failed_patterns.jsonl` — list it under "Killed / Not Generated" instead, with the reason.
 5. You generate hypotheses; you do not test them and you do not decide final P1/P2 ordering — that's `recon-ranker`'s job, using your output as one of its inputs.
+6. Log every hypothesis via `save-hypothesis`, even ones you're not fully confident in — an unresolved or wrong hypothesis is still a calibration data point. Only exception: don't log ones you suppressed under "Killed / Not Generated" (those never became a real confidence claim).

@@ -57,6 +57,18 @@ EXPERIMENT_OPTIONAL = {
 }
 EXPERIMENT_ALL = EXPERIMENT_REQUIRED | EXPERIMENT_OPTIONAL
 
+# A hypothesis at the moment hypothesis-engine generated it: what it
+# predicted (vuln_class, endpoint, a stated confidence 0-100) and why
+# (signals). Logged so the prediction can be checked against what actually
+# happened later — journal.jsonl / report_outcomes.jsonl have the outcome,
+# this has the forecast. Neither file alone can answer "was hypothesis-
+# engine's 90%-confidence bucket actually right 90% of the time."
+HYPOTHESIS_REQUIRED = {"ts", "target", "vuln_class", "endpoint", "confidence", "schema_version"}
+HYPOTHESIS_OPTIONAL = {
+    "hypothesis_name", "tech_stack", "signals", "source", "notes", "tags", "session_id",
+}
+HYPOTHESIS_ALL = HYPOTHESIS_REQUIRED | HYPOTHESIS_OPTIONAL
+
 
 def _current_session_id() -> str | None:
     """Return the BBHUNT_SESSION_ID env var if set (the auth-aware hash).
@@ -362,6 +374,58 @@ def validate_experiment_entry(entry: dict) -> dict:
     return entry
 
 
+def validate_hypothesis_entry(entry: dict) -> dict:
+    """Validate a hypothesis entry. Returns the entry if valid, raises SchemaError if not.
+
+    Not deduplicated on a narrow key (same reasoning as ReportOutcomeDB /
+    ExperimentDB): the same target+vuln_class+endpoint can legitimately be
+    re-hypothesized across sessions as new signals accumulate, and each
+    generation is its own calibration data point.
+    """
+    if not isinstance(entry, dict):
+        raise SchemaError(f"Hypothesis entry must be a dict, got {type(entry).__name__}")
+
+    _check_required(entry, HYPOTHESIS_REQUIRED, "Hypothesis entry")
+    _check_unknown_fields(entry, HYPOTHESIS_ALL, "Hypothesis entry")
+    _check_schema_version(entry)
+    _check_timestamp(entry["ts"], "ts")
+
+    if not isinstance(entry["target"], str) or not entry["target"].strip():
+        raise SchemaError("Hypothesis entry: 'target' must be a non-empty string")
+
+    if not isinstance(entry["vuln_class"], str) or not entry["vuln_class"].strip():
+        raise SchemaError("Hypothesis entry: 'vuln_class' must be a non-empty string")
+
+    if not isinstance(entry["endpoint"], str) or not entry["endpoint"].strip():
+        raise SchemaError("Hypothesis entry: 'endpoint' must be a non-empty string")
+
+    confidence = entry["confidence"]
+    if not isinstance(confidence, (int, float)) or isinstance(confidence, bool) or not (0 <= confidence <= 100):
+        raise SchemaError(f"Hypothesis entry: 'confidence' must be a number 0-100, got {confidence!r}")
+
+    if "tech_stack" in entry:
+        if not isinstance(entry["tech_stack"], list) or not all(isinstance(t, str) for t in entry["tech_stack"]):
+            raise SchemaError("Hypothesis entry: 'tech_stack' must be a list of strings")
+
+    if "signals" in entry:
+        if not isinstance(entry["signals"], list) or not all(isinstance(s, str) for s in entry["signals"]):
+            raise SchemaError("Hypothesis entry: 'signals' must be a list of strings")
+
+    if "hypothesis_name" in entry:
+        if not isinstance(entry["hypothesis_name"], str) or not entry["hypothesis_name"].strip():
+            raise SchemaError("Hypothesis entry: 'hypothesis_name' must be a non-empty string")
+
+    if "tags" in entry:
+        if not isinstance(entry["tags"], list) or not all(isinstance(t, str) for t in entry["tags"]):
+            raise SchemaError("Hypothesis entry: 'tags' must be a list of strings")
+
+    if "session_id" in entry:
+        if not isinstance(entry["session_id"], str) or not entry["session_id"].strip():
+            raise SchemaError("Hypothesis entry: 'session_id' must be a non-empty string")
+
+    return entry
+
+
 def validate_target_profile(profile: dict) -> dict:
     """Validate a target profile. Returns the profile if valid, raises SchemaError if not."""
     if not isinstance(profile, dict):
@@ -640,6 +704,48 @@ def make_experiment_entry(
         entry["session_id"] = session_id
 
     return validate_experiment_entry(entry)
+
+
+def make_hypothesis_entry(
+    target: str,
+    vuln_class: str,
+    endpoint: str,
+    confidence: int | float,
+    hypothesis_name: str | None = None,
+    tech_stack: list[str] | None = None,
+    signals: list[str] | None = None,
+    source: str | None = None,
+    notes: str | None = None,
+    tags: list[str] | None = None,
+    session_id: str | None = None,
+) -> dict:
+    """Create and validate a new hypothesis entry with current timestamp."""
+    entry = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "target": target,
+        "vuln_class": vuln_class,
+        "endpoint": endpoint,
+        "confidence": confidence,
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+    if hypothesis_name is not None:
+        entry["hypothesis_name"] = hypothesis_name
+    if tech_stack is not None:
+        entry["tech_stack"] = tech_stack
+    if signals is not None:
+        entry["signals"] = signals
+    if source is not None:
+        entry["source"] = source
+    if notes is not None:
+        entry["notes"] = notes
+    if tags is not None:
+        entry["tags"] = tags
+    if session_id is None:
+        session_id = _current_session_id()
+    if session_id is not None:
+        entry["session_id"] = session_id
+
+    return validate_hypothesis_entry(entry)
 
 
 def validate_audit_entry(entry: dict) -> dict:

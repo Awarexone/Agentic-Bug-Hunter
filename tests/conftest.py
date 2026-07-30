@@ -71,6 +71,51 @@ def sample_pattern_entry():
 
 
 @pytest.fixture
+def failed_patterns_path(tmp_hunt_dir):
+    """Path to a temporary failed_patterns.jsonl file."""
+    return tmp_hunt_dir / "failed_patterns.jsonl"
+
+
+@pytest.fixture
+def chains_path(tmp_hunt_dir):
+    """Path to a temporary chains.jsonl file."""
+    return tmp_hunt_dir / "chains.jsonl"
+
+
+@pytest.fixture
+def sample_failed_pattern_entry():
+    """A valid failed-pattern entry dict."""
+    return {
+        "ts": "2026-03-24T21:00:00Z",
+        "target": "target.com",
+        "vuln_class": "ssrf",
+        "technique": "webhook_url_param",
+        "tech_stack": ["express", "aws"],
+        "reason": "egress filtered, no callback",
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+
+
+@pytest.fixture
+def sample_chain_entry():
+    """A valid attack-chain entry dict."""
+    return {
+        "ts": "2026-03-24T21:00:00Z",
+        "target": "target.com",
+        "chain_name": "secret_plus_api",
+        "steps": [
+            "found API key in JS bundle",
+            "key authenticated to internal /admin API",
+            "read other tenants' invoices",
+        ],
+        "tech_stack": ["express", "aws"],
+        "payout": 4000,
+        "severity": "critical",
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+
+
+@pytest.fixture
 def sample_target_profile():
     """A valid target profile dict."""
     return {

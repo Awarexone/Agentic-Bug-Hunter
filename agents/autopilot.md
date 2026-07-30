@@ -47,12 +47,14 @@ for.
 ```
 1. SCOPE     Load program scope → parse into ScopeChecker allowlist
 2. RECON     Run recon pipeline (if not cached)
-3. RANK      Rank attack surface (recon-ranker agent)
+3. RANK      Build intelligence briefing (vulnerability-intelligence agent), then
+             rank attack surface (recon-ranker agent) against it
 4. HUNT      For each P1 target:
-               a. Select vuln class (memory-informed)
-               b. Test (via Burp MCP or curl fallback)
-               c. If signal → go deeper (A→B chain check)
-               d. If nothing after 5 min → rotate
+               a. Check failed_patterns.jsonl first — skip if this technique already died here
+               b. Select vuln class (memory-informed, chain-boosted)
+               c. Test (via Burp MCP or curl fallback)
+               d. If signal → go deeper (A→B chain check)
+               e. If nothing after 5 min → rotate
 5. VALIDATE  Run 7-Question Gate on any findings
 6. REPORT    Draft report for validated findings
 7. CHECKPOINT  Show findings to human
@@ -130,17 +132,17 @@ scope.filter_file("recon/target/urls.txt")
 
 ## Step 3: Rank
 
-Invoke the `recon-ranker` agent on cached recon. It produces:
-- P1 targets (start here)
-- P2 targets (after P1 exhausted)
-- Kill list (skip these)
+Invoke the `vulnerability-intelligence` agent first — it writes `recon/<target>/intelligence-briefing.md` (tech→vuln affinity, known chains, don't-retry list) from `hunt-memory/`. Then invoke `recon-ranker`, which scores the surface using that briefing plus the lead board (`memory/leads/<target>.jsonl`, including any chain leads `lead_board.py` detected during recon ingest). It produces:
+- P1 targets (score ≥ 60 — start here)
+- P2 targets (score 30–59, after P1 exhausted)
+- Kill list (score < 30, or a hard failed-pattern match)
 
 ## Step 4: Hunt
 
 For each P1 target endpoint:
 
-1. Check hunt memory — "Have I tested this before?"
-2. Select vuln class based on tech stack + URL pattern + memory
+1. Check hunt memory — "Have I tested this before?" Run `python3 -m memory.vuln_intelligence failed-check --target <target> --technique <technique> --memory-dir hunt-memory` before testing a technique the ranker didn't already kill; a hit means skip it, no exceptions.
+2. Select vuln class based on tech stack + URL pattern + memory. Prefer P1 entries the ranker flagged as chain-boosted — those are correlated signals, not isolated guesses.
 3. Test with appropriate technique
 4. Log every request to audit.jsonl
 5. If signal found → check chain table (A→B)

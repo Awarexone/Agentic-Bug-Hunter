@@ -13,6 +13,10 @@ Save a finding or successful pattern to persistent hunt memory.
 3. Prompts you to confirm or edit before saving
 4. Writes to `journal.jsonl` (always) + `patterns.jsonl` (if confirmed + payout > 0)
 5. Updates the target profile's `tested_endpoints` and `findings`
+6. Hands off to the `vulnerability-intelligence` agent's LEARN mode:
+   - `result: rejected` → agent runs `python3 -m memory.vuln_intelligence save-failed` so this exact target+technique is never re-suggested by `recon-ranker`/`autopilot` again
+   - `result: confirmed` and the finding traces back to a `source: "chain"` lead in `memory/leads/<target>.jsonl` → agent runs `save-chain` so the chain shape is recognized on future targets sharing this tech stack
+   - anything else (`partial`, `informational`, or a confirmed finding with no chain) → no additional write, `patterns.jsonl` already has it
 
 ## Usage
 
@@ -49,14 +53,15 @@ Save to hunt memory? [y/n]
 
 ## What Gets Written
 
-| Field | journal.jsonl | patterns.jsonl | target profile |
-|---|---|---|---|
-| Finding details | Always | If confirmed + payout > 0 | findings[] updated |
-| Tested endpoint | — | — | tested_endpoints[] updated |
-| Tech stack | — | From target profile | — |
+| Field | journal.jsonl | patterns.jsonl | failed_patterns.jsonl | chains.jsonl | target profile |
+|---|---|---|---|---|---|
+| Finding details | Always | If confirmed + payout > 0 | If rejected | If confirmed from a detected chain | findings[] updated |
+| Tested endpoint | — | — | — | — | tested_endpoints[] updated |
+| Tech stack | — | From target profile | From target profile | From target profile | — |
 
 ## Why This Matters
 
 - Next time you hunt a target with similar tech stack, your successful patterns are suggested first
+- Techniques that already failed here don't get re-suggested — `recon-ranker` hard-kills any endpoint matching a `failed_patterns.jsonl` entry
 - `/pickup target.com` shows which endpoints you've tested and which remain
-- Cross-target learning: patterns from target A inform hunting on target B
+- Cross-target learning: patterns AND confirmed chains from target A inform hunting on target B

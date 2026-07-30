@@ -75,7 +75,7 @@ ROUTES = [
      "url", "hunt-mfa-bypass", P_MED, "MFA surface", "MFA bypass: response-tamper, rate-limit, backup-code"),
     (R(r"wss?://|/ws\b|/socket|/cable|/live\b|/realtime|sockjs", re.I),
      "url", "hunt-websocket", P_MED, "WebSocket", "cross-site WS hijack, origin check, auth-over-WS"),
-    (R(r"\.git\b|/\.env\b|\.svn|\.map(\?|$)|/backup|\.bak\b|\.old\b|\.sql(\?|$)|\.zip(\?|$)|\.tar|/_next/static", re.I),
+    (R(r"\.git\b|/\.env\b|\.svn|\.map(\?|$)|/backup|\.bak\b|\.old\b|\.sql(\?|$)|\.zip(\?|$)|\.tar(\.gz)?(\?|$)|/_next/static", re.I),
      "url", "hunt-source-leak", P_HIGH, "exposed source/artifact", "source map / .git / backup -> secrets+logic"),
     (R(r"/wp-(json|admin|content|login)|xmlrpc\.php", re.I),
      "url", "hunt-misc", P_MED, "WordPress", "plugin CVEs, xmlrpc, user enum"),
@@ -136,6 +136,88 @@ HIGH_VALUE = {"hunt-idor", "hunt-graphql", "hunt-ssrf", "hunt-llm-ai",
 PRIO_RANK = {P_HIGH: 0, P_MED: 1, P_LOW: 2}
 STATUS_ICON = {"new": "•", "investigating": "🔬", "killed": "☠️ ",
                "reported": "📤", "parked": "⏸ "}
+
+# ---------------------------------------------------------------------------
+# CORRELATION — two independently-routed leads on the same target are often
+# worth more together than apart. When both sides of a rule are present,
+# synthesize a composite "chain" lead so it floats to the top of the board
+# instead of getting worked as two unrelated low-signal items.
+# (chain_name, skills_a, skills_b, chain_skill_or_None, label, why)
+# chain_skill_or_None: which hunt-* skill the synthesized lead routes to;
+# None means "inherit whichever skill the B-side lead used".
+# ---------------------------------------------------------------------------
+CHAIN_RULES = [
+    ("secret_plus_api",
+     {"hunt-source-leak"}, {"hunt-api-misconfig", "hunt-graphql", "hunt-oauth", "hunt-idor"},
+     None, "exposed secret + API endpoint",
+     "a leaked credential/key sits near a live API on the same host -> check if it authenticates directly instead of assuming read-only exposure"),
+    ("idor_plus_account_surface",
+     {"hunt-idor"}, {"hunt-ato", "hunt-auth-bypass"},
+     "hunt-idor", "ID parameter + user-object endpoint",
+     "an object-reference candidate sits near an account/auth surface -> likely exposes full user PII, not just a numeric id"),
+    ("cors_plus_sensitive",
+     {"hunt-cors"}, {"hunt-ato", "hunt-auth-bypass", "hunt-oauth"},
+     "hunt-cors", "CORS + sensitive endpoint",
+     "permissive CORS sits near an authenticated endpoint -> test cross-site credentialed read of session/account data"),
+    ("upload_plus_processing",
+     {"hunt-file-upload"}, {"hunt-rce", "hunt-ssrf"},
+     "hunt-file-upload", "upload + dangerous processing",
+     "an upload surface sits near a processing/fetch signal -> check ImageMagick/SSRF-via-thumbnail/RCE on re-encode"),
+]
+
+_HOST_RE = re.compile(r"https?://([^/\s]+)", re.I)
+
+
+def _host_of(evidence):
+    m = _HOST_RE.search(evidence or "")
+    return m.group(1).lower() if m else None
+
+
+def detect_chains(target, leads):
+    """Scan ``leads`` (mutated in place) for CHAIN_RULES matches and append
+    synthesized composite leads. Returns the number added.
+
+    Same-host pairs (both legs' evidence resolve to the same hostname) are
+    P_HIGH; cross-host pairs on the same target are P_MED — still worth a
+    look, but a weaker signal than two things happening on one endpoint.
+    Re-running on an unchanged lead set adds nothing (dedup on the pair).
+    """
+    existing_pairs = {
+        tuple(sorted(l["chain_of"])) for l in leads
+        if l.get("source") == "chain" and l.get("chain_of")
+    }
+    added = 0
+    for chain_name, skills_a, skills_b, chain_skill, label, why in CHAIN_RULES:
+        legs_a = [l for l in leads if l["skill"] in skills_a and l.get("source") != "chain"]
+        legs_b = [l for l in leads if l["skill"] in skills_b and l.get("source") != "chain"]
+        for a in legs_a:
+            host_a = _host_of(a["evidence"])
+            for b in legs_b:
+                if a["id"] == b["id"]:
+                    continue
+                pair_key = tuple(sorted([a["id"], b["id"]]))
+                if pair_key in existing_pairs:
+                    continue
+                host_b = _host_of(b["evidence"])
+                same_host = host_a is not None and host_a == host_b
+                ld = {
+                    "id": "lb-" + secrets.token_hex(3),
+                    "target": target,
+                    "skill": chain_skill or b["skill"],
+                    "priority": P_HIGH if same_host else P_MED,
+                    "signal": f"CHAIN: {label}",
+                    "why": why,
+                    "evidence": f"{a['evidence'][:100]}  +  {b['evidence'][:100]}",
+                    "source": "chain",
+                    "chain_name": chain_name,
+                    "chain_of": [a["id"], b["id"]],
+                    "status": "new", "note": "",
+                    "created": now_iso(), "last_seen": now_iso(), "seen_count": 1,
+                }
+                leads.append(ld)
+                existing_pairs.add(pair_key)
+                added += 1
+    return added
 
 
 def now_iso():
@@ -271,10 +353,14 @@ def ingest(target, recon_dir):
         upsert("hunt-llm-ai", P_HIGH, "confirmed AI endpoint",
                "ai_surface confirmed -> run ai_gauntlet.sh", a, "ai")
 
+    chains_added = detect_chains(target, leads)
+
     save_ledger(target, leads)
     print(f"[+] ingest {target}: +{added} new leads, {updated} re-seen "
           f"(total {len(leads)}). Ledger: {ledger_path(target)}")
-    if added:
+    if chains_added:
+        print(f"[!] {chains_added} correlated CHAIN lead(s) detected — run: lead_board.py show {target}")
+    elif added:
         print(f"[*] run:  lead_board.py show {target}    to see what to hunt next")
     return leads
 
@@ -297,6 +383,15 @@ def show(target, mode):
     print(f"\n=== LEAD BOARD: {target} — {len(leads)} leads ({counts}) ===")
 
     new = sorted(by_status.get("new", []), key=rank_key)
+
+    chain_leads = [l for l in new if l.get("source") == "chain"]
+    if chain_leads and mode in ("all", "new", None):
+        print(f"\n🔗 CHAINS DETECTED — {len(chain_leads)} correlated lead(s), investigate first:")
+        for l in chain_leads:
+            print(f"  [{l['priority']:>4}] {l['id']}  {l['skill']:<20} {l['signal']}")
+            print(f"         └─ {l['why']}")
+            print(f"         evidence: {l['evidence']}")
+
     if mode in ("all", "new", None):
         print(f"\n⚡ UNTOUCHED — work these (top {min(len(new),25)} of {len(new)}):")
         if not new:

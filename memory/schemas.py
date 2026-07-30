@@ -19,6 +19,20 @@ PATTERN_REQUIRED = {"ts", "target", "vuln_class", "technique", "tech_stack", "sc
 PATTERN_OPTIONAL = {"endpoint", "payout", "notes", "tags", "session_id"}
 PATTERN_ALL = PATTERN_REQUIRED | PATTERN_OPTIONAL
 
+# A technique that was tried and did NOT pan out, keyed the same way as a
+# successful pattern (target, vuln_class, technique) so recon-ranker /
+# autopilot can look up "have I already tried this here" and skip it.
+FAILED_PATTERN_REQUIRED = {"ts", "target", "vuln_class", "technique", "tech_stack", "schema_version"}
+FAILED_PATTERN_OPTIONAL = {"endpoint", "reason", "notes", "tags", "session_id"}
+FAILED_PATTERN_ALL = FAILED_PATTERN_REQUIRED | FAILED_PATTERN_OPTIONAL
+
+# A confirmed multi-signal exploit chain (A+B -> higher-severity finding),
+# persisted so the same chain shape can be recognized on a future target
+# with an overlapping tech stack.
+CHAIN_REQUIRED = {"ts", "target", "chain_name", "steps", "schema_version"}
+CHAIN_OPTIONAL = {"tech_stack", "endpoint", "payout", "severity", "notes", "tags", "session_id"}
+CHAIN_ALL = CHAIN_REQUIRED | CHAIN_OPTIONAL
+
 
 def _current_session_id() -> str | None:
     """Return the BBHUNT_SESSION_ID env var if set (the auth-aware hash).
@@ -144,6 +158,82 @@ def validate_pattern_entry(entry: dict) -> dict:
     return entry
 
 
+def validate_failed_pattern_entry(entry: dict) -> dict:
+    """Validate a failed-pattern entry. Returns the entry if valid, raises SchemaError if not.
+
+    Same shape as a pattern entry (target/vuln_class/technique/tech_stack) plus
+    an optional free-text 'reason' the technique didn't work — this is what lets
+    recon-ranker / autopilot skip a dead end instead of re-suggesting it.
+    """
+    if not isinstance(entry, dict):
+        raise SchemaError(f"Failed pattern entry must be a dict, got {type(entry).__name__}")
+
+    _check_required(entry, FAILED_PATTERN_REQUIRED, "Failed pattern entry")
+    _check_unknown_fields(entry, FAILED_PATTERN_ALL, "Failed pattern entry")
+    _check_schema_version(entry)
+    _check_timestamp(entry["ts"], "ts")
+
+    if not isinstance(entry["tech_stack"], list) or not all(isinstance(t, str) for t in entry["tech_stack"]):
+        raise SchemaError("Failed pattern entry: 'tech_stack' must be a list of strings")
+
+    if not isinstance(entry["technique"], str) or not entry["technique"].strip():
+        raise SchemaError("Failed pattern entry: 'technique' must be a non-empty string")
+
+    if "reason" in entry:
+        if not isinstance(entry["reason"], str) or not entry["reason"].strip():
+            raise SchemaError("Failed pattern entry: 'reason' must be a non-empty string")
+
+    if "session_id" in entry:
+        if not isinstance(entry["session_id"], str) or not entry["session_id"].strip():
+            raise SchemaError("Failed pattern entry: 'session_id' must be a non-empty string")
+
+    return entry
+
+
+def validate_chain_entry(entry: dict) -> dict:
+    """Validate an attack-chain entry. Returns the entry if valid, raises SchemaError if not.
+
+    'steps' captures the A->B(->C) narrative (e.g. ["exposed .env secret",
+    "secret authenticates to internal API", "API returns other tenants' data"])
+    so a future hunt on similar tech can recognize and re-run the same chain shape.
+    """
+    if not isinstance(entry, dict):
+        raise SchemaError(f"Chain entry must be a dict, got {type(entry).__name__}")
+
+    _check_required(entry, CHAIN_REQUIRED, "Chain entry")
+    _check_unknown_fields(entry, CHAIN_ALL, "Chain entry")
+    _check_schema_version(entry)
+    _check_timestamp(entry["ts"], "ts")
+
+    if not isinstance(entry["chain_name"], str) or not entry["chain_name"].strip():
+        raise SchemaError("Chain entry: 'chain_name' must be a non-empty string")
+
+    if not isinstance(entry["steps"], list) or not all(isinstance(s, str) and s.strip() for s in entry["steps"]):
+        raise SchemaError("Chain entry: 'steps' must be a list of non-empty strings")
+
+    if len(entry["steps"]) < 2:
+        raise SchemaError("Chain entry: 'steps' must have at least 2 entries to be a chain")
+
+    if "tech_stack" in entry:
+        if not isinstance(entry["tech_stack"], list) or not all(isinstance(t, str) for t in entry["tech_stack"]):
+            raise SchemaError("Chain entry: 'tech_stack' must be a list of strings")
+
+    if "severity" in entry and entry["severity"] not in VALID_SEVERITIES:
+        raise SchemaError(
+            f"Chain entry: 'severity' must be one of {sorted(VALID_SEVERITIES)}, got {entry['severity']!r}"
+        )
+
+    if "payout" in entry:
+        if not isinstance(entry["payout"], (int, float)) or entry["payout"] < 0:
+            raise SchemaError(f"Chain entry: 'payout' must be a non-negative number, got {entry['payout']!r}")
+
+    if "session_id" in entry:
+        if not isinstance(entry["session_id"], str) or not entry["session_id"].strip():
+            raise SchemaError("Chain entry: 'session_id' must be a non-empty string")
+
+    return entry
+
+
 def validate_target_profile(profile: dict) -> dict:
     """Validate a target profile. Returns the profile if valid, raises SchemaError if not."""
     if not isinstance(profile, dict):
@@ -258,6 +348,86 @@ def make_pattern_entry(
         entry["session_id"] = session_id
 
     return validate_pattern_entry(entry)
+
+
+def make_failed_pattern_entry(
+    target: str,
+    vuln_class: str,
+    technique: str,
+    tech_stack: list[str],
+    endpoint: str | None = None,
+    reason: str | None = None,
+    notes: str | None = None,
+    tags: list[str] | None = None,
+    session_id: str | None = None,
+) -> dict:
+    """Create and validate a new failed-pattern entry with current timestamp.
+
+    Call this when a technique is tried and rejected/killed, so the same
+    (target, vuln_class, technique) combination isn't re-suggested later.
+    """
+    entry = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "target": target,
+        "vuln_class": vuln_class,
+        "technique": technique,
+        "tech_stack": tech_stack,
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+    if endpoint is not None:
+        entry["endpoint"] = endpoint
+    if reason is not None:
+        entry["reason"] = reason
+    if notes is not None:
+        entry["notes"] = notes
+    if tags is not None:
+        entry["tags"] = tags
+    if session_id is None:
+        session_id = _current_session_id()
+    if session_id is not None:
+        entry["session_id"] = session_id
+
+    return validate_failed_pattern_entry(entry)
+
+
+def make_chain_entry(
+    target: str,
+    chain_name: str,
+    steps: list[str],
+    tech_stack: list[str] | None = None,
+    endpoint: str | None = None,
+    payout: int | float | None = None,
+    severity: str | None = None,
+    notes: str | None = None,
+    tags: list[str] | None = None,
+    session_id: str | None = None,
+) -> dict:
+    """Create and validate a new attack-chain entry with current timestamp."""
+    entry = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "target": target,
+        "chain_name": chain_name,
+        "steps": steps,
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+    if tech_stack is not None:
+        entry["tech_stack"] = tech_stack
+    if endpoint is not None:
+        entry["endpoint"] = endpoint
+    if payout is not None:
+        entry["payout"] = payout
+    if severity is not None:
+        entry["severity"] = severity
+    if notes is not None:
+        entry["notes"] = notes
+    if tags is not None:
+        entry["tags"] = tags
+    if session_id is None:
+        session_id = _current_session_id()
+    if session_id is not None:
+        entry["session_id"] = session_id
+
+    return validate_chain_entry(entry)
 
 
 def validate_audit_entry(entry: dict) -> dict:

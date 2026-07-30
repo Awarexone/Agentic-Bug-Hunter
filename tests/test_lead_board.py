@@ -68,3 +68,64 @@ def test_touch_unknown_lead_is_safe(isolated):
     lb.touch("t.example", "lb-doesnotexist", "killed", None)  # must not raise
     leads = lb.load_ledger("t.example")
     assert all(l["status"] != "killed" for l in leads)
+
+
+class TestChainDetection:
+    """Correlation: two independently-routed leads on the same target/host
+    should synthesize a composite high-priority chain lead."""
+
+    def test_secret_plus_api_same_host_detected(self, isolated):
+        rd = _make_recon(isolated, [
+            "https://api.t.example/.env",
+            "https://api.t.example/api/v2/users?id=1001",
+        ])
+        leads = lb.ingest("t.example", rd)
+        chains = [l for l in leads if l.get("source") == "chain"]
+        assert chains, "expected a secret+API chain lead"
+        assert chains[0]["priority"] == "high"
+        assert chains[0]["chain_name"] == "secret_plus_api"
+        assert len(chains[0]["chain_of"]) == 2
+
+    def test_no_chain_without_both_legs(self, isolated):
+        rd = _make_recon(isolated, ["https://api.t.example/api/v2/users?id=1001"])
+        leads = lb.ingest("t.example", rd)
+        assert not [l for l in leads if l.get("source") == "chain"]
+
+    def test_cross_host_chain_is_med_not_high(self, isolated):
+        rd = _make_recon(isolated, [
+            "https://admin.t.example/.env",
+            "https://api.t.example/api/v2/users?id=1001",
+        ])
+        leads = lb.ingest("t.example", rd)
+        chains = [l for l in leads if l.get("source") == "chain"]
+        assert chains
+        assert all(c["priority"] == "med" for c in chains)
+
+    def test_reingest_does_not_duplicate_chains(self, isolated):
+        rd = _make_recon(isolated, [
+            "https://api.t.example/.env",
+            "https://api.t.example/api/v2/users?id=1001",
+        ])
+        leads1 = lb.ingest("t.example", rd)
+        n_chains_1 = len([l for l in leads1 if l.get("source") == "chain"])
+        leads2 = lb.ingest("t.example", rd)
+        n_chains_2 = len([l for l in leads2 if l.get("source") == "chain"])
+        assert n_chains_1 == n_chains_2
+        assert n_chains_1 > 0
+
+    def test_chain_leads_appear_in_show_output(self, isolated, capsys):
+        rd = _make_recon(isolated, [
+            "https://api.t.example/.env",
+            "https://api.t.example/api/v2/users?id=1001",
+        ])
+        lb.ingest("t.example", rd)
+        lb.show("t.example", None)
+        out = capsys.readouterr().out
+        assert "CHAINS DETECTED" in out
+
+    def test_dot_tar_in_hostname_does_not_false_positive_source_leak(self, isolated):
+        # api.target.com contains the substring ".tar" (api.**tar**get.com) —
+        # regression guard for the unanchored \.tar false positive.
+        rd = _make_recon(isolated, ["https://api.target.com/api/v2/users?id=1001"])
+        leads = lb.ingest("target.com", rd)
+        assert "hunt-source-leak" not in {l["skill"] for l in leads}

@@ -4,9 +4,13 @@ import pytest
 from memory.schemas import (
     validate_journal_entry,
     validate_pattern_entry,
+    validate_failed_pattern_entry,
+    validate_chain_entry,
     validate_target_profile,
     make_journal_entry,
     make_pattern_entry,
+    make_failed_pattern_entry,
+    make_chain_entry,
     SchemaError,
     CURRENT_SCHEMA_VERSION,
 )
@@ -107,6 +111,91 @@ class TestPatternValidation:
             validate_pattern_entry(sample_pattern_entry)
 
 
+class TestFailedPatternValidation:
+
+    def test_valid_failed_pattern(self, sample_failed_pattern_entry):
+        result = validate_failed_pattern_entry(sample_failed_pattern_entry)
+        assert result == sample_failed_pattern_entry
+
+    def test_valid_minimal_failed_pattern(self):
+        entry = {
+            "ts": "2026-03-24T21:00:00Z",
+            "target": "target.com",
+            "vuln_class": "ssrf",
+            "technique": "webhook_url_param",
+            "tech_stack": ["express"],
+            "schema_version": CURRENT_SCHEMA_VERSION,
+        }
+        assert validate_failed_pattern_entry(entry) == entry
+
+    def test_missing_technique(self, sample_failed_pattern_entry):
+        del sample_failed_pattern_entry["technique"]
+        with pytest.raises(SchemaError, match="missing required fields"):
+            validate_failed_pattern_entry(sample_failed_pattern_entry)
+
+    def test_tech_stack_not_list(self, sample_failed_pattern_entry):
+        sample_failed_pattern_entry["tech_stack"] = "express"
+        with pytest.raises(SchemaError, match="'tech_stack' must be a list"):
+            validate_failed_pattern_entry(sample_failed_pattern_entry)
+
+    def test_empty_reason_rejected(self, sample_failed_pattern_entry):
+        sample_failed_pattern_entry["reason"] = "   "
+        with pytest.raises(SchemaError, match="'reason' must be a non-empty"):
+            validate_failed_pattern_entry(sample_failed_pattern_entry)
+
+    def test_unknown_field_rejected(self, sample_failed_pattern_entry):
+        sample_failed_pattern_entry["extra"] = "oops"
+        with pytest.raises(SchemaError, match="unknown fields"):
+            validate_failed_pattern_entry(sample_failed_pattern_entry)
+
+
+class TestChainValidation:
+
+    def test_valid_chain(self, sample_chain_entry):
+        result = validate_chain_entry(sample_chain_entry)
+        assert result == sample_chain_entry
+
+    def test_valid_minimal_chain(self):
+        entry = {
+            "ts": "2026-03-24T21:00:00Z",
+            "target": "target.com",
+            "chain_name": "secret_plus_api",
+            "steps": ["step one", "step two"],
+            "schema_version": CURRENT_SCHEMA_VERSION,
+        }
+        assert validate_chain_entry(entry) == entry
+
+    def test_missing_chain_name(self, sample_chain_entry):
+        del sample_chain_entry["chain_name"]
+        with pytest.raises(SchemaError, match="missing required fields"):
+            validate_chain_entry(sample_chain_entry)
+
+    def test_steps_needs_at_least_two(self, sample_chain_entry):
+        sample_chain_entry["steps"] = ["only one step"]
+        with pytest.raises(SchemaError, match="at least 2 entries"):
+            validate_chain_entry(sample_chain_entry)
+
+    def test_steps_must_be_non_empty_strings(self, sample_chain_entry):
+        sample_chain_entry["steps"] = ["real step", "  "]
+        with pytest.raises(SchemaError, match="'steps' must be a list of non-empty strings"):
+            validate_chain_entry(sample_chain_entry)
+
+    def test_empty_chain_name_rejected(self, sample_chain_entry):
+        sample_chain_entry["chain_name"] = ""
+        with pytest.raises(SchemaError, match="'chain_name' must be a non-empty"):
+            validate_chain_entry(sample_chain_entry)
+
+    def test_invalid_severity(self, sample_chain_entry):
+        sample_chain_entry["severity"] = "super_critical"
+        with pytest.raises(SchemaError, match="'severity' must be one of"):
+            validate_chain_entry(sample_chain_entry)
+
+    def test_negative_payout(self, sample_chain_entry):
+        sample_chain_entry["payout"] = -1
+        with pytest.raises(SchemaError, match="'payout' must be a non-negative"):
+            validate_chain_entry(sample_chain_entry)
+
+
 class TestTargetProfileValidation:
 
     def test_valid_profile(self, sample_target_profile):
@@ -152,4 +241,28 @@ class TestFactoryFunctions:
             tech_stack=["express", "mongodb"],
         )
         assert entry["tech_stack"] == ["express", "mongodb"]
+        assert entry["schema_version"] == CURRENT_SCHEMA_VERSION
+
+    def test_make_failed_pattern_entry(self):
+        entry = make_failed_pattern_entry(
+            target="target.com",
+            vuln_class="ssrf",
+            technique="webhook_url_param",
+            tech_stack=["express"],
+            reason="egress filtered",
+        )
+        assert entry["reason"] == "egress filtered"
+        assert entry["schema_version"] == CURRENT_SCHEMA_VERSION
+
+    def test_make_chain_entry(self):
+        entry = make_chain_entry(
+            target="target.com",
+            chain_name="secret_plus_api",
+            steps=["leaked key in JS bundle", "key authenticates to internal API"],
+            tech_stack=["express"],
+            payout=4000,
+            severity="critical",
+        )
+        assert entry["chain_name"] == "secret_plus_api"
+        assert len(entry["steps"]) == 2
         assert entry["schema_version"] == CURRENT_SCHEMA_VERSION

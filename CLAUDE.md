@@ -58,15 +58,16 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `/spray` | `/spray <url> --mode http-form\|oauth\|o365\|okta --users <f> --passes <f>` — password spray with hard guards (typed-host confirm, lockout warn, audit log) |
 | `/graphql-audit` | `/graphql-audit <url>` — full GraphQL audit: introspection, batching DoS, IDOR, injection, alias bomb, graphw00f fingerprint |
 
-### Agents (9 specialized agents)
+### Agents (10 specialized agents)
 
 - `recon-agent` — subdomain enum + live host discovery
+- `vulnerability-intelligence` — builds the memory-driven intelligence briefing (tech→vuln affinity, known chains, don't-retry list) before ranking; writes learned failed-patterns/chains back after a hunt
 - `report-writer` — generates H1/Bugcrowd/Immunefi reports
 - `validator` — 4-gate checklist on a finding
 - `web3-auditor` — smart contract bug class analysis
 - `chain-builder` — builds A→B→C exploit chains
 - `autopilot` — autonomous hunt loop (scope→recon→rank→hunt→validate→report)
-- `recon-ranker` — attack surface ranking from recon output + memory
+- `recon-ranker` — scored, confidence-rated attack surface ranking from recon output + the intelligence briefing + lead-board chains
 - `token-auditor` — fast meme coin/token rug pull and security analysis
 - `credential-hunter` — orchestrates wordlist-gen + osint-employees + breach-check; HARD STOPS at spray for human go/no-go
 
@@ -115,6 +116,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 ### Hunt Memory (in `memory/`)
 
 - `memory/pattern_db.py` — cross-target pattern learning
+- `memory/vuln_intelligence.py` — failed-pattern + confirmed-chain memory, tech→vuln affinity and endpoint-shape scoring (CLI: `python3 -m memory.vuln_intelligence <cmd>`)
 - `memory/audit_log.py` — request audit log, rate limiter, circuit breaker
 - `memory/rotation.py` — size-based JSONL rotation (10MB cap, keep 3 backups), auto-fired on append
 - `memory/schemas.py` — schema validation for all data

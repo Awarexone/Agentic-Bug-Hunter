@@ -206,3 +206,96 @@ class TestFindingStateDB:
         entry = db.advance("a.com", "idor", "/api/x", "REJECTED")
         assert entry["state"] == "REJECTED"
         assert db.current_state("a.com", "idor", "/api/x") == "REJECTED"
+
+
+class TestSelfLearning:
+    """Phase 7 -- REJECTED/CONFIRMED auto-save to failed_patterns.jsonl /
+    patterns.jsonl, no manual /remember step required."""
+
+    def test_rejected_with_technique_writes_failed_pattern(self, tmp_hunt_dir):
+        db = FindingStateDB(tmp_hunt_dir / "finding_states.jsonl")
+        db.advance("a.com", "ssrf", "/webhook", "SUSPECTED")
+        entry = db.advance(
+            "a.com", "ssrf", "/webhook", "REJECTED",
+            technique="webhook_url_param", tech_stack=["express", "aws"], reason="egress filtered",
+        )
+        assert entry["auto_learned"] == {"file": "failed_patterns.jsonl", "saved": True}
+
+        failed_path = tmp_hunt_dir / "failed_patterns.jsonl"
+        assert failed_path.exists()
+        from memory.vuln_intelligence import FailedPatternDB
+        saved = FailedPatternDB(failed_path).read_all()
+        assert len(saved) == 1
+        assert saved[0]["technique"] == "webhook_url_param"
+        assert saved[0]["reason"] == "egress filtered"
+        assert saved[0]["tech_stack"] == ["express", "aws"]
+
+    def test_confirmed_with_technique_writes_pattern(self, tmp_hunt_dir):
+        db = FindingStateDB(tmp_hunt_dir / "finding_states.jsonl")
+        db.advance("b.com", "idor", "/api/orders/482", "SUSPECTED")
+        db.advance("b.com", "idor", "/api/orders/482", "TESTING")
+        db.advance("b.com", "idor", "/api/orders/482", "VALIDATED")
+        entry = db.advance(
+            "b.com", "idor", "/api/orders/482", "CONFIRMED",
+            evidence={"verdict": "STRONG"},
+            technique="numeric_id_swap", tech_stack=["express", "postgresql"], payout=1500,
+        )
+        assert entry["auto_learned"] == {"file": "patterns.jsonl", "saved": True}
+
+        from memory.pattern_db import PatternDB
+        saved = PatternDB(tmp_hunt_dir / "patterns.jsonl").read_all()
+        assert len(saved) == 1
+        assert saved[0]["technique"] == "numeric_id_swap"
+        assert saved[0]["payout"] == 1500
+
+    def test_rejected_without_technique_writes_nothing(self, tmp_hunt_dir):
+        db = FindingStateDB(tmp_hunt_dir / "finding_states.jsonl")
+        db.advance("c.com", "xss", "/search", "SUSPECTED")
+        entry = db.advance("c.com", "xss", "/search", "REJECTED")
+        assert "auto_learned" not in entry
+        assert not (tmp_hunt_dir / "failed_patterns.jsonl").exists()
+
+    def test_confirmed_without_tech_stack_writes_nothing(self, tmp_hunt_dir):
+        db = FindingStateDB(tmp_hunt_dir / "finding_states.jsonl")
+        db.advance("d.com", "idor", "/api/x", "SUSPECTED")
+        db.advance("d.com", "idor", "/api/x", "TESTING")
+        db.advance("d.com", "idor", "/api/x", "VALIDATED")
+        entry = db.advance(
+            "d.com", "idor", "/api/x", "CONFIRMED",
+            evidence={"verdict": "STRONG"}, technique="numeric_id_swap",
+        )
+        assert "auto_learned" not in entry
+        assert not (tmp_hunt_dir / "patterns.jsonl").exists()
+
+    def test_non_terminal_transition_never_auto_learns(self, tmp_hunt_dir):
+        db = FindingStateDB(tmp_hunt_dir / "finding_states.jsonl")
+        entry = db.advance(
+            "e.com", "idor", "/api/x", "SUSPECTED",
+            technique="numeric_id_swap", tech_stack=["express"],
+        )
+        assert "auto_learned" not in entry
+        entry = db.advance(
+            "e.com", "idor", "/api/x", "TESTING",
+            technique="numeric_id_swap", tech_stack=["express"],
+        )
+        assert "auto_learned" not in entry
+
+    def test_auto_learn_false_suppresses_write_even_with_technique(self, tmp_hunt_dir):
+        db = FindingStateDB(tmp_hunt_dir / "finding_states.jsonl")
+        db.advance("f.com", "ssrf", "/webhook", "SUSPECTED")
+        entry = db.advance(
+            "f.com", "ssrf", "/webhook", "REJECTED",
+            technique="webhook_url_param", tech_stack=["express"], auto_learn=False,
+        )
+        assert "auto_learned" not in entry
+        assert not (tmp_hunt_dir / "failed_patterns.jsonl").exists()
+
+    def test_illegal_transition_does_not_auto_learn(self, tmp_hunt_dir):
+        db = FindingStateDB(tmp_hunt_dir / "finding_states.jsonl")
+        db.advance("g.com", "idor", "/api/x", "SUSPECTED")
+        with pytest.raises(FindingStateError):
+            db.advance(
+                "g.com", "idor", "/api/x", "CONFIRMED",
+                technique="numeric_id_swap", tech_stack=["express"],
+            )
+        assert not (tmp_hunt_dir / "patterns.jsonl").exists()

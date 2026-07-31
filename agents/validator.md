@@ -146,11 +146,18 @@ ACTION: [What researcher should do next]
 
 ## Update the Finding's Lifecycle State
 
-On PASS, advance the finding from `VALIDATED` to `CONFIRMED` — this is the transition `memory/finding_state.py` blocks unless `validation-engine` already recorded a STRONG verdict for it, so run `validation-engine` first if that step got skipped:
+On PASS, advance the finding from `VALIDATED` to `CONFIRMED` — this is the transition `memory/finding_state.py` blocks unless `validation-engine` already recorded a STRONG verdict for it, so run `validation-engine` first if that step got skipped. Pass `--technique`/`--tech-stack`/`--payout` too: this is what auto-saves a `patterns.jsonl` entry (Phase 7 self-learning) so the confirmed technique feeds `tech_vuln_affinity()`/`priority_score()` on the next target with no manual `/remember` step:
 
 ```bash
 python3 -m memory.finding_state advance --target <target> --vuln-class <class> --endpoint <endpoint> \
-  --state CONFIRMED --verdict STRONG --memory-dir hunt-memory
+  --state CONFIRMED --verdict STRONG --technique <technique> --tech-stack "<stack>" \
+  --payout <est_or_actual> --memory-dir hunt-memory
 ```
 
-On KILL, advance it to `REJECTED` so it stops surfacing as a live lead: `python3 -m memory.finding_state advance --target <target> --vuln-class <class> --endpoint <endpoint> --state REJECTED --memory-dir hunt-memory`. On DOWNGRADE/CHAIN REQUIRED, leave the state where it is — the finding isn't confirmed or dead yet, it's waiting on more evidence.
+On KILL, advance it to `REJECTED` the same way — `--technique`/`--tech-stack`/`--reason` here auto-saves a `failed_patterns.jsonl` entry instead:
+```bash
+python3 -m memory.finding_state advance --target <target> --vuln-class <class> --endpoint <endpoint> \
+  --state REJECTED --technique <technique> --tech-stack "<stack>" --reason "<which question killed it>" \
+  --memory-dir hunt-memory
+```
+On DOWNGRADE/CHAIN REQUIRED, leave the state where it is — the finding isn't confirmed or dead yet, it's waiting on more evidence.

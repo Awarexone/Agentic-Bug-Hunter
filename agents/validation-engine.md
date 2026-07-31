@@ -112,9 +112,13 @@ python3 -m memory.finding_state advance --target <target> --vuln-class <class> -
 # your WEAK output is closed and this check is re-run
 # (no command to run; advancing is the wrong move here)
 
-# REJECT verdict: kill it explicitly so it stops showing up as a live lead
+# REJECT verdict: kill it explicitly so it stops showing up as a live lead.
+# --technique/--tech-stack/--reason here also auto-saves a failed_patterns.jsonl
+# entry (Phase 7 self-learning) -- pass them and the next hunt already knows
+# this exact technique died here, with no manual /remember step.
 python3 -m memory.finding_state advance --target <target> --vuln-class <class> --endpoint <endpoint> \
-  --state REJECTED --memory-dir hunt-memory
+  --state REJECTED --technique <technique> --tech-stack "<stack>" --reason "<which check failed and why>" \
+  --memory-dir hunt-memory
 ```
 
 If this is the first time this finding has been touched (no prior `SUSPECTED`/`TESTING` entry), register it first: `python3 -m memory.finding_state advance --target <target> --vuln-class <class> --endpoint <endpoint> --state SUSPECTED --memory-dir hunt-memory`, then `--state TESTING` before running your checks. `python3 -m memory.finding_state current --target <target> --vuln-class <class> --endpoint <endpoint> --memory-dir hunt-memory` tells you where it already is instead of guessing.

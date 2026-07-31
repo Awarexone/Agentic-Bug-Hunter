@@ -39,6 +39,13 @@ finding through:
   * "Missing reproduction blocks REPORT_READY" — a transition to
     REPORT_READY requires evidence["reproducible"] is True.
 
+Self-learning (FindingStateDB.advance()'s auto_learn, default on): landing
+on REJECTED or CONFIRMED automatically writes to failed_patterns.jsonl /
+patterns.jsonl (the same two files vuln_intelligence.py's
+tech_vuln_affinity()/priority_score() already read), so a hunter never has
+to run a separate `/remember` step to make a rejection or confirmation
+count toward future ranking.
+
 Agents that only have bash/read/glob/grep (no python execution) reach this
 through the CLI at the bottom: `python3 -m memory.finding_state <cmd>`.
 """
@@ -235,6 +242,11 @@ class FindingStateDB:
         next_state: str,
         evidence: dict | None = None,
         notes: str | None = None,
+        technique: str | None = None,
+        tech_stack: list[str] | None = None,
+        reason: str | None = None,
+        payout: int | float | None = None,
+        auto_learn: bool = True,
     ) -> dict:
         """Validate + persist one transition. Raises FindingStateError if
         illegal; returns the saved entry if legal.
@@ -243,6 +255,14 @@ class FindingStateDB:
         first — there's no implicit starting state, so the very first call
         for a given (target, vuln_class, endpoint) has to be
         ``advance(..., "SUSPECTED")``.
+
+        Phase 7 self-learning: landing on REJECTED or CONFIRMED auto-saves
+        to failed_patterns.jsonl / patterns.jsonl (via _auto_learn() below)
+        so the next hunt already knows this technique died here, or that it
+        paid off, with no manual `/remember` step required. Pass
+        ``technique``/``tech_stack`` (required by both schemas) and
+        optionally ``reason`` (REJECTED) / ``payout`` (CONFIRMED) to enable
+        it, or ``auto_learn=False`` to skip it for this call.
         """
         current = self.current_state(target, vuln_class, endpoint)
         evidence = evidence or {}
@@ -269,7 +289,69 @@ class FindingStateDB:
             notes=notes,
         )
         self.save(entry)
-        return entry
+
+        result_entry = dict(entry)
+        if auto_learn:
+            auto_learned = self._auto_learn(
+                target=target, vuln_class=vuln_class, endpoint=endpoint, state=next_state,
+                technique=technique, tech_stack=tech_stack, reason=reason, payout=payout,
+            )
+            if auto_learned is not None:
+                result_entry["auto_learned"] = auto_learned
+        return result_entry
+
+    def _auto_learn(
+        self,
+        target: str,
+        vuln_class: str,
+        endpoint: str,
+        state: str,
+        technique: str | None,
+        tech_stack: list[str] | None,
+        reason: str | None,
+        payout: int | float | None,
+    ) -> dict | None:
+        """Phase 7 self-learning: no manual `/remember` dependency.
+
+        On REJECTED, auto-save a failed-pattern entry (technique, vuln
+        class, technology, reason) so the next hunt skips this exact dead
+        end without being told by hand. On CONFIRMED, auto-save a
+        successful pattern entry (technique, tech stack, endpoint,
+        payout) — the tech-vuln affinity and endpoint-shape learning in
+        vuln_intelligence.py is a live aggregation over these two files, so
+        this is what actually feeds it.
+
+        Best-effort and silent about *not* writing: pattern_entry/
+        failed_pattern_entry both require technique+tech_stack, so if the
+        caller didn't supply them, nothing is saved rather than guessed at
+        — an auto-learned entry with a made-up technique would be worse
+        than no entry at all.
+        """
+        if state not in ("REJECTED", "CONFIRMED"):
+            return None
+        if not technique or not tech_stack:
+            return None
+
+        from memory.pattern_db import PatternDB
+        from memory.schemas import make_failed_pattern_entry, make_pattern_entry
+        from memory.vuln_intelligence import FailedPatternDB
+
+        memory_dir = self.path.parent
+
+        if state == "REJECTED":
+            fp_entry = make_failed_pattern_entry(
+                target=target, vuln_class=vuln_class, technique=technique,
+                tech_stack=tech_stack, endpoint=endpoint, reason=reason,
+            )
+            saved = FailedPatternDB(memory_dir / "failed_patterns.jsonl").save(fp_entry)
+            return {"file": "failed_patterns.jsonl", "saved": saved}
+
+        p_entry = make_pattern_entry(
+            target=target, vuln_class=vuln_class, technique=technique,
+            tech_stack=tech_stack, endpoint=endpoint, payout=payout,
+        )
+        saved = PatternDB(memory_dir / "patterns.jsonl").save(p_entry)
+        return {"file": "patterns.jsonl", "saved": saved}
 
 
 # ─── CLI — for agents that only have bash/read/glob/grep tools ──────────────
@@ -318,6 +400,11 @@ def _cmd_advance(args: argparse.Namespace) -> int:
             next_state=args.state,
             evidence=evidence,
             notes=args.notes,
+            technique=args.technique,
+            tech_stack=[t.strip() for t in args.tech_stack.split(",") if t.strip()] if args.tech_stack else None,
+            reason=args.reason,
+            payout=args.payout,
+            auto_learn=not args.no_auto_learn,
         )
     except FindingStateError as e:
         print(json.dumps({"advanced": False, "reason": str(e)}, indent=2))
@@ -361,6 +448,11 @@ def main() -> int:
     p.add_argument("--verdict", default=None, choices=("STRONG", "WEAK", "REJECT"), help="validation-engine's verdict")
     p.add_argument("--reproducible", action="store_true", help="Reproducible evidence is on hand")
     p.add_argument("--notes", default=None)
+    p.add_argument("--technique", default=None, help="Enables self-learning auto-save on REJECTED/CONFIRMED (needs --tech-stack too)")
+    p.add_argument("--tech-stack", default=None, help="Comma-separated, required alongside --technique for auto-save")
+    p.add_argument("--reason", default=None, help="Why it failed -- used by the auto-saved failed_patterns.jsonl entry on REJECTED")
+    p.add_argument("--payout", type=float, default=None, help="Used by the auto-saved patterns.jsonl entry on CONFIRMED")
+    p.add_argument("--no-auto-learn", action="store_true", help="Skip the automatic failed_patterns.jsonl/patterns.jsonl write on REJECTED/CONFIRMED")
     p.add_argument("--memory-dir", default="hunt-memory")
     p.set_defaults(func=_cmd_advance)
 

@@ -372,6 +372,24 @@ class TestFactoryFunctions:
         assert entry["hypothesis_name"] == "bola"
         assert entry["schema_version"] == CURRENT_SCHEMA_VERSION
 
+    def test_make_hypothesis_entry_with_advanced_fields(self):
+        entry = make_hypothesis_entry(
+            target="target.com", vuln_class="idor", endpoint="/api/v2/users/{id}", confidence=87,
+            attack_chain=["JS Secret", "API Access", "Weak Authentication", "Privilege Escalation", "Account Takeover"],
+            impact="critical", probability=65, effort="medium",
+        )
+        assert len(entry["attack_chain"]) == 5
+        assert entry["impact"] == "critical"
+        assert entry["probability"] == 65
+        assert entry["effort"] == "medium"
+
+    def test_make_hypothesis_entry_without_advanced_fields_omits_them(self):
+        entry = make_hypothesis_entry(target="target.com", vuln_class="idor", endpoint="/x", confidence=50)
+        assert "attack_chain" not in entry
+        assert "impact" not in entry
+        assert "probability" not in entry
+        assert "effort" not in entry
+
 
 class TestExperimentValidation:
 
@@ -507,3 +525,63 @@ class TestHypothesisValidation:
     def test_not_a_dict(self):
         with pytest.raises(SchemaError, match="must be a dict"):
             validate_hypothesis_entry("not a dict")
+
+    # ── Phase 2: advanced fields (attack_chain/impact/probability/effort) ──
+
+    def test_old_style_entry_without_advanced_fields_still_valid(self):
+        # Backward compatibility: entries written before Phase 2 have none
+        # of these fields and must keep validating exactly as before.
+        entry = {
+            "ts": "2026-01-01T00:00:00Z", "target": "a.com", "vuln_class": "idor",
+            "endpoint": "/x", "confidence": 80, "schema_version": CURRENT_SCHEMA_VERSION,
+        }
+        assert validate_hypothesis_entry(entry) == entry
+
+    def test_valid_attack_chain_accepted(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["attack_chain"] = [
+            "JS Secret", "API Access", "Weak Authentication", "Privilege Escalation", "Account Takeover",
+        ]
+        result = validate_hypothesis_entry(sample_hypothesis_entry)
+        assert len(result["attack_chain"]) == 5
+
+    def test_attack_chain_single_step_rejected(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["attack_chain"] = ["only one step"]
+        with pytest.raises(SchemaError, match="at least 2 steps"):
+            validate_hypothesis_entry(sample_hypothesis_entry)
+
+    def test_attack_chain_not_list_rejected(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["attack_chain"] = "not a list"
+        with pytest.raises(SchemaError, match="'attack_chain' must be a list"):
+            validate_hypothesis_entry(sample_hypothesis_entry)
+
+    def test_attack_chain_empty_step_rejected(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["attack_chain"] = ["real step", "  "]
+        with pytest.raises(SchemaError, match="'attack_chain' must be a list of non-empty strings"):
+            validate_hypothesis_entry(sample_hypothesis_entry)
+
+    def test_valid_impact_accepted(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["impact"] = "critical"
+        assert validate_hypothesis_entry(sample_hypothesis_entry)["impact"] == "critical"
+
+    def test_empty_impact_rejected(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["impact"] = ""
+        with pytest.raises(SchemaError, match="'impact' must be a non-empty"):
+            validate_hypothesis_entry(sample_hypothesis_entry)
+
+    def test_valid_probability_accepted(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["probability"] = 65
+        assert validate_hypothesis_entry(sample_hypothesis_entry)["probability"] == 65
+
+    def test_probability_out_of_range_rejected(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["probability"] = 150
+        with pytest.raises(SchemaError, match="'probability' must be a number 0-100"):
+            validate_hypothesis_entry(sample_hypothesis_entry)
+
+    def test_valid_effort_accepted(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["effort"] = "medium"
+        assert validate_hypothesis_entry(sample_hypothesis_entry)["effort"] == "medium"
+
+    def test_empty_effort_rejected(self, sample_hypothesis_entry):
+        sample_hypothesis_entry["effort"] = ""
+        with pytest.raises(SchemaError, match="'effort' must be a non-empty"):
+            validate_hypothesis_entry(sample_hypothesis_entry)

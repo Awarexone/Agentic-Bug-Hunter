@@ -474,6 +474,39 @@ class TestHypothesisDB:
         db.save(sample_hypothesis_entry)
         assert db.save(dict(sample_hypothesis_entry)) is False
 
+    def test_save_and_read_with_advanced_fields(self, hypotheses_path):
+        from memory.schemas import make_hypothesis_entry
+
+        db = HypothesisDB(hypotheses_path)
+        entry = make_hypothesis_entry(
+            target="a.com", vuln_class="idor", endpoint="/x", confidence=87,
+            attack_chain=["JS Secret", "API Access", "Weak Authentication", "Privilege Escalation", "Account Takeover"],
+            impact="critical", probability=65, effort="medium",
+        )
+        assert db.save(entry) is True
+        loaded = db.read_all()[0]
+        assert loaded["attack_chain"] == entry["attack_chain"]
+        assert loaded["impact"] == "critical"
+        assert loaded["probability"] == 65
+        assert loaded["effort"] == "medium"
+
+    def test_old_style_entries_still_load_alongside_new_style(self, hypotheses_path, sample_hypothesis_entry):
+        # sample_hypothesis_entry (conftest) has no advanced fields -- old
+        # entries and new-style entries must coexist in the same file.
+        from memory.schemas import make_hypothesis_entry
+
+        db = HypothesisDB(hypotheses_path)
+        db.save(sample_hypothesis_entry)
+        new_entry = make_hypothesis_entry(
+            target="b.com", vuln_class="ssrf", endpoint="/y", confidence=70,
+            attack_chain=["step one", "step two"], impact="high", probability=40, effort="low",
+        )
+        db.save(new_entry)
+        loaded = db.read_all()
+        assert len(loaded) == 2
+        assert "attack_chain" not in loaded[0]
+        assert "attack_chain" in loaded[1]
+
 
 class TestHypothesisCalibration:
 

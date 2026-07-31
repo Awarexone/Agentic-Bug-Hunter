@@ -1120,6 +1120,10 @@ def _cmd_save_hypothesis(args: argparse.Namespace) -> int:
         tech_stack=[t.strip() for t in args.tech_stack.split(",") if t.strip()] if args.tech_stack else None,
         signals=[s.strip() for s in args.signals.split("|") if s.strip()] if args.signals else None,
         source=args.source,
+        attack_chain=[s.strip() for s in args.attack_chain.split("|") if s.strip()] if args.attack_chain else None,
+        impact=args.impact,
+        probability=args.probability,
+        effort=args.effort,
     )
     saved = HypothesisDB(paths["hypotheses"]).save(entry)
     print(json.dumps({"saved": saved, "entry": entry}, indent=2))
@@ -1255,6 +1259,10 @@ def main() -> int:
     p.add_argument("--tech-stack", default=None, help="Comma-separated")
     p.add_argument("--signals", default=None, help="Pipe-separated, e.g. 'signal one|signal two'")
     p.add_argument("--source", default=None, help="e.g. hypothesis-engine, lead-board-chain, lead-board-hypothesis")
+    p.add_argument("--attack-chain", default=None, help="Pipe-separated ordered steps, e.g. 'JS secret|API access|auth bypass'")
+    p.add_argument("--impact", default=None, help="e.g. critical/high/medium/low")
+    p.add_argument("--probability", type=float, default=None, help="0-100")
+    p.add_argument("--effort", default=None, help="e.g. low/medium/high")
     p.add_argument("--memory-dir", default="hunt-memory")
     p.set_defaults(func=_cmd_save_hypothesis)
 

@@ -66,6 +66,12 @@ EXPERIMENT_ALL = EXPERIMENT_REQUIRED | EXPERIMENT_OPTIONAL
 HYPOTHESIS_REQUIRED = {"ts", "target", "vuln_class", "endpoint", "confidence", "schema_version"}
 HYPOTHESIS_OPTIONAL = {
     "hypothesis_name", "tech_stack", "signals", "source", "notes", "tags", "session_id",
+    # Advanced fields (all optional -- old entries without them still
+    # validate fine, _check_required never looks at this set):
+    "attack_chain",  # ordered list of steps, e.g. ["JS secret", "API access", "auth bypass", ...]
+    "impact",        # free-text severity-style label, e.g. "critical"/"high"
+    "probability",   # 0-100, how likely the full chain holds up
+    "effort",        # free-text effort label, e.g. "low"/"medium"/"high"
 }
 HYPOTHESIS_ALL = HYPOTHESIS_REQUIRED | HYPOTHESIS_OPTIONAL
 
@@ -415,6 +421,26 @@ def validate_hypothesis_entry(entry: dict) -> dict:
         if not isinstance(entry["hypothesis_name"], str) or not entry["hypothesis_name"].strip():
             raise SchemaError("Hypothesis entry: 'hypothesis_name' must be a non-empty string")
 
+    if "attack_chain" in entry:
+        chain = entry["attack_chain"]
+        if not isinstance(chain, list) or not all(isinstance(s, str) and s.strip() for s in chain):
+            raise SchemaError("Hypothesis entry: 'attack_chain' must be a list of non-empty strings")
+        if len(chain) < 2:
+            raise SchemaError("Hypothesis entry: 'attack_chain' must have at least 2 steps to be a chain")
+
+    if "impact" in entry:
+        if not isinstance(entry["impact"], str) or not entry["impact"].strip():
+            raise SchemaError("Hypothesis entry: 'impact' must be a non-empty string")
+
+    if "probability" in entry:
+        prob = entry["probability"]
+        if not isinstance(prob, (int, float)) or isinstance(prob, bool) or not (0 <= prob <= 100):
+            raise SchemaError(f"Hypothesis entry: 'probability' must be a number 0-100, got {prob!r}")
+
+    if "effort" in entry:
+        if not isinstance(entry["effort"], str) or not entry["effort"].strip():
+            raise SchemaError("Hypothesis entry: 'effort' must be a non-empty string")
+
     if "tags" in entry:
         if not isinstance(entry["tags"], list) or not all(isinstance(t, str) for t in entry["tags"]):
             raise SchemaError("Hypothesis entry: 'tags' must be a list of strings")
@@ -718,6 +744,10 @@ def make_hypothesis_entry(
     notes: str | None = None,
     tags: list[str] | None = None,
     session_id: str | None = None,
+    attack_chain: list[str] | None = None,
+    impact: str | None = None,
+    probability: int | float | None = None,
+    effort: str | None = None,
 ) -> dict:
     """Create and validate a new hypothesis entry with current timestamp."""
     entry = {
@@ -740,6 +770,14 @@ def make_hypothesis_entry(
         entry["notes"] = notes
     if tags is not None:
         entry["tags"] = tags
+    if attack_chain is not None:
+        entry["attack_chain"] = attack_chain
+    if impact is not None:
+        entry["impact"] = impact
+    if probability is not None:
+        entry["probability"] = probability
+    if effort is not None:
+        entry["effort"] = effort
     if session_id is None:
         session_id = _current_session_id()
     if session_id is not None:

@@ -148,6 +148,16 @@ python3 -m memory.vuln_intelligence save-hypothesis --target <target> --vuln-cla
 ```
 For a hypothesis promoted from a lead-board correlation, set `--source lead-board-chain` or `--source lead-board-hypothesis` instead — this lets `calibration` later tell you whether lead-board-detected correlations are better-calibrated than hypotheses you generated from scratch.
 
+When the hypothesis implies a multi-step exploit path (not just a single-endpoint bug), attach the narrative and its own risk profile — optional fields, old hypotheses without them still load fine:
+```bash
+python3 -m memory.vuln_intelligence save-hypothesis --target <target> --vuln-class idor \
+  --endpoint "api.target.com/.env" --confidence 78 --hypothesis-name secret_to_ato \
+  --tech-stack "express,postgresql" --source hypothesis-engine \
+  --attack-chain "JS Secret|API Access|Weak Authentication|Privilege Escalation|Account Takeover" \
+  --impact critical --probability 65 --effort medium --memory-dir hunt-memory
+```
+`--impact`/`--probability`/`--effort` are your own assessment of the *chain*, not the base vuln_class — a hypothesis can be `idor`-classed with `impact: critical` because the chain it enables goes all the way to account takeover, even though a bare IDOR alone might not be critical.
+
 ## Rules
 
 1. Every hypothesis needs an affected endpoint. "This tech stack is generally risky" is not a hypothesis — pin it to a specific URL or lead-board entry.

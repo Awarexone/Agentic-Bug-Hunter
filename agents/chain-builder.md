@@ -17,8 +17,10 @@ You are a bug chain specialist. You take a confirmed bug A and systematically fi
 The A→B table below is a fallback, not your first move. A chain that's already confirmed elsewhere, or already mechanically correlated by the lead board on *this* target, outranks a theoretical table entry — it's proven, not guessed:
 
 ```bash
-# Confirmed chains from OTHER targets sharing this tech stack
-python3 -m memory.vuln_intelligence chains --tech "<stack>" --memory-dir hunt-memory
+# Confirmed chains from OTHER targets sharing this tech stack, ranked by
+# impact/probability/effort (a cheap high-probability chain outranks an
+# expensive low-probability one, not just whichever paid more historically)
+python3 -m memory.vuln_intelligence chains --tech "<stack>" --rank --memory-dir hunt-memory
 
 # THIS target's lead board — a source: "hypothesis" lead may have already
 # correlated the exact A->B(->C) path mechanically (secret+API+weak-auth, etc.)
@@ -108,9 +110,12 @@ If Burp MCP is NOT available:
 ```bash
 python3 -m memory.vuln_intelligence save-chain --target <target> --chain-name <short_slug> \
   --steps "A: idor read on /api/orders/{id}|B: same endpoint, PUT with attacker session|C: no ownership check on write path either" \
-  --tech-stack "<stack>" --payout <est_or_actual> --severity <critical|high|...> --memory-dir hunt-memory
+  --tech-stack "<stack>" --payout <est_or_actual> --severity <critical|high|...> \
+  --impact <critical|high|medium|low> --probability <0-100> --effort <low|medium|high> --memory-dir hunt-memory
 ```
 Pick `chain-name` as a short, reusable slug (e.g. `idor_read_write_asymmetry`, not a target-specific name) so `chains --tech` can match it on a future target sharing this stack, the same way `HYPOTHESIS_RECIPES` chain names work in `tools/lead_board.py`.
+
+`--impact`/`--probability`/`--effort` are what `chains --tech --rank` sorts on: how bad it is, how likely the chain holds up end-to-end, and how much testing time it costs. Example: exposed endpoint + weak authorization + sensitive object access = a likely IDOR chain — that's `--probability` high (the precondition is already confirmed, not theoretical) and `--effort` low (each step is a plain HTTP request), so it should outrank a chain that pays more on paper but needs a much harder-to-reproduce precondition. These are optional — omit them and the chain still saves and still matches on `--tech`, just without a rank score above the neutral default.
 
 ## Output
 

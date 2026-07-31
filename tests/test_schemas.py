@@ -201,6 +201,41 @@ class TestChainValidation:
         with pytest.raises(SchemaError, match="'payout' must be a non-negative"):
             validate_chain_entry(sample_chain_entry)
 
+    def test_old_style_entry_without_scoring_fields_still_valid(self, sample_chain_entry):
+        assert "impact" not in sample_chain_entry
+        assert "probability" not in sample_chain_entry
+        assert "effort" not in sample_chain_entry
+        assert validate_chain_entry(sample_chain_entry) == sample_chain_entry
+
+    def test_valid_scoring_fields_accepted(self, sample_chain_entry):
+        sample_chain_entry["impact"] = "critical"
+        sample_chain_entry["probability"] = 80
+        sample_chain_entry["effort"] = "low"
+        result = validate_chain_entry(sample_chain_entry)
+        assert result["impact"] == "critical"
+        assert result["probability"] == 80
+        assert result["effort"] == "low"
+
+    def test_empty_impact_rejected(self, sample_chain_entry):
+        sample_chain_entry["impact"] = "  "
+        with pytest.raises(SchemaError, match="'impact' must be a non-empty"):
+            validate_chain_entry(sample_chain_entry)
+
+    def test_probability_out_of_range_rejected(self, sample_chain_entry):
+        sample_chain_entry["probability"] = 150
+        with pytest.raises(SchemaError, match="'probability' must be a number 0-100"):
+            validate_chain_entry(sample_chain_entry)
+
+    def test_probability_bool_rejected(self, sample_chain_entry):
+        sample_chain_entry["probability"] = True
+        with pytest.raises(SchemaError, match="'probability' must be a number 0-100"):
+            validate_chain_entry(sample_chain_entry)
+
+    def test_empty_effort_rejected(self, sample_chain_entry):
+        sample_chain_entry["effort"] = ""
+        with pytest.raises(SchemaError, match="'effort' must be a non-empty"):
+            validate_chain_entry(sample_chain_entry)
+
 
 class TestReportOutcomeValidation:
 
@@ -330,6 +365,29 @@ class TestFactoryFunctions:
         assert entry["chain_name"] == "secret_plus_api"
         assert len(entry["steps"]) == 2
         assert entry["schema_version"] == CURRENT_SCHEMA_VERSION
+
+    def test_make_chain_entry_with_scoring_fields(self):
+        entry = make_chain_entry(
+            target="target.com",
+            chain_name="idor_chain",
+            steps=["exposed endpoint", "weak authorization", "sensitive object access"],
+            impact="critical",
+            probability=80,
+            effort="low",
+        )
+        assert entry["impact"] == "critical"
+        assert entry["probability"] == 80
+        assert entry["effort"] == "low"
+
+    def test_make_chain_entry_without_scoring_fields_omits_them(self):
+        entry = make_chain_entry(
+            target="target.com",
+            chain_name="secret_plus_api",
+            steps=["leaked key in JS bundle", "key authenticates to internal API"],
+        )
+        assert "impact" not in entry
+        assert "probability" not in entry
+        assert "effort" not in entry
 
     def test_make_report_outcome_entry(self):
         entry = make_report_outcome_entry(

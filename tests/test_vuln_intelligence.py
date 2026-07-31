@@ -8,6 +8,7 @@ from memory.vuln_intelligence import (
     HypothesisDB,
     ReportOutcomeDB,
     VULN_IMPACT_POTENTIAL,
+    chain_priority,
     duplicate_or_noise_check,
     endpoint_shape_stats,
     expected_value_per_hour,
@@ -126,6 +127,93 @@ class TestChainDB:
         db.save(entry2)
         results = db.match(["express"])
         assert results[0]["payout"] == 9000
+
+    def test_save_and_read_with_scoring_fields(self, chains_path, sample_chain_entry):
+        db = ChainDB(chains_path)
+        entry = dict(sample_chain_entry)
+        entry["impact"] = "critical"
+        entry["probability"] = 80
+        entry["effort"] = "low"
+        assert db.save(entry) is True
+        loaded = db.read_all()[0]
+        assert loaded["impact"] == "critical"
+        assert loaded["probability"] == 80
+        assert loaded["effort"] == "low"
+
+    def test_old_style_and_scored_chains_coexist(self, chains_path, sample_chain_entry):
+        db = ChainDB(chains_path)
+        db.save(sample_chain_entry)
+        entry2 = dict(sample_chain_entry)
+        entry2["target"] = "other.com"
+        entry2["impact"] = "high"
+        entry2["probability"] = 50
+        entry2["effort"] = "medium"
+        db.save(entry2)
+        loaded = db.read_all()
+        assert len(loaded) == 2
+        assert "impact" not in loaded[0]
+        assert "impact" in loaded[1]
+
+    def test_rank_low_effort_high_probability_beats_higher_payout(self, chains_path, sample_chain_entry):
+        db = ChainDB(chains_path)
+        cheap_but_reliable = dict(sample_chain_entry)
+        cheap_but_reliable["payout"] = 500
+        cheap_but_reliable["impact"] = "critical"
+        cheap_but_reliable["probability"] = 80
+        cheap_but_reliable["effort"] = "low"
+        db.save(cheap_but_reliable)
+
+        expensive_but_risky = dict(sample_chain_entry)
+        expensive_but_risky["target"] = "other.com"
+        expensive_but_risky["chain_name"] = "expensive_chain"
+        expensive_but_risky["payout"] = 9000
+        expensive_but_risky["impact"] = "high"
+        expensive_but_risky["probability"] = 30
+        expensive_but_risky["effort"] = "high"
+        db.save(expensive_but_risky)
+
+        ranked = db.rank(["express"])
+        assert ranked[0]["chain_name"] == "secret_plus_api"
+        assert ranked[0]["chain_priority"]["composite_score"] > ranked[1]["chain_priority"]["composite_score"]
+
+    def test_rank_falls_back_to_neutral_score_without_scoring_data(self, chains_path, sample_chain_entry):
+        db = ChainDB(chains_path)
+        db.save(sample_chain_entry)
+        ranked = db.rank(["express"])
+        assert ranked[0]["chain_priority"]["has_scoring_data"] is False
+        assert ranked[0]["chain_priority"]["composite_score"] == pytest.approx((50 + 50 + 60) / 3, abs=0.1)
+
+    def test_rank_respects_tech_filter(self, chains_path, sample_chain_entry):
+        db = ChainDB(chains_path)
+        db.save(sample_chain_entry)
+        assert db.rank(["django"]) == []
+
+
+class TestChainPriority:
+
+    def test_high_impact_high_probability_low_effort_scores_highest(self):
+        best = chain_priority({"impact": "critical", "probability": 90, "effort": "low"})
+        worst = chain_priority({"impact": "low", "probability": 10, "effort": "high"})
+        assert best["composite_score"] > worst["composite_score"]
+
+    def test_unrecognized_impact_label_falls_back_to_default(self):
+        result = chain_priority({"impact": "nonsense", "probability": 50, "effort": "low"})
+        assert result["impact_score"] == 50
+
+    def test_missing_probability_falls_back_to_neutral(self):
+        result = chain_priority({"impact": "high", "effort": "low"})
+        assert result["probability_score"] == 50
+
+    def test_effort_is_inverted_low_effort_scores_higher_than_high_effort(self):
+        low = chain_priority({"effort": "low"})
+        high = chain_priority({"effort": "high"})
+        assert low["effort_score"] > high["effort_score"]
+
+    def test_has_scoring_data_false_when_all_fields_absent(self):
+        assert chain_priority({})["has_scoring_data"] is False
+
+    def test_has_scoring_data_true_when_only_probability_present(self):
+        assert chain_priority({"probability": 0})["has_scoring_data"] is True
 
 
 class TestTechVulnAffinity:

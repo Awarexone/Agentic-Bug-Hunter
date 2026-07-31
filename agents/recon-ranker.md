@@ -34,8 +34,9 @@ Also read:
 If `recon/<target>/intelligence-briefing.md` doesn't exist yet, run the briefing step yourself before ranking:
 ```bash
 python3 -m memory.vuln_intelligence affinity --tech "<detected tech stack, comma-separated>" --memory-dir hunt-memory
-python3 -m memory.vuln_intelligence chains --tech "<detected tech stack>" --memory-dir hunt-memory
+python3 -m memory.vuln_intelligence chains --tech "<detected tech stack>" --rank --memory-dir hunt-memory
 ```
+`--rank` orders matching chains by impact/probability/effort composite score instead of raw payout — a cheap, high-probability chain (e.g. exposed endpoint + weak authorization + sensitive object access) should influence P1 ordering above one that historically paid more but needed a much harder precondition.
 Missing intelligence isn't a blocker — it just means every score below is heuristic-only (say so) instead of memory-backed.
 
 ## Scoring Formula

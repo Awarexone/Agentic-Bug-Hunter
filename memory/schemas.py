@@ -30,7 +30,14 @@ FAILED_PATTERN_ALL = FAILED_PATTERN_REQUIRED | FAILED_PATTERN_OPTIONAL
 # persisted so the same chain shape can be recognized on a future target
 # with an overlapping tech stack.
 CHAIN_REQUIRED = {"ts", "target", "chain_name", "steps", "schema_version"}
-CHAIN_OPTIONAL = {"tech_stack", "endpoint", "payout", "severity", "notes", "tags", "session_id"}
+CHAIN_OPTIONAL = {
+    "tech_stack", "endpoint", "payout", "severity", "notes", "tags", "session_id",
+    # Attack-path scoring (all optional -- old entries without them still
+    # validate fine, _check_required never looks at this set):
+    "impact",       # free-text label, e.g. "critical"/"high"/"medium"/"low"
+    "probability",  # 0-100, how likely this chain holds up end-to-end
+    "effort",       # free-text label, e.g. "low"/"medium"/"high"
+}
 CHAIN_ALL = CHAIN_REQUIRED | CHAIN_OPTIONAL
 
 # What happened to a submitted report — the triage/acceptance outcome, kept
@@ -270,6 +277,19 @@ def validate_chain_entry(entry: dict) -> dict:
     if "payout" in entry:
         if not isinstance(entry["payout"], (int, float)) or entry["payout"] < 0:
             raise SchemaError(f"Chain entry: 'payout' must be a non-negative number, got {entry['payout']!r}")
+
+    if "impact" in entry:
+        if not isinstance(entry["impact"], str) or not entry["impact"].strip():
+            raise SchemaError("Chain entry: 'impact' must be a non-empty string")
+
+    if "probability" in entry:
+        prob = entry["probability"]
+        if not isinstance(prob, (int, float)) or isinstance(prob, bool) or not (0 <= prob <= 100):
+            raise SchemaError(f"Chain entry: 'probability' must be a number 0-100, got {prob!r}")
+
+    if "effort" in entry:
+        if not isinstance(entry["effort"], str) or not entry["effort"].strip():
+            raise SchemaError("Chain entry: 'effort' must be a non-empty string")
 
     if "session_id" in entry:
         if not isinstance(entry["session_id"], str) or not entry["session_id"].strip():
@@ -619,6 +639,9 @@ def make_chain_entry(
     notes: str | None = None,
     tags: list[str] | None = None,
     session_id: str | None = None,
+    impact: str | None = None,
+    probability: int | float | None = None,
+    effort: str | None = None,
 ) -> dict:
     """Create and validate a new attack-chain entry with current timestamp."""
     entry = {
@@ -640,6 +663,12 @@ def make_chain_entry(
         entry["notes"] = notes
     if tags is not None:
         entry["tags"] = tags
+    if impact is not None:
+        entry["impact"] = impact
+    if probability is not None:
+        entry["probability"] = probability
+    if effort is not None:
+        entry["effort"] = effort
     if session_id is None:
         session_id = _current_session_id()
     if session_id is not None:

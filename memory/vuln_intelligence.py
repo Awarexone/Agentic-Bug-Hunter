@@ -10,6 +10,9 @@ but adds three things patterns.jsonl alone can't give you:
   * ChainDB           — confirmed multi-signal exploit chains
                          (hunt-memory/chains.jsonl), so a chain shape that paid
                          off on one target can be recognized on the next.
+                         chain_priority()/ChainDB.rank() score chains by
+                         impact/probability/effort (high/high/low ranks
+                         first) instead of only raw payout.
   * ReportOutcomeDB   — what submitted reports actually turned into
                          (hunt-memory/report_outcomes.jsonl): accepted, N/A'd,
                          duplicate. Lets report-writer learn which vuln
@@ -228,6 +231,52 @@ class FailedPatternDB(_JsonlDB):
         return None
 
 
+# Static impact/effort priors for chain_priority() below, used only when a
+# chain entry doesn't carry a numeric probability or a recognized impact/
+# effort label yet -- same "static prior, real data overrides it" role as
+# VULN_IMPACT_POTENTIAL/TESTING_TIME_ESTIMATES play for priority_score().
+CHAIN_IMPACT_SCORE = {"critical": 100, "high": 75, "medium": 50, "low": 25}
+DEFAULT_CHAIN_IMPACT_SCORE = 50
+# Inverted on purpose: low effort should score HIGH (it's cheap to pull off).
+CHAIN_EFFORT_SCORE = {"low": 100, "medium": 60, "high": 20}
+DEFAULT_CHAIN_EFFORT_SCORE = 60
+
+
+def chain_priority(chain: dict) -> dict:
+    """Impact/Probability/Effort composite score for one chain entry.
+
+    High impact + high probability + low effort should rank first — the
+    same "worth doing right now" question priority_score() answers for a
+    single vuln_class, applied to a whole multi-step attack chain instead.
+    Example the scoring is meant to surface: exposed endpoint + weak
+    authorization + sensitive object = potential IDOR chain, high impact,
+    high probability, low effort -> ranks above a chain that pays more on
+    paper but needs a much harder-to-pull-off precondition.
+
+    Chains missing impact/probability/effort (older entries, or ones that
+    only ever carried payout/severity) get neutral mid-range scores rather
+    than being excluded — this only ranks, it never filters.
+    """
+    impact_label = (chain.get("impact") or "").strip().lower()
+    impact_score = CHAIN_IMPACT_SCORE.get(impact_label, DEFAULT_CHAIN_IMPACT_SCORE)
+
+    probability = chain.get("probability")
+    probability_score = probability if isinstance(probability, (int, float)) and not isinstance(probability, bool) else 50
+
+    effort_label = (chain.get("effort") or "").strip().lower()
+    effort_score = CHAIN_EFFORT_SCORE.get(effort_label, DEFAULT_CHAIN_EFFORT_SCORE)
+
+    composite = round((impact_score + probability_score + effort_score) / 3, 1)
+
+    return {
+        "composite_score": composite,
+        "impact_score": impact_score,
+        "probability_score": probability_score,
+        "effort_score": effort_score,
+        "has_scoring_data": bool(chain.get("impact") or chain.get("effort") or probability is not None),
+    }
+
+
 class ChainDB(_JsonlDB):
     """Confirmed multi-signal exploit chains, keyed by (target, chain_name)."""
 
@@ -243,6 +292,19 @@ class ChainDB(_JsonlDB):
             chains = [c for c in chains if _tech_overlap(tech_stack, c.get("tech_stack", []))]
         chains.sort(key=lambda c: (c.get("payout", 0), c.get("ts", "")), reverse=True)
         return chains
+
+    def rank(self, tech_stack: list[str] | None = None) -> list[dict]:
+        """match() results ordered by chain_priority() instead of raw payout —
+        high impact, high probability, low effort first. Chains that don't
+        carry impact/probability/effort yet still rank (via chain_priority()'s
+        neutral defaults), just below ones with real scoring data attached."""
+        chains = self.match(tech_stack)
+        scored = [{**c, "chain_priority": chain_priority(c)} for c in chains]
+        scored.sort(
+            key=lambda c: (c["chain_priority"]["composite_score"], c.get("payout", 0)),
+            reverse=True,
+        )
+        return scored
 
 
 class ReportOutcomeDB(_JsonlDB):
@@ -950,7 +1012,8 @@ def _cmd_failed_check(args: argparse.Namespace) -> int:
 def _cmd_chains(args: argparse.Namespace) -> int:
     paths = _memory_paths(args.memory_dir)
     tech_stack = [t.strip() for t in args.tech.split(",") if t.strip()] if args.tech else None
-    result = ChainDB(paths["chains"]).match(tech_stack)
+    db = ChainDB(paths["chains"])
+    result = db.rank(tech_stack) if args.rank else db.match(tech_stack)
     print(json.dumps(result, indent=2))
     return 0
 
@@ -980,6 +1043,9 @@ def _cmd_save_chain(args: argparse.Namespace) -> int:
         endpoint=args.endpoint,
         payout=args.payout,
         severity=args.severity,
+        impact=args.impact,
+        probability=args.probability,
+        effort=args.effort,
     )
     saved = ChainDB(paths["chains"]).save(entry)
     print(json.dumps({"saved": saved, "entry": entry}, indent=2))
@@ -1165,6 +1231,7 @@ def main() -> int:
 
     p = sub.add_parser("chains", help="Known chains matching a tech stack (omit --tech for all)")
     p.add_argument("--tech", default="")
+    p.add_argument("--rank", action="store_true", help="Order by impact/probability/effort composite score instead of raw payout")
     p.add_argument("--memory-dir", default="hunt-memory")
     p.set_defaults(func=_cmd_chains)
 
@@ -1186,6 +1253,9 @@ def main() -> int:
     p.add_argument("--endpoint", default=None)
     p.add_argument("--payout", type=float, default=None)
     p.add_argument("--severity", default=None)
+    p.add_argument("--impact", default=None, help="e.g. critical/high/medium/low")
+    p.add_argument("--probability", type=float, default=None, help="0-100, how likely this chain holds up end-to-end")
+    p.add_argument("--effort", default=None, help="e.g. low/medium/high")
     p.add_argument("--memory-dir", default="hunt-memory")
     p.set_defaults(func=_cmd_save_chain)
 

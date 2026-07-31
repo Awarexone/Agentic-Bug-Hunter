@@ -13,7 +13,7 @@ Pick up where you left off on a target.
 1. Reads the target profile from `hunt-memory/targets/<target>.json`
 2. Shows hunt history (sessions, findings, payouts)
 3. Lists untested endpoints from last recon
-4. Suggests techniques based on tech stack + pattern DB
+4. Suggests techniques based on tech stack + pattern DB, and flags any technique already in `hunt-memory/failed_patterns.jsonl` for this target as a don't-retry
 5. Asks: continue hunting or re-run recon?
 
 ## Usage
@@ -43,6 +43,9 @@ Untested Surface:
 Memory Suggestions:
   Tech stack [Next.js, GraphQL, PostgreSQL] matches 2 targets
   where you found auth bypass. Try introspection → mutation pattern.
+
+Don't Retry:
+  ssrf/webhook_url_param — rejected 2026-03-01: "egress filtered"
 
 Actions:
   [r] Continue hunting untested endpoints

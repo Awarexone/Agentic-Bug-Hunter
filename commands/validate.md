@@ -8,6 +8,7 @@ Run full validation on the current finding before writing a report.
 
 ## What This Does
 
+0. (Recommended first) Invokes the `validation-engine` agent for the technical proof check — reproducibility, proven impact, authorization boundary crossed, clean PoC, and duplicate/noise against hunt memory. A REJECT here means don't bother with the steps below.
 1. Runs 7-Question Gate (one wrong answer = kill it)
 2. Checks against the always-rejected list
 3. Runs 4 pre-submission gates

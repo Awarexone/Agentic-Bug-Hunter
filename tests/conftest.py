@@ -71,6 +71,140 @@ def sample_pattern_entry():
 
 
 @pytest.fixture
+def failed_patterns_path(tmp_hunt_dir):
+    """Path to a temporary failed_patterns.jsonl file."""
+    return tmp_hunt_dir / "failed_patterns.jsonl"
+
+
+@pytest.fixture
+def chains_path(tmp_hunt_dir):
+    """Path to a temporary chains.jsonl file."""
+    return tmp_hunt_dir / "chains.jsonl"
+
+
+@pytest.fixture
+def sample_failed_pattern_entry():
+    """A valid failed-pattern entry dict."""
+    return {
+        "ts": "2026-03-24T21:00:00Z",
+        "target": "target.com",
+        "vuln_class": "ssrf",
+        "technique": "webhook_url_param",
+        "tech_stack": ["express", "aws"],
+        "reason": "egress filtered, no callback",
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+
+
+@pytest.fixture
+def sample_chain_entry():
+    """A valid attack-chain entry dict."""
+    return {
+        "ts": "2026-03-24T21:00:00Z",
+        "target": "target.com",
+        "chain_name": "secret_plus_api",
+        "steps": [
+            "found API key in JS bundle",
+            "key authenticated to internal /admin API",
+            "read other tenants' invoices",
+        ],
+        "tech_stack": ["express", "aws"],
+        "payout": 4000,
+        "severity": "critical",
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+
+
+@pytest.fixture
+def report_outcomes_path(tmp_hunt_dir):
+    """Path to a temporary report_outcomes.jsonl file."""
+    return tmp_hunt_dir / "report_outcomes.jsonl"
+
+
+@pytest.fixture
+def sample_report_outcome_entry():
+    """A valid report-outcome entry dict."""
+    return {
+        "ts": "2026-03-24T21:00:00Z",
+        "target": "target.com",
+        "vuln_class": "idor",
+        "outcome": "accepted",
+        "technique": "numeric_id_swap_with_put_method",
+        "platform": "hackerone",
+        "severity": "high",
+        "payout": 1500,
+        "report_id": "H1-12345",
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+
+
+@pytest.fixture
+def experiments_path(tmp_hunt_dir):
+    """Path to a temporary experiments.jsonl file."""
+    return tmp_hunt_dir / "experiments.jsonl"
+
+
+@pytest.fixture
+def sample_experiment_entry():
+    """A valid experiment entry dict."""
+    return {
+        "ts": "2026-03-24T21:00:00Z",
+        "target": "target.com",
+        "endpoint": "/api/v2/users/{id}/orders",
+        "vuln_class": "idor",
+        "payload_category": "numeric_id_swap",
+        "result": "success",
+        "technique": "numeric_id_swap_with_put_method",
+        "tech_stack": ["express", "postgresql"],
+        "time_spent_minutes": 8,
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+
+
+@pytest.fixture
+def hypotheses_path(tmp_hunt_dir):
+    """Path to a temporary hypotheses.jsonl file."""
+    return tmp_hunt_dir / "hypotheses.jsonl"
+
+
+@pytest.fixture
+def sample_hypothesis_entry():
+    """A valid hypothesis entry dict."""
+    return {
+        "ts": "2026-03-24T21:00:00Z",
+        "target": "target.com",
+        "vuln_class": "idor",
+        "endpoint": "/api/v2/users/{id}/orders",
+        "confidence": 91,
+        "hypothesis_name": "bola",
+        "tech_stack": ["express", "postgresql"],
+        "signals": ["numeric object id", "user-management endpoint"],
+        "source": "hypothesis-engine",
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+
+
+@pytest.fixture
+def finding_states_path(tmp_hunt_dir):
+    """Path to a temporary finding_states.jsonl file."""
+    return tmp_hunt_dir / "finding_states.jsonl"
+
+
+@pytest.fixture
+def sample_finding_state_entry():
+    """A valid finding-state transition event dict."""
+    return {
+        "ts": "2026-03-24T21:00:00Z",
+        "target": "target.com",
+        "vuln_class": "idor",
+        "endpoint": "/api/v2/users/{id}/orders",
+        "state": "TESTING",
+        "previous_state": "SUSPECTED",
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+
+
+@pytest.fixture
 def sample_target_profile():
     """A valid target profile dict."""
     return {

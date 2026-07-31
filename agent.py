@@ -30,11 +30,11 @@ Usage
   python3 agent.py --target example.com --cookie "JSESSIONID=abc" --time 4
   python3 agent.py --target example.com --scope-lock --no-brain
   python3 agent.py --target example.com --langgraph          # force LangGraph
-  python3 agent.py --target example.com --resume SESSION_ID
 
-From hunt.py:
-  hunt.py --target x --agent              # drops into agent mode
-  hunt.py --target x --agent --langgraph  # with real LangGraph
+Session state lives at recon/<domain>/agent_session.json — one persistent
+session per domain (matches the rest of the repo's domain-keyed layout, e.g.
+recon/<domain>/, findings/<domain>/, hunt-memory/targets/<domain>.json).
+Re-running against the same domain automatically picks up where it left off.
 """
 
 from __future__ import annotations
@@ -42,6 +42,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import subprocess
 import sys
 import time
 import traceback
@@ -78,16 +80,58 @@ except ImportError:
 # ── hunt.py lazy imports (avoids running main()) ───────────────────────────────
 _hunt = None
 def _h():
-    """Lazy-load hunt module once."""
+    """Lazy-load tools/hunt.py once. Needs the repo root on sys.path first (see
+    brain.py import below) so hunt.py's own `from tools.auth_session import ...`
+    resolves."""
     global _hunt
     if _hunt is None:
         import importlib.util, sys as _sys
         _here = os.path.dirname(os.path.abspath(__file__))
-        spec = importlib.util.spec_from_file_location("hunt", os.path.join(_here, "hunt.py"))
+        spec = importlib.util.spec_from_file_location("hunt", os.path.join(_here, "tools", "hunt.py"))
         _hunt = importlib.util.module_from_spec(spec)
         _sys.modules.setdefault("hunt", _hunt)
         spec.loader.exec_module(_hunt)
     return _hunt
+
+
+def _recon_dir_for(domain: str) -> str:
+    """recon/<domain>/ — tools/hunt.py's flat, domain-keyed layout (no session concept)."""
+    return os.path.join(_h().RECON_DIR, domain)
+
+
+def _findings_dir_for(domain: str) -> str:
+    """findings/<domain>/ — same flat layout."""
+    return os.path.join(_h().FINDINGS_DIR, domain)
+
+
+def _append_journal_entry(memory_dir: str, entry: dict) -> None:
+    """Append a pre-validated journal entry to hunt-memory/journal.jsonl.
+
+    Same locked-append primitive FailedPatternDB/ChainDB/ReportOutcomeDB use in
+    memory/vuln_intelligence.py, inlined here since no JournalDB class exists —
+    journal.jsonl writes have always lived at the Claude-Code-agent layer
+    (via /remember); this is the first Python-side writer.
+    """
+    import fcntl
+
+    from memory.rotation import DEFAULT_KEEP, DEFAULT_MAX_BYTES, rotate_if_needed
+
+    path = Path(memory_dir) / "journal.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(entry, separators=(",", ":")) + "\n"
+    encoded = line.encode("utf-8")
+
+    rotate_if_needed(path, max_bytes=DEFAULT_MAX_BYTES, keep=DEFAULT_KEEP)
+
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            os.write(fd, encoded)
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 # ── brain.py import ───────────────────────────────────────────────────────────
 try:
@@ -139,10 +183,10 @@ TOOLS: list[dict] = [
                         "description": "If true, skip subdomain enum and only probe the exact target given.",
                         "default": False,
                     },
-                    "max_urls": {
-                        "type": "integer",
-                        "description": "Max URLs to collect (default 100, use 200+ for thorough recon).",
-                        "default": 100,
+                    "quick": {
+                        "type": "boolean",
+                        "description": "If true, skip amass + reduce ffuf coverage for a faster pass.",
+                        "default": False,
                     },
                 },
                 "required": [],
@@ -154,9 +198,12 @@ TOOLS: list[dict] = [
         "function": {
             "name": "run_vuln_scan",
             "description": (
-                "Run the core vulnerability scanner (nuclei templates + custom checks). "
-                "Tests for CVEs, misconfigs, exposed panels, default creds, takeover candidates. "
-                "Returns: finding count by severity."
+                "Run the full vulnerability scanner pipeline in one pass: nuclei CVE/misconfig "
+                "templates, XSS (dalfox), linear-scaling SQLi PoC verification, SSTI canary probes, "
+                "race conditions, RCE upload-execution PoC, CMS detection (WordPress/Drupal) with "
+                "Metasploit resource generation, CORS misconfig checks, JWT checks, and MFA/SAML "
+                "checks. This is a single consolidated scan — do not look for separate "
+                "CMS/RCE/SQLi/CORS/JWT tools, they don't exist as separate steps anymore."
             ),
             "parameters": {
                 "type": "object",
@@ -179,22 +226,11 @@ TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
-            "name": "run_js_analysis",
-            "description": (
-                "Download and analyse all JavaScript files found during recon. "
-                "Extracts: API keys, secrets, hardcoded tokens, internal endpoints, "
-                "GraphQL schemas, and auth-bypass hints. Use when JS files were discovered."
-            ),
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "run_secret_hunt",
             "description": (
-                "Scan for leaked secrets: TruffleHog on JS/git repos, GitHound on GitHub, "
-                "hardcoded AWS/GCP/Azure keys, API tokens, private keys. "
+                "Scan JS bundles collected during recon for leaked secrets — trufflehog "
+                "(verifies live keys against issuer APIs), noseyparker, gitleaks, whichever is "
+                "installed. Hardcoded AWS/GCP/Azure keys, API tokens, private keys. "
                 "Always worth running — secrets bypass all other controls."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
@@ -205,136 +241,9 @@ TOOLS: list[dict] = [
         "function": {
             "name": "run_param_discovery",
             "description": (
-                "Brute-force GET URL parameters using arjun + paramspider on all live hosts. "
-                "Use when parameterized URLs are sparse or the site returns data conditionally. "
-                "Returns: new parameterized URLs added to the attack surface."
-            ),
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "run_post_param_discovery",
-            "description": (
-                "Discover POST form endpoints and their parameter names using lightpanda "
-                "(JS-rendered HTML) + arjun POST brute-force. "
-                "Mandatory for JSP/Java/Spring apps, ASP.NET WebForms, any app with login forms. "
-                "Then runs sqlmap on discovered POST endpoints automatically. "
-                "Pass cookies if the forms are behind authentication."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "cookies": {
-                        "type": "string",
-                        "description": "Session cookie string e.g. 'JSESSIONID=abc; token=xyz'",
-                        "default": "",
-                    },
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "run_api_fuzz",
-            "description": (
-                "Fuzz API endpoints for IDOR, auth bypass, privilege escalation, "
-                "and unauthenticated access. Tests REST + GraphQL + gRPC. "
-                "Use when API endpoints or numeric IDs were found in recon."
-            ),
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "run_cors_check",
-            "description": (
-                "Test all live hosts for CORS misconfigurations: null origin, "
-                "wildcard with credentials, trusted subdomain bypass. "
-                "High-priority when authenticated API endpoints are present."
-            ),
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "run_cms_exploit",
-            "description": (
-                "Run CMS-specific exploit checks: Drupalgeddon (CVE-2014-3704, CVE-2018-7600), "
-                "WordPress plugin vulns + user enum, Joomla RCE, Magento SQLi. "
-                "Use immediately when a CMS is detected — especially Drupal < 8 or WordPress."
-            ),
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "run_rce_scan",
-            "description": (
-                "Scan for Remote Code Execution vectors: Log4Shell (JNDI), Tomcat PUT upload, "
-                "JBoss admin consoles, SSTI (Jinja2/Twig/Freemarker), shellshock, "
-                "interactsh OOB callbacks. Use when Java/Tomcat/JBoss/Struts is detected."
-            ),
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "run_sqlmap_targeted",
-            "description": (
-                "Run sqlmap against parameterized GET URLs found in recon. "
-                "Tests error-based, boolean-blind, time-blind, UNION injection. "
-                "Use when parameterized URLs exist OR nuclei flagged SQL-related findings."
-            ),
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "run_sqlmap_on_file",
-            "description": (
-                "Run sqlmap against a specific raw HTTP request file (Burp-style). "
-                "Use when you know a specific endpoint with POST params that needs SQLi testing. "
-                "Provide the full path to the saved request file."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "request_file": {
-                        "type": "string",
-                        "description": "Absolute path to raw HTTP request file.",
-                    },
-                    "level": {
-                        "type": "integer",
-                        "description": "sqlmap level 1-5 (default 5).",
-                        "default": 5,
-                    },
-                    "risk": {
-                        "type": "integer",
-                        "description": "sqlmap risk 1-3 (default 3).",
-                        "default": 3,
-                    },
-                },
-                "required": ["request_file"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "run_jwt_audit",
-            "description": (
-                "Audit JWT tokens found in recon artifacts: algorithm confusion (alg=none, "
-                "RS256→HS256), weak HMAC secret cracking, forged claims. "
-                "Use when JWT tokens appear in URLs, cookies, or response headers."
+                "Brute-force hidden HTTP parameters on recon's discovered URLs using Arjun "
+                "(falls back to x8). Use when parameterized URLs are sparse or the site returns "
+                "data conditionally. Returns: new parameterized URLs added to the attack surface."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
@@ -467,12 +376,13 @@ class HuntMemory:
         if len(self.observation_buf) > 15:
             self.observation_buf = self.observation_buf[-10:]
 
-    def add_finding(self, tool: str, severity: str, text: str) -> None:
+    def add_finding(self, tool: str, severity: str, text: str, confirmed: bool = False) -> None:
         self.findings_log.append({
-            "tool":     tool,
-            "severity": severity,
-            "text":     text[:500],
-            "ts":       datetime.now().isoformat(),
+            "tool":      tool,
+            "severity":  severity,
+            "text":      text[:500],
+            "confirmed": confirmed,  # PoC-verified via vuln_scanner.sh's own [CONFIRMED] tag
+            "ts":        datetime.now().isoformat(),
         })
 
     def findings_summary(self) -> str:
@@ -508,13 +418,359 @@ class ToolDispatcher:
     """Execute tool calls and return plain-text observations."""
 
     def __init__(self, domain: str, memory: HuntMemory,
-                 scope_lock: bool = False, max_urls: int = 100,
+                 scope_lock: bool = False,
                  default_cookies: str = ""):
         self.domain          = domain
         self.memory          = memory
         self.scope_lock      = scope_lock
-        self.max_urls        = max_urls
         self.default_cookies = default_cookies
+        self.session_start   = time.time()  # for should_stop()'s elapsed_minutes
+
+    def _run_shell_tool(self, script_name: str, args_str: str,
+                         timeout: int = 900, extra_env: dict | None = None) -> bool:
+        """Run a tools/*.sh script directly — for tools that don't have a Python
+        wrapper in tools/hunt.py (secrets_hunter.sh, param_discovery.sh). Mirrors
+        tools/hunt.py's own subprocess pattern (used for recon_engine.sh/vuln_scanner.sh)."""
+        h = _h()
+        script = os.path.join(h.BASE_DIR, "tools", script_name)
+        if not os.path.isfile(script):
+            return False
+        child_env = os.environ.copy()
+        if extra_env:
+            child_env.update(extra_env)
+        proc = None
+        try:
+            proc = subprocess.Popen(
+                f'bash "{script}" {args_str}',
+                shell=True, cwd=h.BASE_DIR, env=child_env,
+            )
+            proc.wait(timeout=timeout)
+            return proc.returncode == 0
+        except subprocess.TimeoutExpired:
+            if proc:
+                proc.kill()
+            return False
+
+    # ── Memory-informed priority (Phase B: replaces the old static prose) ──
+
+    _TECH_TOKEN_RE = re.compile(r"\[([a-zA-Z][a-zA-Z0-9_.\-]{1,30})\]")
+
+    def _detect_tech_stack(self) -> list[str]:
+        """Best-effort tech extraction from recon's httpx tech-detect output.
+
+        Heuristic, same spirit as _summarize_recon's own tech-detection guess —
+        an empty/partial result degrades priority_briefing() to its documented
+        'no memory data yet' state rather than crashing, so precision here
+        matters less than not blocking on it.
+        """
+        recon_dir = _recon_dir_for(self.domain)
+        techs: set[str] = set()
+        for fn in ("live/httpx_full.txt", "httpx_full.txt", "tech_priority.txt", "tech.txt"):
+            fp = os.path.join(recon_dir, fn)
+            if not os.path.isfile(fp):
+                continue
+            try:
+                with open(fp, errors="replace") as f:
+                    for line in f:
+                        for token in self._TECH_TOKEN_RE.findall(line):
+                            if not token.isdigit():
+                                techs.add(token.lower())
+            except OSError:
+                pass
+            if techs:
+                break
+        return sorted(techs)
+
+    # Maps vuln_scanner.sh's own FINDINGS_DIR subcategories (it always
+    # mkdir -p's all of them, so "empty vs has content" is a real success/fail
+    # signal) to the vuln_class names used elsewhere in this codebase.
+    _VULN_SCAN_SUBDIRS = {
+        "upload": "file-upload", "xss": "xss", "sqli": "sqli", "takeover": "misconfig",
+        "misconfig": "misconfig", "exposure": "info-disclosure", "ssrf": "ssrf",
+        "cves": "misconfig", "redirects": "open-redirect", "idor": "idor",
+        "auth_bypass": "auth-bypass", "lfi": "lfi", "ssti": "ssti", "graphql": "graphql",
+        "cors": "cors", "jwt": "auth-bypass", "smuggling": "misconfig", "cloud": "misconfig",
+    }
+    # secrets_hunter.sh writes to its own --out dir (see run_secret_hunt dispatch),
+    # not one of vuln_scanner.sh's subdirs, so it gets its own small map.
+    _SECRET_HUNT_SUBDIRS = {"secrets": "info-disclosure"}
+
+    def _log_experiments_from_findings(self, tool_name: str, subdir_map: dict[str, str]) -> None:
+        """After a real test tool completes, log one experiments.jsonl entry per
+        relevant findings subcategory (content = success, still-empty = fail) —
+        the granular per-attempt signal should_stop()/payload_category_affinity()
+        need, which this loop never wrote before (findings_log only ever had
+        whole-tool-run text summaries, nothing structured). Best-effort."""
+        try:
+            from memory.experiment_memory import ExperimentDB
+            from memory.schemas import make_experiment_entry
+        except ImportError:
+            return
+
+        findings_dir = _findings_dir_for(self.domain)
+        if not os.path.isdir(findings_dir):
+            return
+
+        tech_stack = self._detect_tech_stack()
+        h = _h()
+        db = ExperimentDB(os.path.join(h.BASE_DIR, "hunt-memory", "experiments.jsonl"))
+        endpoint = f"https://{self.domain}/"
+
+        for subdir, vuln_class in subdir_map.items():
+            d = os.path.join(findings_dir, subdir)
+            if not os.path.isdir(d):
+                continue
+            has_content = any(
+                os.path.isfile(os.path.join(d, fn)) and os.path.getsize(os.path.join(d, fn)) > 0
+                for fn in os.listdir(d)
+            )
+            try:
+                entry = make_experiment_entry(
+                    target=self.domain, endpoint=endpoint, vuln_class=vuln_class,
+                    payload_category=f"vuln_scan_{subdir}",
+                    result="success" if has_content else "fail",
+                    technique=tool_name, tech_stack=tech_stack or None,
+                )
+                db.save(entry)
+            except Exception:
+                pass
+
+    def _experiment_signal(self, tech_stack: list[str]) -> str:
+        """should_stop() + payload_category_affinity() folded into one line for
+        priority_briefing() — grounds the loop's stop/pivot instinct in an actual
+        count instead of only the time/step budget."""
+        try:
+            from memory.experiment_memory import ExperimentDB, payload_category_affinity, should_stop
+        except ImportError:
+            return ""
+
+        h = _h()
+        db = ExperimentDB(os.path.join(h.BASE_DIR, "hunt-memory", "experiments.jsonl"))
+        endpoint = f"https://{self.domain}/"
+        experiments = db.for_endpoint(self.domain, endpoint)
+        if not experiments:
+            return ""
+
+        elapsed_min = round((time.time() - self.session_start) / 60, 1)
+        stop = should_stop(experiments, elapsed_min)
+        lines = [f"Experiment memory: {stop['reason']}"]
+
+        if tech_stack:
+            top = payload_category_affinity(tech_stack, experiments, top=3)
+            for p in top:
+                if p["successes"]:
+                    lines.append(
+                        f"  {p['payload_category']} ({p['vuln_class']}): "
+                        f"{p['successes']}W/{p['failures']}L on this stack before"
+                    )
+        return "\n".join(lines)
+
+    def priority_briefing(self) -> str:
+        """Live tech->vuln affinity + EV/hour ranking from hunt-memory/, the
+        same memory-driven signal recon-ranker/priority_score give the
+        Claude-Code-native agents — this loop gets it too instead of a
+        hardcoded 'CMS > RCE > SQLi' guess that never learns anything."""
+        try:
+            from memory.pattern_db import PatternDB
+            from memory.vuln_intelligence import (
+                ChainDB, FailedPatternDB, ReportOutcomeDB,
+                expected_value_per_hour, format_decision, tech_vuln_affinity,
+            )
+        except ImportError as e:
+            return f"(memory.vuln_intelligence not importable — {e})"
+
+        tech_stack = self._detect_tech_stack()
+        if not tech_stack:
+            return "(no tech stack detected yet — run run_recon first for a memory-informed ranking)"
+
+        h = _h()
+        memory_dir = os.path.join(h.BASE_DIR, "hunt-memory")
+        patterns = PatternDB(os.path.join(memory_dir, "patterns.jsonl")).read_all()
+        failed   = FailedPatternDB(os.path.join(memory_dir, "failed_patterns.jsonl")).read_all()
+        chains   = ChainDB(os.path.join(memory_dir, "chains.jsonl")).read_all()
+        outcomes = ReportOutcomeDB(os.path.join(memory_dir, "report_outcomes.jsonl")).read_all()
+
+        affinity = tech_vuln_affinity(tech_stack, patterns, failed, top=6)
+        if not affinity:
+            base = f"(tech stack {tech_stack} — no prior hunt-memory data for this combination yet)"
+            signal = self._experiment_signal(tech_stack)
+            return f"{base}\n{signal}" if signal else base
+
+        lines = [f"Tech stack detected: {', '.join(tech_stack)}"]
+        top_ev = None
+        top_affinity = None
+        for a in affinity:
+            ev = expected_value_per_hour(
+                a["vuln_class"], tech_stack, self.domain,
+                patterns=patterns, failed_patterns=failed, chains=chains, report_outcomes=outcomes,
+            )
+            if top_ev is None:
+                top_ev, top_affinity = ev, a  # affinity is net_score-sorted -- first is the top candidate
+            recal = ev["impact_recalibration"]
+            recal_note = (
+                f", impact recalibrated {recal['static_prior']}->{recal['impact']} "
+                f"(n={recal['sample_size']} report outcomes)"
+                if recal["recalibrated"] else ""
+            )
+            lines.append(
+                f"  {a['vuln_class']}: {a['wins']}W/{a['losses']}L (confidence {a['confidence']}) "
+                f"— EV/hr {ev['ev_per_hour']} [{ev['ev_label']}]{recal_note}"
+            )
+        signal = self._experiment_signal(tech_stack)
+        if signal:
+            lines.append("")
+            lines.append(signal)
+
+        if top_ev and not top_ev["hard_kill"]:
+            lines.append("")
+            lines.append("--- Top Recommendation ---")
+            lines.append(format_decision(
+                top_ev, f"https://{self.domain}/",
+                f"Run run_vuln_scan and check the {top_affinity['vuln_class']} findings subdirectory",
+                affinity=top_affinity,
+            ))
+        return "\n".join(lines)
+
+    # ── Duplicate/noise gate on finish (Phase B2) ───────────────────────────
+
+    _VULN_CLASS_KEYWORDS: list[tuple[str, str]] = [
+        ("sql injection", "sqli"), ("sqli", "sqli"), ("injectable", "sqli"),
+        ("rce", "rce"), ("code execution", "rce"),
+        ("ssti", "ssti"), ("open redirect", "open-redirect"),
+        ("cors", "cors"), ("cross-origin", "cors"),
+        ("jwt", "auth-bypass"), ("default cred", "auth-bypass"),
+        ("idor", "idor"),
+        ("secret", "info-disclosure"), ("exposed", "info-disclosure"), ("api key", "info-disclosure"),
+        ("takeover", "misconfig"), ("misconfig", "misconfig"), ("wordpress", "misconfig"), ("drupal", "misconfig"),
+    ]
+
+    @classmethod
+    def _guess_vuln_class(cls, text: str) -> str | None:
+        """Keyword-based vuln_class guess from a findings_log entry's free text —
+        same style as _classify_obs's own keyword-based severity guess. This loop's
+        findings aren't structured with an explicit vuln_class, so this is the only
+        honest way to query duplicate_or_noise_check with what's actually available."""
+        t = text.lower()
+        for kw, vuln_class in cls._VULN_CLASS_KEYWORDS:
+            if kw in t:
+                return vuln_class
+        return None
+
+    def check_finish_for_duplicates(self) -> dict:
+        """Before accepting `finish`, check whether every HIGH/CRITICAL finding this
+        session already has a report_outcomes.jsonl entry for this target+vuln_class —
+        i.e. the LLM may be about to declare victory on findings that were already
+        submitted in a prior session, not anything new.
+
+        Endpoint-level matching isn't possible here (findings_log has no endpoint,
+        only tool/severity/text) so this checks at (target, vuln_class) granularity —
+        duplicate_or_noise_check's report_outcomes match doesn't require an endpoint,
+        only its journal/failed_pattern matches do, so this is still a real signal,
+        just coarser than the per-endpoint check validation-engine does.
+        """
+        notable = [f for f in self.memory.findings_log if f.get("severity") in ("HIGH", "CRITICAL")]
+        if not notable:
+            return {"blocked": False, "reason": "no HIGH/CRITICAL findings to check"}
+
+        try:
+            from memory.vuln_intelligence import (
+                ReportOutcomeDB, FailedPatternDB, duplicate_or_noise_check, _read_jsonl_best_effort,
+            )
+        except ImportError:
+            return {"blocked": False, "reason": "memory.vuln_intelligence not importable"}
+
+        h = _h()
+        memory_dir = os.path.join(h.BASE_DIR, "hunt-memory")
+        outcomes = ReportOutcomeDB(os.path.join(memory_dir, "report_outcomes.jsonl")).read_all()
+        failed   = FailedPatternDB(os.path.join(memory_dir, "failed_patterns.jsonl")).read_all()
+        journal  = _read_jsonl_best_effort(Path(os.path.join(memory_dir, "journal.jsonl")))
+
+        checked, all_duplicate = 0, True
+        for f in notable:
+            vuln_class = self._guess_vuln_class(f.get("text", ""))
+            if not vuln_class:
+                continue
+            checked += 1
+            result = duplicate_or_noise_check(
+                self.domain, vuln_class, "",
+                journal_entries=journal, report_outcomes=outcomes, failed_patterns=failed,
+            )
+            if not result["is_duplicate"]:
+                all_duplicate = False
+
+        if checked == 0:
+            return {"blocked": False, "reason": "no findings text matched a known vuln-class keyword"}
+        if all_duplicate:
+            return {
+                "blocked": True,
+                "reason": (
+                    f"All {checked} HIGH/CRITICAL finding(s) this session match a vuln_class already "
+                    f"in report_outcomes.jsonl for {self.domain} — likely re-confirming a prior "
+                    f"submission, not a new finding. Verify before finishing."
+                ),
+            }
+        return {"blocked": False, "reason": f"{checked} finding(s) checked, at least one is new"}
+
+    def check_finish_for_unconfirmed(self) -> dict:
+        """Before accepting `finish`, check whether every HIGH/CRITICAL finding this
+        session is still unverified — only keyword-guessed, or tagged [POSSIBLE]/
+        [INFORMATIONAL] rather than vuln_scanner.sh's own [CONFIRMED] PoC tag.
+
+        This is this loop's version of validation-engine's "impact proven?" check:
+        don't let it declare victory on a claim nothing actually verified. It's a
+        soft gate (warn once, then allow) — a real HIGH finding without a
+        [CONFIRMED] tag can still be real, it just hasn't been proven yet, and the
+        loop may be out of budget to re-verify it.
+        """
+        notable = [f for f in self.memory.findings_log if f.get("severity") in ("HIGH", "CRITICAL")]
+        if not notable:
+            return {"blocked": False, "reason": "no HIGH/CRITICAL findings to check"}
+        if any(f.get("confirmed") for f in notable):
+            return {"blocked": False, "reason": "at least one finding carries a scanner-verified [CONFIRMED] tag"}
+        return {
+            "blocked": True,
+            "reason": (
+                f"{len(notable)} HIGH/CRITICAL finding(s) this session, none carry vuln_scanner.sh's "
+                f"own [CONFIRMED] PoC-verification tag — only keyword-guessed severity or "
+                f"[POSSIBLE]/manual-review signal. Re-run the relevant check or manually verify "
+                f"before finishing, if time allows."
+            ),
+        }
+
+    # ── Memory write-back on finish (Phase B3) ──────────────────────────────
+
+    def _log_session_summary(self) -> None:
+        """Auto-log a session-summary journal entry on finish — previously every
+        standalone hunt through this loop vanished the moment the process exited,
+        since HuntMemory is 100% session-scoped JSON. Reuses schemas.py's existing
+        make_session_summary_entry (built for exactly this — the Claude-Code
+        autopilot flow already auto-logs the same way via /remember at session end).
+        Best-effort: a memory-write failure must never break the actual finish.
+        """
+        try:
+            from memory.schemas import make_session_summary_entry
+        except ImportError:
+            return
+
+        completed = list(dict.fromkeys(self.memory.completed_steps))
+        vuln_classes: set[str] = set()
+        for f in self.memory.findings_log:
+            vc = self._guess_vuln_class(f.get("text", ""))
+            if vc:
+                vuln_classes.add(vc)
+
+        try:
+            entry = make_session_summary_entry(
+                target=self.domain,
+                action="hunt",
+                endpoints_tested=completed,
+                vuln_classes_tried=sorted(vuln_classes),
+                findings_count=len(self.memory.findings_log),
+            )
+            h = _h()
+            _append_journal_entry(os.path.join(h.BASE_DIR, "hunt-memory"), entry)
+        except Exception as exc:
+            print(f"{YELLOW}[Agent] Session-summary journal write skipped: {exc}{NC}", flush=True)
 
     def dispatch(self, name: str, args: dict) -> str:
         """Execute named tool and return text observation."""
@@ -526,8 +782,8 @@ class ToolDispatcher:
             if name == "run_recon":
                 ok = h.run_recon(
                     domain,
+                    quick=bool(args.get("quick", False)),
                     scope_lock=args.get("scope_lock", self.scope_lock),
-                    max_urls=int(args.get("max_urls", self.max_urls)),
                 )
                 obs = self._summarize_recon(domain, ok)
 
@@ -538,58 +794,30 @@ class ToolDispatcher:
                     full=bool(args.get("full", False)),
                 )
                 obs = self._summarize_findings(domain, "scan", ok)
-
-            elif name == "run_js_analysis":
-                ok = h.run_js_analysis(domain)
-                obs = self._summarize_findings(domain, "js", ok)
+                self._log_experiments_from_findings(name, self._VULN_SCAN_SUBDIRS)
 
             elif name == "run_secret_hunt":
-                ok = h.run_secret_hunt(domain)
+                recon_dir = _recon_dir_for(domain)
+                if not os.path.isdir(recon_dir):
+                    return "ERROR: no recon data yet. Run run_recon first."
+                out_dir = os.path.join(_findings_dir_for(domain), "secrets")
+                ok = self._run_shell_tool(
+                    "secrets_hunter.sh", f'--js-bundle "{recon_dir}" --out "{out_dir}"'
+                )
                 obs = self._summarize_findings(domain, "secrets", ok)
+                self._log_experiments_from_findings(name, self._SECRET_HUNT_SUBDIRS)
 
             elif name == "run_param_discovery":
-                ok = h.run_param_discovery(domain)
-                obs = self._summarize_params(domain, ok)
-
-            elif name == "run_post_param_discovery":
-                cookies = args.get("cookies", self.default_cookies)
-                ok = h.run_post_param_discovery(domain, cookies=cookies)
-                obs = self._summarize_post_params(domain, ok)
-
-            elif name == "run_api_fuzz":
-                ok = h.run_api_fuzz(domain)
-                obs = self._summarize_findings(domain, "api", ok)
-
-            elif name == "run_cors_check":
-                ok = h.run_cors_check(domain)
-                obs = self._summarize_findings(domain, "cors", ok)
-
-            elif name == "run_cms_exploit":
-                ok = h.run_cms_exploit(domain)
-                obs = self._summarize_findings(domain, "cms", ok)
-
-            elif name == "run_rce_scan":
-                ok = h.run_rce_scan(domain)
-                obs = self._summarize_findings(domain, "rce", ok)
-
-            elif name == "run_sqlmap_targeted":
-                ok = h.run_sqlmap_targeted(domain)
-                obs = self._summarize_findings(domain, "sqlmap", ok)
-
-            elif name == "run_sqlmap_on_file":
-                req_file = args.get("request_file", "")
-                if not req_file or not os.path.isfile(req_file):
-                    return f"ERROR: request_file not found: {req_file}"
-                ok = h.run_sqlmap_request_file(
-                    req_file, domain=domain,
-                    level=int(args.get("level", 5)),
-                    risk=int(args.get("risk", 3)),
+                recon_dir = _recon_dir_for(domain)
+                urls_file = os.path.join(recon_dir, "urls", "all.txt")
+                if not os.path.isfile(urls_file):
+                    return "ERROR: no crawled URLs yet (recon/<domain>/urls/all.txt missing). Run run_recon first."
+                out_dir = os.path.join(_findings_dir_for(domain), "params")
+                ok = self._run_shell_tool(
+                    "param_discovery.sh", f'-l "{urls_file}"',
+                    extra_env={"PARAM_OUT_DIR": out_dir},
                 )
-                obs = f"sqlmap (request-file) completed. Injectable: {ok}"
-
-            elif name == "run_jwt_audit":
-                ok = h.run_jwt_audit(domain)
-                obs = self._summarize_findings(domain, "jwt", ok)
+                obs = self._summarize_params(domain, ok, out_dir)
 
             elif name == "read_recon_summary":
                 obs = self._read_recon_files(domain)
@@ -604,6 +832,7 @@ class ToolDispatcher:
                 return f"Working memory updated ({len(notes)} chars)."
 
             elif name == "finish":
+                self._log_session_summary()
                 return f"FINISH: {args.get('verdict', 'Hunt complete.')}"
 
             else:
@@ -630,8 +859,7 @@ class ToolDispatcher:
     # ── Observation formatters ──────────────────────────────────────────────
 
     def _summarize_recon(self, domain: str, ok: bool) -> str:
-        h = _h()
-        recon_dir = h._resolve_recon_dir(domain)
+        recon_dir = _recon_dir_for(domain)
         lines = [f"run_recon: {'OK' if ok else 'PARTIAL'}"]
 
         # Count live hosts
@@ -669,8 +897,7 @@ class ToolDispatcher:
         return "\n".join(lines)
 
     def _summarize_findings(self, domain: str, label: str, ok: bool) -> str:
-        h = _h()
-        findings_dir = h._resolve_findings_dir(domain, create=False)
+        findings_dir = _findings_dir_for(domain)
         lines = [f"{label}: {'OK' if ok else 'ran (check manually)'}"]
 
         # Walk findings dir for any .txt with content
@@ -694,37 +921,19 @@ class ToolDispatcher:
             lines.append("  No HIGH/CRITICAL findings in artifacts (check logs above for details).")
         return "\n".join(lines[:20])
 
-    def _summarize_params(self, domain: str, ok: bool) -> str:
-        h = _h()
-        recon_dir  = h._resolve_recon_dir(domain)
-        params_dir = os.path.join(recon_dir, "params")
+    def _summarize_params(self, domain: str, ok: bool, out_dir: str) -> str:
         lines = [f"run_param_discovery: {'OK' if ok else 'partial'}"]
-        for fn in ("paramspider.txt", "arjun.json"):
-            fp = os.path.join(params_dir, fn)
+        for fn in ("arjun_summary.txt", "arjun.json", "x8.txt"):
+            fp = os.path.join(out_dir, fn)
             if os.path.isfile(fp):
                 count = sum(1 for _ in open(fp) if _.strip())
                 lines.append(f"  {fn}: {count} lines")
-        return "\n".join(lines)
-
-    def _summarize_post_params(self, domain: str, ok: bool) -> str:
-        h = _h()
-        recon_dir  = h._resolve_recon_dir(domain)
-        params_dir = os.path.join(recon_dir, "params")
-        lines = [f"run_post_param_discovery: {'found POST params' if ok else 'no POST params found'}"]
-        fp = os.path.join(params_dir, "post_params.json")
-        if os.path.isfile(fp):
-            try:
-                data = json.loads(Path(fp).read_text())
-                for url, info in list(data.items())[:8]:
-                    params = ", ".join(info.get("params", [])[:6])
-                    lines.append(f"  POST {url}  →  [{params}]")
-            except Exception:
-                pass
+        if len(lines) == 1:
+            lines.append(f"  No output files found under {out_dir} — check arjun/x8 are installed (tools/arsenal.md).")
         return "\n".join(lines)
 
     def _read_recon_files(self, domain: str) -> str:
-        h = _h()
-        recon_dir = h._resolve_recon_dir(domain)
+        recon_dir = _recon_dir_for(domain)
         parts = []
 
         for label, fn in [
@@ -743,8 +952,7 @@ class ToolDispatcher:
         return "\n\n".join(parts) if parts else "No recon data found. Run run_recon first."
 
     def _read_findings_files(self, domain: str) -> str:
-        h = _h()
-        findings_dir = h._resolve_findings_dir(domain, create=False)
+        findings_dir = _findings_dir_for(domain)
         if not findings_dir or not os.path.isdir(findings_dir):
             return "No findings directory. Run vulnerability scans first."
 
@@ -770,26 +978,111 @@ class ToolDispatcher:
             combined = combined[:MAX_CTX_CHARS] + "\n...[truncated]"
         return combined
 
+    @staticmethod
+    def _keyword_severity(text_lower: str) -> str | None:
+        """Weak-signal severity guess from free text — the only option when no
+        scanner tag is present. Severity (how bad, if real) is deliberately kept
+        separate from `confirmed` (do we have proof) — see _classify_obs."""
+        if any(kw in text_lower for kw in ("rce_confirmed", "injectable", "critical")):
+            return "CRITICAL"
+        if any(kw in text_lower for kw in ("high", "sql injection", "sqli", "rce", "default cred")):
+            return "HIGH"
+        if any(kw in text_lower for kw in ("medium", "exposed", "open redirect", "cors")):
+            return "MEDIUM"
+        if any(kw in text_lower for kw in ("low", "info")):
+            return "LOW"
+        return None
+
     def _classify_obs(self, tool: str, obs: str) -> None:
-        """Extract severity labels from observation text and add to findings_log."""
-        obs_l = obs.lower()
-        if any(kw in obs_l for kw in ("rce_confirmed", "injectable", "critical")):
-            sev = "CRITICAL"
-        elif any(kw in obs_l for kw in ("high", "sql injection", "rce", "default cred")):
-            sev = "HIGH"
-        elif any(kw in obs_l for kw in ("medium", "exposed", "open redirect", "cors")):
-            sev = "MEDIUM"
-        elif any(kw in obs_l for kw in ("low", "info")):
-            sev = "LOW"
-        else:
+        """Extract a severity label from observation text and add to findings_log.
+
+        Prefers vuln_scanner.sh's own [CONFIRMED]/[POSSIBLE] tags (see
+        verify_sqli_poc/verify_rce_poc/SSTI-CONFIRMED/SAML-SIG-STRIP in
+        tools/vuln_scanner.sh — real PoC verification, not a guess) over keyword
+        matching, which this loop used to rely on for everything, discarding the
+        verification work the scanner already did every time.
+
+        [CONFIRMED] is ground truth: severity=CRITICAL, confirmed=True, no
+        further judgment needed. [POSSIBLE] means "real signal, not yet proven" —
+        severity still comes from that line's own content (a SQLI-CANDIDATE is
+        still potentially HIGH, just unconfirmed), only `confirmed` stays False.
+        Untagged output (or [INFORMATIONAL], which reads as LOW via the normal
+        keyword pass since the tag text itself contains "info") falls back to
+        the old whole-observation keyword guess — the weakest signal, never
+        confirmed.
+        """
+        lines = obs.splitlines()
+
+        for ln in lines:
+            if "[CONFIRMED]" in ln:
+                text = ln.strip()[:300]
+                hint = self._chain_signal_for_finding(text)
+                if hint:
+                    text = f"{text} | {hint}"
+                self.memory.add_finding(tool, "CRITICAL", text, confirmed=True)
+                return
+
+        for ln in lines:
+            if "[POSSIBLE]" in ln:
+                sev = self._keyword_severity(ln.lower()) or "MEDIUM"
+                text = ln.strip()[:300]
+                if sev in ("HIGH", "CRITICAL"):
+                    hint = self._chain_signal_for_finding(text)
+                    if hint:
+                        text = f"{text} | {hint}"
+                self.memory.add_finding(tool, sev, text, confirmed=False)
+                return
+
+        sev = self._keyword_severity(obs.lower())
+        if not sev:
             return  # not a finding, skip
 
-        # Take first relevant line as summary
-        for ln in obs.splitlines():
+        for ln in lines:
             if any(kw in ln.lower() for kw in
                    ("critical", "high", "injectable", "rce", "exposed", "found", "medium", "sql")):
-                self.memory.add_finding(tool, sev, ln.strip()[:300])
+                text = ln.strip()[:300]
+                if sev in ("HIGH", "CRITICAL"):
+                    hint = self._chain_signal_for_finding(text)
+                    if hint:
+                        text = f"{text} | {hint}"
+                self.memory.add_finding(tool, sev, text, confirmed=False)
                 break
+
+    def _chain_signal_for_finding(self, finding_text: str) -> str | None:
+        """When a HIGH/CRITICAL finding lands, check chains.jsonl for a confirmed
+        A->B(->C) shape already proven on this tech stack — the 'found A, now
+        check for B' step chain-builder.md does for Claude-Code sessions, ported
+        here since this loop has no way to invoke that agent directly. This is
+        context, not an assertion the current finding IS part of the chain —
+        worded that way in the output."""
+        try:
+            from memory.vuln_intelligence import ChainDB
+        except ImportError:
+            return None
+
+        vuln_class = self._guess_vuln_class(finding_text)
+        tech_stack = self._detect_tech_stack()
+        if not tech_stack:
+            return None
+
+        h = _h()
+        chains = ChainDB(os.path.join(h.BASE_DIR, "hunt-memory", "chains.jsonl")).match(tech_stack)
+        if not chains:
+            return None
+
+        # Prefer a chain whose steps actually mention this vuln class; fall back
+        # to the highest-payout chain for this tech stack as general context.
+        relevant = chains
+        if vuln_class:
+            keyword_matches = [c for c in chains if vuln_class in " ".join(c.get("steps", [])).lower()]
+            if keyword_matches:
+                relevant = keyword_matches
+
+        top = relevant[0]
+        steps = " -> ".join(top.get("steps", []))
+        payout = f", ${top['payout']} elsewhere" if top.get("payout") else ""
+        return (f"CHAIN CONTEXT: confirmed chain '{top.get('chain_name')}' exists for this tech "
+                f"stack ({steps}{payout}) — worth checking whether this finding extends into it")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -952,14 +1245,20 @@ You have a set of tools that execute real security scans. Use them strategically
 CORE RULES:
 1. Always start with run_recon if no recon data exists yet.
 2. After recon, read_recon_summary to understand the attack surface before choosing next tool.
-3. Prioritize by impact: CMS exploits > RCE > SQLi > IDOR > secrets > info.
-4. If Drupal or WordPress is detected → run_cms_exploit immediately.
-5. If Java/Tomcat/JBoss/Spring is detected → run_rce_scan + run_post_param_discovery.
-6. If parameterized URLs found → run_sqlmap_targeted.
-7. If JWT tokens appear in any recon data → run_jwt_audit.
-8. Maintain your notes via update_working_memory after each significant discovery.
-9. Call finish when: all high-priority tools done, time running low, or no new attack surface.
-10. DO NOT repeat a tool that already completed in this session unless explicitly justified.
+3. run_vuln_scan is a single consolidated pass — it already covers CMS detection, RCE PoC,
+   SQLi verification, XSS, SSTI, CORS, JWT, and MFA/SAML checks in one call. There is no
+   separate tool per vuln class; don't look for one.
+4. run_secret_hunt and run_param_discovery are the only other testing tools — both need
+   run_recon's output first (JS bundles / crawled URLs respectively).
+5. Check the "Memory-informed priority" section in your context every step — it's real
+   win/loss history and expected-value-per-hour for this exact tech stack, pulled from every
+   prior hunt across all targets. It's a signal about which vuln classes are worth chasing on
+   THIS target's stack, not an instruction to run a specific tool — you still decide the next
+   tool call, but weight it by EV/hr and confidence, not by a fixed rule-of-thumb.
+6. Maintain your notes via update_working_memory after each significant discovery.
+7. Call finish when: all applicable tools have run, time is running low, or no new attack
+   surface remains.
+8. DO NOT repeat a tool that already completed in this session unless explicitly justified.
 
 Think step by step. Pick the highest-impact next action given what you know."""
 
@@ -986,6 +1285,8 @@ class ReActAgent:
         self.time_budget_secs = time_budget_hours * 3600
         self.done       = False
         self.verdict    = ""
+        self._finish_duplicate_warned = False    # warn once, then let finish through
+        self._finish_unconfirmed_warned = False  # same, for the confirmed-PoC gate
 
         # ctf-agent techniques
         self.loop_detector = LoopDetector()
@@ -1062,6 +1363,9 @@ class ReActAgent:
             "",
             "## Findings so far",
             self.memory.findings_summary(),
+            "",
+            "## Memory-informed priority (hunt-memory/ — real win/loss + EV/hour, not a guess)",
+            self.dispatcher.priority_briefing(),
             "",
             "## Recent tool outputs (last 3)",
             self.memory.recent_observations(3),
@@ -1153,6 +1457,27 @@ class ReActAgent:
                         f"{remaining_needed} more high-impact tools before concluding."
                     )
                     continue
+
+                # ── Duplicate/noise gate: don't finish on already-known findings ──
+                if name == "finish" and not self._finish_duplicate_warned:
+                    gate = self.dispatcher.check_finish_for_duplicates()
+                    if gate["blocked"]:
+                        self._finish_duplicate_warned = True
+                        print(f"{YELLOW}[Agent] Finish gate: {gate['reason']}{NC}", flush=True)
+                        results.append(f"[SYSTEM] {gate['reason']} If you've confirmed this is "
+                                        f"genuinely new (different endpoint, changed since last time), "
+                                        f"call finish again to proceed.")
+                        continue
+
+                # ── Exploit-validation gate: don't finish on unverified claims ──
+                if name == "finish" and not self._finish_unconfirmed_warned:
+                    gate = self.dispatcher.check_finish_for_unconfirmed()
+                    if gate["blocked"]:
+                        self._finish_unconfirmed_warned = True
+                        print(f"{YELLOW}[Agent] Finish gate: {gate['reason']}{NC}", flush=True)
+                        results.append(f"[SYSTEM] {gate['reason']} Call finish again once you've "
+                                        f"done what you can, or to proceed anyway.")
+                        continue
 
                 # ── Loop detection ───────────────────────────────────────
                 warn, must_break = self.loop_detector.record(name, args)
@@ -1294,11 +1619,8 @@ class ReActAgent:
             "working_memory":   self.memory.working_memory,
             "verdict":          self.verdict,
             "session_file":     self.memory.session_file,
-            # Map completed_steps to phase flags print_dashboard checks
             **{step: (step in self.memory.completed_steps)
-               for step in ("recon", "scan", "js_analysis", "secret_hunt",
-                            "param_discovery", "api_fuzz", "cors", "cms_exploit",
-                            "rce_scan", "sqlmap", "jwt_audit")},
+               for step in ("run_recon", "run_vuln_scan", "run_secret_hunt", "run_param_discovery")},
         }
 
 
@@ -1363,7 +1685,7 @@ def build_langgraph_agent(domain: str, dispatcher: ToolDispatcher,
 
     # ── Graph nodes ────────────────────────────────────────────────────────
     def agent_node(state: HuntState) -> HuntState:
-        context = f"Target: {domain}\n\n" + _build_context_for_langgraph(domain, memory)
+        context = f"Target: {domain}\n\n" + _build_context_for_langgraph(domain, memory, dispatcher)
         # Prepend system + context to messages if first call
         msgs = state["messages"]
         if not any(isinstance(m, SystemMessage) for m in msgs):
@@ -1400,26 +1722,26 @@ def build_langgraph_agent(domain: str, dispatcher: ToolDispatcher,
     return graph.compile()
 
 
-def _build_context_for_langgraph(domain: str, memory: HuntMemory) -> str:
+def _build_context_for_langgraph(domain: str, memory: HuntMemory, dispatcher: ToolDispatcher) -> str:
     """Same context builder used by LangGraph agent node."""
     completed = list(dict.fromkeys(memory.completed_steps))
     return (
         f"Completed steps: {', '.join(completed) or 'none'}\n"
         f"Working memory:\n{memory.working_memory or '(empty)'}\n\n"
         f"Findings so far:\n{memory.findings_summary()}\n\n"
+        f"Memory-informed priority (hunt-memory/):\n{dispatcher.priority_briefing()}\n\n"
         f"Recent observations:\n{memory.recent_observations(2)}"
     )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Public entry point  (called by hunt.py --agent)
+#  Public entry point  (called directly: python3 agent.py --target x)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def run_agent_hunt(
     domain: str,
     *,
     scope_lock: bool = False,
-    max_urls: int = 100,
     max_steps: int = 20,
     time_budget_hours: float = 2.0,
     cookies: str = "",
@@ -1429,27 +1751,27 @@ def run_agent_hunt(
 ) -> dict:
     """
     Main entry point for agent-driven autonomous hunting.
-    Called by hunt.py when --agent flag is passed.
+
+    One persistent session per domain (recon/<domain>/agent_session.json) — matches
+    tools/hunt.py's flat, domain-keyed layout. Re-running against the same domain
+    automatically resumes; there's no separate session-ID concept to select between.
     """
     h = _h()
+    if resume_session_id and resume_session_id != "latest":
+        print(f"{YELLOW}[Agent] --resume is informational only now — session state is "
+              f"per-domain (recon/{domain}/agent_session.json), not per-ID.{NC}", flush=True)
 
-    # ── Resolve session ───────────────────────────────────────────────────
-    session_id, recon_dir = h._activate_recon_session(
-        domain,
-        requested_session_id=resume_session_id or "latest",
-        create=True,
-    )
-    session_dir  = os.path.dirname(recon_dir)
+    # ── Resolve session (flat, domain-keyed — no session-ID concept) ──────
+    session_dir  = _recon_dir_for(domain)
     session_file = os.path.join(session_dir, "agent_session.json")
 
-    print(f"{GREEN}[Agent] Session: {session_id} → {recon_dir}{NC}", flush=True)
+    print(f"{GREEN}[Agent] Session: {domain} → {session_dir}{NC}", flush=True)
 
     # ── Init memory + dispatcher ──────────────────────────────────────────
     memory     = HuntMemory(session_file)
     dispatcher = ToolDispatcher(
         domain, memory,
         scope_lock=scope_lock,
-        max_urls=max_urls,
         default_cookies=cookies,
     )
 
@@ -1473,9 +1795,7 @@ def run_agent_hunt(
                 "session_file":    session_file,
                 "working_memory":  memory.working_memory,
                 **{step: (step in memory.completed_steps)
-                   for step in ("recon", "scan", "js_analysis", "secret_hunt",
-                                "param_discovery", "api_fuzz", "cors", "cms_exploit",
-                                "rce_scan", "sqlmap", "jwt_audit")},
+                   for step in ("run_recon", "run_vuln_scan", "run_secret_hunt", "run_param_discovery")},
             }
         except Exception as e:
             print(f"{YELLOW}[Agent] LangGraph error: {e} — falling back to built-in{NC}",
@@ -1521,10 +1841,9 @@ Examples:
   python3 agent.py --target example.com
   python3 agent.py --target example.com --time 4 --max-steps 30
   python3 agent.py --target example.com --cookie "JSESSIONID=abc123"
-  python3 agent.py --target example.com --scope-lock --max-urls 50
+  python3 agent.py --target example.com --scope-lock
   python3 agent.py --target example.com --langgraph
-  python3 agent.py --target example.com --resume SESSION_ID
-  python3 agent.py --list-models
+  python3 agent.py --target example.com --list-models
 """
     )
     parser.add_argument("--target",      required=False, help="Domain to hunt")
@@ -1532,10 +1851,10 @@ Examples:
     parser.add_argument("--max-steps",   type=int,   default=20,  help="Max ReAct iterations (default 20)")
     parser.add_argument("--cookie",      type=str,   default="",  help="Session cookie for POST discovery")
     parser.add_argument("--scope-lock",  action="store_true",     help="Stick to exact target only")
-    parser.add_argument("--max-urls",    type=int,   default=100, help="Max URLs in recon (default 100)")
     parser.add_argument("--model",       type=str,   default=None, help="Ollama model override")
     parser.add_argument("--langgraph",   action="store_true",     help="Use real LangGraph backend")
-    parser.add_argument("--resume",      type=str,   default=None, help="Resume session ID")
+    parser.add_argument("--resume",      type=str,   default=None,
+                        help="Deprecated — session state is per-domain now, resume is automatic")
     parser.add_argument("--list-models", action="store_true",     help="List available Ollama models")
     parser.add_argument("--bump",        type=str,   default=None,
                         help="Inject operator guidance mid-run: --bump SESSION_DIR 'message'",
@@ -1575,7 +1894,6 @@ Examples:
     result = run_agent_hunt(
         args.target,
         scope_lock=args.scope_lock,
-        max_urls=args.max_urls,
         max_steps=args.max_steps,
         time_budget_hours=args.time,
         cookies=args.cookie,

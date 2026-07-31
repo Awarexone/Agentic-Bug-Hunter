@@ -80,7 +80,8 @@ Recon needs: `subfinder`, `dnsx`, `httpx` (ProjectDiscovery — not the Python C
 2. Check `recon/<target>/nuclei/findings.txt` — any high/critical?
 3. Review `recon/<target>/api-endpoints.txt` — start IDOR testing.
 4. `grep -E "admin|jenkins|grafana|gitlab" recon/<target>/live/urls.txt` — admin panels.
-5. Run `/hunt target.com` to start active vulnerability testing on the recon output.
+5. `python3 tools/lead_board.py ingest target.com` — route every recon signal to a `hunt-*` skill and detect any correlation chains/hypotheses across them (see `tools/lead_board.py graph target.com`).
+6. Run `/surface target.com` for a scored, memory-informed ranking (invokes `js-intelligence`, `vulnerability-intelligence`, and `hypothesis-engine` before ranking) — or go straight to `/hunt target.com` to start active vulnerability testing on the raw recon output.
 
 ## 5-Minute Kill Signal
 

@@ -9,7 +9,7 @@
 | `/hunt` | Vulnerability testing — IDOR, SSRF, XSS, SQLi, auth bypass, logic flaws |
 | `/validate` | 7-Question Gate + 4 pre-submission gates on the current finding |
 | `/report` | Submission-ready report for H1 · Bugcrowd · Intigriti · Immunefi |
-| `/autopilot` | Autonomous loop: scope → recon → hunt → validate → report |
+| `/autopilot` | Autonomous loop: scope → recon → surface understanding → hypothesis → decision → experiment selection → validation → learning → report → checkpoint |
 
 ## Recon & Enumeration
 `/surface` `/scope-aggregate` `/cloud-recon` `/param-discover` `/secrets-hunt` `/takeover` `/scan-cves` `/bypass-403`

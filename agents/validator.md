@@ -1,6 +1,6 @@
 ---
 name: validator
-description: Finding validator. Runs the 7-Question Gate and 4-gate checklist on a described finding. Kills weak/theoretical findings fast before report writing. Prevents N/A submissions. Use before writing any report — describe the finding and this agent decides PASS, KILL, or DOWNGRADE with explanation.
+description: Finding validator. Runs the 7-Question Gate and 4-gate checklist on a described finding, with a hunt-memory duplicate/noise preflight before the external Gate 2 search. Kills weak/theoretical findings fast before report writing. Prevents N/A submissions. Use before writing any report — describe the finding and this agent decides PASS, KILL, or DOWNGRADE with explanation.
 tools:
   read: true
   bash: true
@@ -88,6 +88,18 @@ Prompt injection → + IDOR on other user's data → CHAIN REQUIRED
 S3 listing → + secrets in bundles → CHAIN REQUIRED
 ```
 
+## Memory Preflight (before Gate 2)
+
+If `validation-engine` already ran on this finding, its duplicate/noise check already covered this internal-memory question — reuse its verdict, don't repeat the call. If it didn't (e.g. `/validate` invoked directly on a finding that skipped that step), check hunt memory yourself before Gate 2's external search — it's free and instant, external search isn't:
+
+```bash
+python3 -m memory.vuln_intelligence duplicate-check --target <target> --vuln-class <class> --endpoint <endpoint> --memory-dir hunt-memory
+```
+
+- `is_duplicate: true` — already confirmed (`journal.jsonl`) or already submitted (`report_outcomes.jsonl`) for this exact target+vuln_class+endpoint shape → KILL Q5, skip Gate 2's external search entirely.
+- `is_noise: true` — this exact technique already died here (`failed_patterns.jsonl`) with no new evidence since → treat as KILL Q1 territory unless there's a specific reason this run differs (app changed, new access level, etc.) — same standard `validation-engine` applies to its own noise check.
+- `clean: true` — no internal match. Proceed to Gate 2's external search (Hacktivity, GitHub, disclosed reports) — this check only covers *our own* memory, not what other researchers have already found.
+
 ## 4 Gates (check after 7 questions pass)
 
 **Gate 0 (30 sec):** Confirmed with real requests? In scope? Reproducible? Evidence?
@@ -131,3 +143,21 @@ ACTION: [What researcher should do next]
 - DOWNGRADE: "Reproduce with two accounts and show victim PII in response, then re-triage"
 - CHAIN REQUIRED: "Build [specific chain]. Confirm it works end-to-end. Then report both together."
 ```
+
+## Update the Finding's Lifecycle State
+
+On PASS, advance the finding from `VALIDATED` to `CONFIRMED` — this is the transition `memory/finding_state.py` blocks unless `validation-engine` already recorded a STRONG verdict for it, so run `validation-engine` first if that step got skipped. Pass `--technique`/`--tech-stack`/`--payout` too: this is what auto-saves a `patterns.jsonl` entry (Phase 7 self-learning) so the confirmed technique feeds `tech_vuln_affinity()`/`priority_score()` on the next target with no manual `/remember` step:
+
+```bash
+python3 -m memory.finding_state advance --target <target> --vuln-class <class> --endpoint <endpoint> \
+  --state CONFIRMED --verdict STRONG --technique <technique> --tech-stack "<stack>" \
+  --payout <est_or_actual> --memory-dir hunt-memory
+```
+
+On KILL, advance it to `REJECTED` the same way — `--technique`/`--tech-stack`/`--reason` here auto-saves a `failed_patterns.jsonl` entry instead:
+```bash
+python3 -m memory.finding_state advance --target <target> --vuln-class <class> --endpoint <endpoint> \
+  --state REJECTED --technique <technique> --tech-stack "<stack>" --reason "<which question killed it>" \
+  --memory-dir hunt-memory
+```
+On DOWNGRADE/CHAIN REQUIRED, leave the state where it is — the finding isn't confirmed or dead yet, it's waiting on more evidence.

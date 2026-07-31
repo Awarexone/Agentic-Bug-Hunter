@@ -276,7 +276,7 @@ def check_cicd_results(domain):
                     log("warn", f"CI/CD findings detected — review: {summary_path}")
 
 
-def run_vuln_scan(domain, quick=False):
+def run_vuln_scan(domain, quick=False, full=False):
     """Run vulnerability scanner on recon results."""
     recon_dir = os.path.join(RECON_DIR, domain)
     if not os.path.isdir(recon_dir):
@@ -285,7 +285,7 @@ def run_vuln_scan(domain, quick=False):
 
     log("info", f"Running vulnerability scanner on {domain}...")
     script = os.path.join(TOOLS_DIR, "vuln_scanner.sh")
-    quick_flag = "--quick" if quick else ""
+    quick_flag = "--quick" if quick else ("--full" if full else "")
 
     child_env = os.environ.copy()
     if _AUTH_SESSION is not None:

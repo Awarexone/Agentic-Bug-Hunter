@@ -18,6 +18,7 @@ Commands:
   lead_board.py next   <target>                     the single highest-value untouched lead
   lead_board.py touch  <target> <lead_id> --status investigating [--note "..."]
   lead_board.py add    <target> --skill hunt-x --evidence URL [--signal S] [--priority high]
+  lead_board.py graph  <target> [--json]             attack surface graph: Asset->Endpoint->Tech->Hypothesis->Impact
 
 Designed to be run by Claude after every /recon and consulted during /hunt:
 Claude reads `show`, says "I see X -> run skill Y", and `touch`es leads as it works.
@@ -25,6 +26,7 @@ Claude reads `show`, says "I see X -> run skill Y", and `touch`es leads as it wo
 
 import argparse
 import glob
+import itertools
 import json
 import os
 import re
@@ -51,7 +53,7 @@ ROUTES = [
      "url", "hunt-idor", P_HIGH, "numeric object ref", "sequential ID -> IDOR/BOLA; swap to other tenant"),
     (R(r"/graph(i?ql|iql)|/api/graphql|/gql\b", re.I),
      "url", "hunt-graphql", P_HIGH, "GraphQL endpoint", "introspection/batching/alias-IDOR -> graphql-audit"),
-    (R(r"/(v\d|api|rest)/|/api\b", re.I),
+    (R(r"/(v\d|api|rest)/|(?<!/)/api\b", re.I),
      "url", "hunt-api-misconfig", P_MED, "REST API surface", "auth gaps, mass-assignment, verb tampering"),
     (R(r"upload|/files?/|attachment|/import\b|avatar|/media/upload|presign", re.I),
      "url", "hunt-file-upload", P_HIGH, "upload surface", "unrestricted upload -> stored XSS/RCE/SSRF"),
@@ -75,7 +77,7 @@ ROUTES = [
      "url", "hunt-mfa-bypass", P_MED, "MFA surface", "MFA bypass: response-tamper, rate-limit, backup-code"),
     (R(r"wss?://|/ws\b|/socket|/cable|/live\b|/realtime|sockjs", re.I),
      "url", "hunt-websocket", P_MED, "WebSocket", "cross-site WS hijack, origin check, auth-over-WS"),
-    (R(r"\.git\b|/\.env\b|\.svn|\.map(\?|$)|/backup|\.bak\b|\.old\b|\.sql(\?|$)|\.zip(\?|$)|\.tar|/_next/static", re.I),
+    (R(r"\.git\b|/\.env\b|\.svn|\.map(\?|$)|/backup|\.bak\b|\.old\b|\.sql(\?|$)|\.zip(\?|$)|\.tar(\.gz)?(\?|$)|/_next/static", re.I),
      "url", "hunt-source-leak", P_HIGH, "exposed source/artifact", "source map / .git / backup -> secrets+logic"),
     (R(r"/wp-(json|admin|content|login)|xmlrpc\.php", re.I),
      "url", "hunt-misc", P_MED, "WordPress", "plugin CVEs, xmlrpc, user enum"),
@@ -136,6 +138,259 @@ HIGH_VALUE = {"hunt-idor", "hunt-graphql", "hunt-ssrf", "hunt-llm-ai",
 PRIO_RANK = {P_HIGH: 0, P_MED: 1, P_LOW: 2}
 STATUS_ICON = {"new": "•", "investigating": "🔬", "killed": "☠️ ",
                "reported": "📤", "parked": "⏸ "}
+
+# ---------------------------------------------------------------------------
+# CORRELATION — two independently-routed leads on the same target are often
+# worth more together than apart. When both sides of a rule are present,
+# synthesize a composite "chain" lead so it floats to the top of the board
+# instead of getting worked as two unrelated low-signal items.
+# (chain_name, skills_a, skills_b, chain_skill_or_None, label, why)
+# chain_skill_or_None: which hunt-* skill the synthesized lead routes to;
+# None means "inherit whichever skill the B-side lead used".
+# ---------------------------------------------------------------------------
+CHAIN_RULES = [
+    ("secret_plus_api",
+     {"hunt-source-leak"}, {"hunt-api-misconfig", "hunt-graphql", "hunt-oauth", "hunt-idor"},
+     None, "exposed secret + API endpoint",
+     "a leaked credential/key sits near a live API on the same host -> check if it authenticates directly instead of assuming read-only exposure"),
+    ("idor_plus_account_surface",
+     {"hunt-idor"}, {"hunt-ato", "hunt-auth-bypass"},
+     "hunt-idor", "ID parameter + user-object endpoint",
+     "an object-reference candidate sits near an account/auth surface -> likely exposes full user PII, not just a numeric id"),
+    ("cors_plus_sensitive",
+     {"hunt-cors"}, {"hunt-ato", "hunt-auth-bypass", "hunt-oauth"},
+     "hunt-cors", "CORS + sensitive endpoint",
+     "permissive CORS sits near an authenticated endpoint -> test cross-site credentialed read of session/account data"),
+    ("upload_plus_processing",
+     {"hunt-file-upload"}, {"hunt-rce", "hunt-ssrf"},
+     "hunt-file-upload", "upload + dangerous processing",
+     "an upload surface sits near a processing/fetch signal -> check ImageMagick/SSRF-via-thumbnail/RCE on re-encode"),
+]
+
+_HOST_RE = re.compile(r"https?://([^/\s]+)", re.I)
+
+
+def _host_of(evidence):
+    m = _HOST_RE.search(evidence or "")
+    return m.group(1).lower() if m else None
+
+
+def detect_chains(target, leads):
+    """Scan ``leads`` (mutated in place) for CHAIN_RULES matches and append
+    synthesized composite leads. Returns the number added.
+
+    Same-host pairs (both legs' evidence resolve to the same hostname) are
+    P_HIGH; cross-host pairs on the same target are P_MED — still worth a
+    look, but a weaker signal than two things happening on one endpoint.
+    Re-running on an unchanged lead set adds nothing (dedup on the pair).
+    """
+    existing_pairs = {
+        tuple(sorted(l["chain_of"])) for l in leads
+        if l.get("source") == "chain" and l.get("chain_of")
+    }
+    added = 0
+    for chain_name, skills_a, skills_b, chain_skill, label, why in CHAIN_RULES:
+        legs_a = [l for l in leads if l["skill"] in skills_a and l.get("source") != "chain"]
+        legs_b = [l for l in leads if l["skill"] in skills_b and l.get("source") != "chain"]
+        for a in legs_a:
+            host_a = _host_of(a["evidence"])
+            for b in legs_b:
+                if a["id"] == b["id"]:
+                    continue
+                pair_key = tuple(sorted([a["id"], b["id"]]))
+                if pair_key in existing_pairs:
+                    continue
+                host_b = _host_of(b["evidence"])
+                same_host = host_a is not None and host_a == host_b
+                ld = {
+                    "id": "lb-" + secrets.token_hex(3),
+                    "target": target,
+                    "skill": chain_skill or b["skill"],
+                    "priority": P_HIGH if same_host else P_MED,
+                    "signal": f"CHAIN: {label}",
+                    "why": why,
+                    "evidence": f"{a['evidence'][:100]}  +  {b['evidence'][:100]}",
+                    "source": "chain",
+                    "chain_name": chain_name,
+                    "chain_of": [a["id"], b["id"]],
+                    "status": "new", "note": "",
+                    "created": now_iso(), "last_seen": now_iso(), "seen_count": 1,
+                }
+                leads.append(ld)
+                existing_pairs.add(pair_key)
+                added += 1
+    return added
+
+
+# ---------------------------------------------------------------------------
+# ATTACK SURFACE GRAPH — the N-way (3+) escalation of CHAIN_RULES above.
+# A 2-leg CHAIN_RULES match says "these two are worth looking at together."
+# A HYPOTHESIS_RECIPES match says "these three, together, ARE a specific
+# named vulnerability with a specific impact" — e.g. a public JS secret +
+# a live API endpoint + a weak/missing authorization signal on the SAME
+# host is an account-takeover hypothesis, not just an elevated lead.
+# Only fires on same-host combinations — a 3-way correlation spanning
+# unrelated hosts is noise, not a hypothesis.
+# (name, [leg1_skills, leg2_skills, leg3_skills, ...], label, impact, why)
+# ---------------------------------------------------------------------------
+HYPOTHESIS_RECIPES = [
+    ("account_takeover_via_leaked_secret",
+     [{"hunt-source-leak"}, {"hunt-api-misconfig", "hunt-graphql", "hunt-idor"},
+      {"hunt-auth-bypass", "hunt-ato", "hunt-oauth"}],
+     "Account Takeover (leaked secret -> API -> weak authorization)", "critical",
+     "a leaked secret, a live API, and a weak/missing authorization signal all sit on the same "
+     "host -> the secret likely unlocks account-level access, not just read-only data"),
+    ("account_takeover_via_cors_and_idor",
+     [{"hunt-cors"}, {"hunt-idor"}, {"hunt-ato", "hunt-auth-bypass"}],
+     "Account Takeover (permissive CORS -> IDOR -> account surface)", "critical",
+     "permissive CORS, an object-reference bug, and an account surface all sit on the same host "
+     "-> cross-site credentialed read of another user's full account data"),
+]
+
+# Cap combinatorics defensively: a pathological recon with dozens of leads
+# matching one leg's skill set should never turn a single ingest() call into
+# an itertools.product() explosion.
+_MAX_LEG_CANDIDATES = 6
+
+
+def detect_hypotheses(target, leads):
+    """Scan ``leads`` for HYPOTHESIS_RECIPES matches (mutated in place).
+
+    Stricter than detect_chains(): requires ALL legs on the same host before
+    emitting anything, since a named vulnerability hypothesis is a stronger
+    claim than "these two things are worth looking at together." Returns the
+    number of hypothesis leads added.
+    """
+    existing = {
+        tuple(sorted(l["chain_of"])) for l in leads
+        if l.get("source") == "hypothesis" and l.get("chain_of")
+    }
+    added = 0
+    for name, leg_skill_sets, label, impact, why in HYPOTHESIS_RECIPES:
+        candidate_legs = []
+        for skills in leg_skill_sets:
+            seen_evidence = set()
+            leg_candidates = []
+            for l in leads:
+                if l["skill"] not in skills or l.get("source") in ("chain", "hypothesis"):
+                    continue
+                # Same URL can match multiple skills in one leg's skill set
+                # (e.g. an /api/... URL routes to both hunt-idor and
+                # hunt-api-misconfig) -- that's one real artifact, not two.
+                if l["evidence"] in seen_evidence:
+                    continue
+                seen_evidence.add(l["evidence"])
+                leg_candidates.append(l)
+            candidate_legs.append(leg_candidates[:_MAX_LEG_CANDIDATES])
+        if any(not legs for legs in candidate_legs):
+            continue
+        for combo in itertools.product(*candidate_legs):
+            ids = [l["id"] for l in combo]
+            if len(set(ids)) != len(ids):
+                continue
+            if len({l["evidence"] for l in combo}) != len(combo):
+                continue  # same underlying URL can't fill two different legs
+            key = tuple(sorted(ids))
+            if key in existing:
+                continue
+            hosts = {_host_of(l["evidence"]) for l in combo}
+            hosts.discard(None)
+            if len(hosts) != 1:
+                continue  # only same-host combos rise to a full hypothesis
+            ld = {
+                "id": "lb-" + secrets.token_hex(3),
+                "target": target,
+                "skill": combo[-1]["skill"],
+                "priority": P_HIGH,
+                "signal": f"HYPOTHESIS: {label}",
+                "why": why,
+                "evidence": "  +  ".join(l["evidence"][:70] for l in combo),
+                "source": "hypothesis",
+                "chain_name": name,
+                "chain_of": ids,
+                "impact": impact,
+                "status": "new", "note": "",
+                "created": now_iso(), "last_seen": now_iso(), "seen_count": 1,
+            }
+            leads.append(ld)
+            existing.add(key)
+            added += 1
+    return added
+
+
+def build_graph(target, leads=None):
+    """Attack surface graph: Asset -> Endpoint -> Technology -> Vulnerability
+    Hypothesis -> Impact, built entirely from what the lead board already
+    knows (skill/source/chain_of/impact fields) — no relationship is
+    invented that isn't already backed by a real lead.
+
+    Returns {"nodes": [{id, type, label}], "edges": [{from, to, label}]}.
+    """
+    leads = leads if leads is not None else load_ledger(target)
+    nodes = {}
+    edges = []
+
+    def add_node(node_id, ntype, label):
+        if node_id not in nodes:
+            nodes[node_id] = {"id": node_id, "type": ntype, "label": label}
+        return node_id
+
+    asset_id = add_node(f"asset:{target}", "asset", target)
+
+    for l in leads:
+        if l.get("source") in ("chain", "hypothesis"):
+            continue
+        ep_id = add_node(f"endpoint:{l['id']}", "endpoint", l["evidence"][:80])
+        edges.append({"from": asset_id, "to": ep_id, "label": l["skill"]})
+        if l.get("source") == "tech":
+            tech_id = add_node(f"tech:{l['skill']}", "technology", l["skill"].replace("hunt-", ""))
+            edges.append({"from": ep_id, "to": tech_id, "label": "runs"})
+
+    for l in leads:
+        if l.get("source") not in ("chain", "hypothesis"):
+            continue
+        # A "chain" lead is a 2-signal correlation worth investigating together;
+        # a "hypothesis" lead is a named vulnerability claim with a declared
+        # impact. Different node types so graph consumers can tell "worth a
+        # look" apart from "this IS a specific vulnerability class."
+        ntype = "vulnerability_hypothesis" if l.get("source") == "hypothesis" else "correlation"
+        node_id = add_node(f"{l['source']}:{l['id']}", ntype, l.get("signal", l["skill"]))
+        for leg_id in l.get("chain_of", []):
+            edges.append({"from": f"endpoint:{leg_id}", "to": node_id, "label": "correlates"})
+        impact = l.get("impact")
+        if impact:
+            impact_id = add_node(f"impact:{impact}", "impact", impact)
+            edges.append({"from": node_id, "to": impact_id, "label": "implies"})
+
+    return {"nodes": list(nodes.values()), "edges": edges}
+
+
+def print_graph(target):
+    g = build_graph(target)
+    node_by_id = {n["id"]: n for n in g["nodes"]}
+    by_type = {}
+    for n in g["nodes"]:
+        by_type.setdefault(n["type"], []).append(n)
+    counts = ", ".join(f"{t}:{len(v)}" for t, v in sorted(by_type.items()))
+    print(f"\n=== ATTACK SURFACE GRAPH: {target} — {len(g['nodes'])} nodes ({counts}) ===")
+
+    hyps = by_type.get("vulnerability_hypothesis", [])
+    if not hyps:
+        print("  (no correlated hypotheses yet — run `ingest` after more recon, or `show` for raw leads)")
+        return
+
+    for h in hyps:
+        print(f"\n  {h['label']}")
+        legs = [e["from"] for e in g["edges"] if e["to"] == h["id"]]
+        for leg in legs:
+            leg_node = node_by_id.get(leg)
+            if leg_node:
+                print(f"    +-- {leg_node['label']}")
+        for e in g["edges"]:
+            if e["from"] == h["id"]:
+                imp_node = node_by_id.get(e["to"])
+                if imp_node:
+                    print(f"    => impact: {imp_node['label']}")
 
 
 def now_iso():
@@ -271,10 +526,17 @@ def ingest(target, recon_dir):
         upsert("hunt-llm-ai", P_HIGH, "confirmed AI endpoint",
                "ai_surface confirmed -> run ai_gauntlet.sh", a, "ai")
 
+    chains_added = detect_chains(target, leads)
+    hypotheses_added = detect_hypotheses(target, leads)
+
     save_ledger(target, leads)
     print(f"[+] ingest {target}: +{added} new leads, {updated} re-seen "
           f"(total {len(leads)}). Ledger: {ledger_path(target)}")
-    if added:
+    if hypotheses_added:
+        print(f"[!!] {hypotheses_added} named vulnerability HYPOTHESIS detected — run: lead_board.py graph {target}")
+    if chains_added:
+        print(f"[!] {chains_added} correlated CHAIN lead(s) detected — run: lead_board.py show {target}")
+    if not (chains_added or hypotheses_added) and added:
         print(f"[*] run:  lead_board.py show {target}    to see what to hunt next")
     return leads
 
@@ -297,6 +559,24 @@ def show(target, mode):
     print(f"\n=== LEAD BOARD: {target} — {len(leads)} leads ({counts}) ===")
 
     new = sorted(by_status.get("new", []), key=rank_key)
+
+    hyp_leads = [l for l in new if l.get("source") == "hypothesis"]
+    if hyp_leads and mode in ("all", "new", None):
+        print(f"\n🧬 VULNERABILITY HYPOTHESES — {len(hyp_leads)} named, test these first:")
+        for l in hyp_leads:
+            print(f"  [{l['priority']:>4}] {l['id']}  {l['signal']}  -> impact: {l.get('impact', '?')}")
+            print(f"         └─ {l['why']}")
+            print(f"         evidence: {l['evidence']}")
+        print(f"  (full graph: lead_board.py graph {target})")
+
+    chain_leads = [l for l in new if l.get("source") == "chain"]
+    if chain_leads and mode in ("all", "new", None):
+        print(f"\n🔗 CHAINS DETECTED — {len(chain_leads)} correlated lead(s), investigate first:")
+        for l in chain_leads:
+            print(f"  [{l['priority']:>4}] {l['id']}  {l['skill']:<20} {l['signal']}")
+            print(f"         └─ {l['why']}")
+            print(f"         evidence: {l['evidence']}")
+
     if mode in ("all", "new", None):
         print(f"\n⚡ UNTOUCHED — work these (top {min(len(new),25)} of {len(new)}):")
         if not new:
@@ -399,6 +679,7 @@ def main():
     pa = sub.add_parser("add"); pa.add_argument("target"); pa.add_argument("--skill", required=True)
     pa.add_argument("--evidence", required=True); pa.add_argument("--signal", default="")
     pa.add_argument("--priority", default="med", choices=["high", "med", "low"])
+    pg = sub.add_parser("graph"); pg.add_argument("target"); pg.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
     if args.cmd == "ingest":
@@ -422,6 +703,11 @@ def main():
         touch(args.target, args.lead_id, args.status, args.note)
     elif args.cmd == "add":
         add(args.target, args.skill, args.evidence, args.signal, args.priority)
+    elif args.cmd == "graph":
+        if args.json:
+            print(json.dumps(build_graph(args.target), indent=2))
+        else:
+            print_graph(args.target)
     return 0
 
 

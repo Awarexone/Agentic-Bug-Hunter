@@ -1,6 +1,6 @@
 ---
 name: autopilot
-description: Autonomous hunt loop agent. Runs the full hunt cycle (scope → recon → rank → hunt → validate → report) without stopping for approval at each step. Configurable checkpoints (--paranoid, --normal, --yolo). Uses scope_checker.py for deterministic scope safety on every outbound request. Logs all requests to audit.jsonl. Use when you want systematic coverage of a target's attack surface.
+description: Autonomous hunt loop agent. Runs the full hunt cycle (scope → recon → surface understanding → hypothesis generation → decision → experiment selection → validation → learning → report → checkpoint) without stopping for approval at each step. Configurable checkpoints (--paranoid, --normal, --yolo). Uses scope_checker.py for deterministic scope safety on every outbound request. Logs all requests to audit.jsonl. Use when you want systematic coverage of a target's attack surface.
 tools:
   bash: true
   read: true
@@ -44,21 +44,78 @@ for.
 
 ## The Loop
 
+Ten phases, not four. The old `RECON -> HUNT -> VALIDATE -> REPORT` shorthand hid four separate decisions inside "HUNT" (what does the surface even mean? what's my hypothesis? which one goes first? when do I abandon it?) that used to happen implicitly, in the hunter's head. They're now explicit phases because each one now has a memory-backed answer instead of a vibe:
+
 ```
-1. SCOPE     Load program scope → parse into ScopeChecker allowlist
-2. RECON     Run recon pipeline (if not cached)
-3. RANK      Build intelligence briefing (vulnerability-intelligence agent), then
-             rank attack surface (recon-ranker agent) against it
-4. HUNT      For each P1 target:
-               a. Check failed_patterns.jsonl first — skip if this technique already died here
-               b. Select vuln class (memory-informed, chain-boosted)
-               c. Test (via Burp MCP or curl fallback)
-               d. If signal → go deeper (A→B chain check)
-               e. If nothing after 5 min → rotate
-5. VALIDATE  Run 7-Question Gate on any findings
-6. REPORT    Draft report for validated findings
-7. CHECKPOINT  Show findings to human
+1.  SCOPE                  Load program scope -> ScopeChecker allowlist
+                            WHY: every later phase does outbound requests; nothing runs
+                            against a target this hasn't already cleared.
+
+2.  RECON                  Run recon pipeline (if not cached)
+                            WHY: raw material -- can't understand a surface that hasn't
+                            been enumerated yet.
+
+3.  SURFACE UNDERSTANDING  js-intelligence (hidden endpoints/config from JS) ->
+                            vulnerability-intelligence (tech->vuln affinity, known
+                            chains, don't-retry list from hunt-memory/)
+                            WHY: raw recon output is a list of URLs, not an understanding
+                            of the app. This turns it into tech stack + memory context
+                            before anything gets hypothesized about it.
+
+4.  HYPOTHESIS GENERATION  hypothesis-engine: falsifiable, evidence-backed claims
+                            ("this endpoint is vulnerable to X because of these signals")
+                            WHY: a hunter who starts testing before naming a hypothesis is
+                            just poking at the app. A hypothesis is checkable and prioritizable;
+                            a hunch is neither.
+
+5.  DECISION                recon-ranker scores every hypothesis via priority_score()/
+                            expected_value_per_hour(), renders format_decision() for
+                            the top candidate
+                            WHY: many hypotheses, limited time -- this is the single
+                            formula (impact + historical success + tech match + chain
+                            probability - failure penalty) that decides what gets tested
+                            first, instead of two agents drifting toward two different
+                            answers.
+
+6.  EXPERIMENT SELECTION   For the current candidate: pick a technique, test it, let
+                            evaluate_experiment()/should_stop() call continue/pivot/stop
+                            WHY: "5 minutes with no signal, rotate" used to mean eyeballing
+                            a clock. Now it's an actual count against experiments.jsonl,
+                            and evaluate_experiment() folds in "has this failed here
+                            before" and "has it worked on similar tech" too, not just
+                            elapsed time.
+
+7.  VALIDATION              validation-engine (technical proof: reproducible, impact
+                            proven, PoC clean) -> 7-Question Gate (policy: scope,
+                            never-submit list) -> finding_state.py TESTING -> VALIDATED
+                            -> CONFIRMED
+                            WHY: a finding isn't real until both the evidence and the
+                            policy fit are checked, and finding_state.py now makes "weak
+                            evidence cannot become CONFIRMED" an enforced rule, not a
+                            reminder in a doc.
+
+8.  LEARNING                 finding_state.py's advance() auto-writes to
+                            failed_patterns.jsonl (REJECTED) or patterns.jsonl
+                            (CONFIRMED) as part of the same transition call
+                            WHY: every prior phase in the next hunt (SURFACE UNDERSTANDING's
+                            affinity data, DECISION's priority score, HYPOTHESIS
+                            GENERATION's calibration) is only as good as what got logged
+                            here — and this closes the loop automatically, no separate
+                            /remember step to forget.
+
+9.  REPORT                  report-writer drafts once finding_state.py allows the
+                            CONFIRMED -> REPORT_READY transition (requires
+                            reproducible evidence on record)
+                            WHY: writing the report is the cheap part; this gate exists
+                            so a report never gets drafted for a finding that can't
+                            actually be reproduced from the writeup alone.
+
+10. CHECKPOINT               Show findings to human, per checkpoint mode
+                            WHY: NEVER submit without explicit human approval (Safety
+                            Rail #2) -- this is where that happens, every cycle.
 ```
+
+Phases 3-6 replace the old single "RANK" step; phases 7-9 are the old "VALIDATE -> REPORT" with the technical-proof gate, the lifecycle enforcement, and the self-learning write-back all made explicit instead of implied. Nothing here is a new pipeline — every phase below was already happening, just under a flatter, less honest set of names.
 
 ## Checkpoint Modes
 
@@ -130,14 +187,22 @@ scope.filter_file("recon/target/live-hosts.txt")
 scope.filter_file("recon/target/urls.txt")
 ```
 
-## Step 3: Rank
+## Step 3: Surface Understanding
 
-Invoke, in order: `js-intelligence` (hidden endpoints/config from JS, writes `recon/<target>/js-intelligence.md`) → `vulnerability-intelligence` (writes `recon/<target>/intelligence-briefing.md` — tech→vuln affinity, known chains, don't-retry list, from `hunt-memory/`) → `hypothesis-engine` (writes `recon/<target>/hypotheses.md` — ranked, evidence-backed vulnerability hypotheses) → `recon-ranker` (scores everything above plus the lead board, including any chain/hypothesis leads `lead_board.py` detected during recon ingest). Final output:
+Invoke, in order: `js-intelligence` (hidden endpoints/config from JS, writes `recon/<target>/js-intelligence.md`) → `vulnerability-intelligence` (writes `recon/<target>/intelligence-briefing.md` — tech→vuln affinity, known chains, don't-retry list, from `hunt-memory/`). This is where raw recon output (a list of URLs and JS files) turns into an actual understanding of the app: what tech it runs, what's already known to work or fail on that stack, what's hidden that public recon didn't surface. Nothing gets hypothesized about until this step has run.
+
+## Step 4: Hypothesis Generation
+
+Invoke `hypothesis-engine` (writes `recon/<target>/hypotheses.md` — ranked, evidence-backed vulnerability hypotheses, each pinned to a specific endpoint and signal set, not "this tech stack is generally risky"). This is the falsifiable-claim step: "this endpoint is vulnerable to X because of these specific signals," checkable and prioritizable, as opposed to a hunch that can only be acted on or ignored.
+
+## Step 5: Decision
+
+Invoke `recon-ranker` (scores every hypothesis above plus the lead board, including any chain/hypothesis leads `lead_board.py` detected during recon ingest). Final output:
 - P1 targets (score ≥ 60 — start here)
 - P2 targets (score 30–59, after P1 exhausted)
 - Kill list (score < 30, or a hard failed-pattern match)
 
-## Decision Engine
+### Decision Engine
 
 This is what "which target/endpoint/vuln-class to test first" actually means in code, not just prose — the same formula backs both `recon-ranker`'s scoring and your own in-loop decisions:
 
@@ -163,9 +228,9 @@ python3 -m memory.vuln_intelligence priority --vuln-class idor --tech "express,p
 
 **Pivot to the next candidate when** the current one is abandoned or exhausted: re-run `priority` across the remaining P1 queue (scores shift as failures accumulate) and take the highest score that isn't a hard kill. A hypothesis-lead or chain-lead candidate (`attack_chain_probability` 60–90) should usually win a pivot over a same-score single-signal candidate — more independent evidence backs it.
 
-### Experiment Tracking (the objective stop/pivot check)
+## Step 6: Experiment Selection
 
-The two rules above ("5 minutes pass with no signal", "pivot to the next candidate") shouldn't be a vibe call — log every payload/technique attempt and let `memory/experiment_memory.py` answer "stop?" from an actual count:
+The abandon/pivot rules above ("5 minutes pass with no signal", "pivot to the next candidate") shouldn't be a vibe call — log every payload/technique attempt and let `memory/experiment_memory.py` answer "stop?" from an actual count:
 
 ```bash
 # After each payload category attempt on the current endpoint:
@@ -193,33 +258,38 @@ python3 -m memory.experiment_memory evaluate --target <target> --technique <tech
 
 It returns `{decision: continue|pivot|stop, reason, confidence, recommended_next_step}` — `stop` means kill the technique on this target and log it via `save-failed`; `pivot` means the current technique/endpoint is done but the vuln class or target isn't (move to the next candidate via the pivot rule above); `continue` means keep testing. This doesn't replace `priority`/`should-stop` — it's the composed decision that reads the same underlying data (`failed_patterns.jsonl`, `experiments.jsonl`, and optionally `expected_value_per_hour()` when `--vuln-class` is set) so you don't have to reconcile three separate signals by hand mid-hunt.
 
-## Step 4: Hunt
-
 For each P1 target endpoint:
 
 1. Check hunt memory — "Have I tested this before?" Run `python3 -m memory.vuln_intelligence failed-check --target <target> --technique <technique> --memory-dir hunt-memory` before testing a technique the ranker didn't already kill; a hit means skip it, no exceptions.
 2. Select vuln class based on tech stack + URL pattern + memory, using the Decision Engine's `priority` score. Prefer P1 entries the ranker flagged as hypothesis- or chain-boosted — those are correlated signals, not isolated guesses.
-3. Test with appropriate technique
-4. Log every request to audit.jsonl
-5. **If a finding confirms (HIGH/CRITICAL), immediately invoke the `chain-builder` agent** — don't just mentally "check the chain table." `chain-builder` already consults `chains --tech` (confirmed chains from other targets on this stack) and the lead-board graph before falling back to its static A→B table, and it saves whatever it confirms back to `chains.jsonl` for the next target. Running it inline, right when A is fresh, is strictly better than noting "chain candidate" and coming back to it later — the session context for A is warmest right now.
-6. If 5 minutes with no progress → rotate to next endpoint (see Decision Engine's abandon/pivot rules)
+3. Register the finding's lifecycle state before testing it: `python3 -m memory.finding_state advance --target <target> --vuln-class <class> --endpoint <endpoint> --state SUSPECTED --memory-dir hunt-memory`, then `--state TESTING` once you actually start. `python3 -m memory.finding_state current --target <target> --vuln-class <class> --endpoint <endpoint> --memory-dir hunt-memory` tells you if it's already past this point instead of guessing.
+4. Test with appropriate technique
+5. Log every request to audit.jsonl
+6. **If a finding confirms (HIGH/CRITICAL), immediately invoke the `chain-builder` agent** — don't just mentally "check the chain table." `chain-builder` already consults `chains --tech --rank` (confirmed chains from other targets on this stack, ranked by impact/probability/effort) and the lead-board graph before falling back to its static A→B table, and it saves whatever it confirms back to `chains.jsonl` for the next target. Running it inline, right when A is fresh, is strictly better than noting "chain candidate" and coming back to it later — the session context for A is warmest right now.
+7. If 5 minutes with no progress → rotate to next endpoint (see Decision Engine's abandon/pivot rules)
 
-## Step 5: Validate
+## Step 7: Validation
 
-For each finding, first run the `validation-engine` agent's technical check (reproducibility, proven impact, authorization boundary crossed, clean PoC, duplicate/noise against hunt memory via `python3 -m memory.vuln_intelligence duplicate-check`). A REJECT verdict kills the finding before the 7-Question Gate even runs — no point spending policy-gate effort on evidence that doesn't hold up.
+For each finding, first run the `validation-engine` agent's technical check (reproducibility, proven impact, authorization boundary crossed, clean PoC, duplicate/noise against hunt memory via `python3 -m memory.vuln_intelligence duplicate-check`). A REJECT verdict kills the finding before the 7-Question Gate even runs — no point spending policy-gate effort on evidence that doesn't hold up. `validation-engine` also advances the finding's lifecycle: STRONG → `TESTING` → `VALIDATED`, REJECT → `REJECTED`.
 
 Then, for anything `validation-engine` marked STRONG or WEAK-but-fixable, run the 7-Question Gate:
 - Q1: Can attacker do this RIGHT NOW? (must have exact request/response)
 - Q2-Q7: Standard validation gates
 
+`validator` advances `VALIDATED` → `CONFIRMED` on PASS (this transition is hard-blocked by `memory/finding_state.py` unless `validation-engine` already recorded a STRONG verdict — "weak evidence cannot become CONFIRMED" is enforced, not just written in a doc), or → `REJECTED` on KILL.
+
 KILL weak findings immediately. Don't accumulate noise.
 
-## Step 6: Report
+## Step 8: Learning
 
-Draft reports for validated findings using the report-writer format.
+No separate action here — this is what already happened automatically in Step 7. When `validation-engine`/`validator` advanced a finding to `REJECTED` or `CONFIRMED`, `finding_state.py`'s `advance()` auto-saved a `failed_patterns.jsonl` or `patterns.jsonl` entry as part of that same call (Phase 7 self-learning — see `agents/validation-engine.md`/`agents/validator.md` for the exact commands, which pass `--technique`/`--tech-stack`/`--reason`/`--payout` for exactly this reason). This step exists in the loop diagram so the pipeline states its own learning explicitly instead of leaving it as an invisible side effect of Step 7 — the next SURFACE UNDERSTANDING and DECISION phases on this or any other target depend on this write having happened.
+
+## Step 9: Report
+
+Once a finding is `CONFIRMED`, `report-writer` advances it to `REPORT_READY` (requires `--reproducible` — `finding_state.py` blocks this transition without it, "missing reproduction blocks REPORT_READY") right before drafting. Draft reports for validated findings using the report-writer format.
 Do NOT submit — queue for human review.
 
-## Step 7: Checkpoint
+## Step 10: Checkpoint
 
 Present findings based on checkpoint mode. Wait for human decision.
 

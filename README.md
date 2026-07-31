@@ -205,7 +205,7 @@ Verify /recon /hunt /validate /report are available.
 | `/hunt target.com` | Tests IDOR · auth bypass · SSRF · XSS · SQLi · logic flaws and more |
 | `/validate` | 7-Question Gate — kills weak findings before you waste time reporting |
 | `/report` | Generates an H1 · Bugcrowd · Intigriti · Immunefi submission in 60s |
-| `/autopilot target.com` | Full loop, autonomous — scope → recon → hunt → validate → report |
+| `/autopilot target.com` | Full loop, autonomous — scope → recon → surface understanding → hypothesis → decision → experiment selection → validation → learning → report → checkpoint |
 
 ### Recon & Enumeration
 

@@ -59,6 +59,8 @@ without losing findings.
 7. CHECKPOINT  Present to human for review                        (frequency depends on mode flag)
 ```
 
+Same 6 commands, same outputs — but RANK and HUNT are no longer single opaque steps internally. The agent loop (`agents/autopilot.md`) now runs each as its own reasoned phase: RANK is Surface Understanding (js-intelligence + vulnerability-intelligence) → Hypothesis Generation (hypothesis-engine) → Decision (recon-ranker's priority/EV scoring); HUNT is Experiment Selection (`memory/experiment_memory.py`'s continue/pivot/stop, not a hand-eyeballed clock); VALIDATE now enforces the finding's lifecycle state (`memory/finding_state.py`: TESTING → VALIDATED → CONFIRMED, "weak evidence cannot become CONFIRMED") and auto-logs the outcome to `patterns.jsonl`/`failed_patterns.jsonl` on confirm/reject with no manual `/remember` step. See `agents/autopilot.md`'s "The Loop" for the full ten-phase breakdown and the reasoning behind each one.
+
 ### When to pick `/autopilot` vs running the steps yourself
 
 - **Use the manual chain** (`/recon` → `/hunt` → `/validate` → `/report`) when you want full control between steps, when you're exploring a new bug class, or when you're on a weaker / free model that wanders. You can stop after any phase and inspect output.
@@ -84,6 +86,6 @@ without losing findings.
 
 ## After Autopilot
 
-- Run `/remember` to log successful patterns to hunt memory
+- Confirmed/rejected findings already logged themselves to `patterns.jsonl`/`failed_patterns.jsonl` during VALIDATE (Phase 7 self-learning, no manual step) — run `/remember` only for anything outside that: session notes, a finding that never got a technique/tech-stack recorded, or context you want future runs to see that isn't a pattern/failed-pattern entry
 - Run `/pickup target.com` next time to pick up where you left off
 - Check `hunt-memory/audit.jsonl` for a full request log

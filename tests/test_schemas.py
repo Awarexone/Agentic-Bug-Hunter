@@ -9,6 +9,7 @@ from memory.schemas import (
     validate_report_outcome_entry,
     validate_experiment_entry,
     validate_hypothesis_entry,
+    validate_finding_state_entry,
     validate_target_profile,
     make_journal_entry,
     make_pattern_entry,
@@ -17,6 +18,7 @@ from memory.schemas import (
     make_report_outcome_entry,
     make_experiment_entry,
     make_hypothesis_entry,
+    make_finding_state_entry,
     SchemaError,
     CURRENT_SCHEMA_VERSION,
 )
@@ -448,6 +450,30 @@ class TestFactoryFunctions:
         assert "probability" not in entry
         assert "effort" not in entry
 
+    def test_make_finding_state_entry(self):
+        entry = make_finding_state_entry(
+            target="target.com", vuln_class="idor", endpoint="/api/x",
+            state="TESTING", previous_state="SUSPECTED",
+        )
+        assert entry["state"] == "TESTING"
+        assert entry["previous_state"] == "SUSPECTED"
+        assert entry["schema_version"] == CURRENT_SCHEMA_VERSION
+        assert "ts" in entry
+
+    def test_make_finding_state_entry_with_verdict_and_reproducible(self):
+        entry = make_finding_state_entry(
+            target="target.com", vuln_class="idor", endpoint="/api/x",
+            state="CONFIRMED", previous_state="VALIDATED", verdict="STRONG", reproducible=True,
+        )
+        assert entry["verdict"] == "STRONG"
+        assert entry["reproducible"] is True
+
+    def test_make_finding_state_entry_without_optional_fields_omits_them(self):
+        entry = make_finding_state_entry(target="target.com", vuln_class="idor", endpoint="/api/x", state="SUSPECTED")
+        assert "previous_state" not in entry
+        assert "verdict" not in entry
+        assert "reproducible" not in entry
+
 
 class TestExperimentValidation:
 
@@ -643,3 +669,73 @@ class TestHypothesisValidation:
         sample_hypothesis_entry["effort"] = ""
         with pytest.raises(SchemaError, match="'effort' must be a non-empty"):
             validate_hypothesis_entry(sample_hypothesis_entry)
+
+
+class TestFindingStateValidation:
+
+    def test_valid_full_entry(self, sample_finding_state_entry):
+        result = validate_finding_state_entry(sample_finding_state_entry)
+        assert result == sample_finding_state_entry
+
+    def test_valid_minimal_entry(self):
+        entry = {
+            "ts": "2026-03-24T21:00:00Z",
+            "target": "target.com",
+            "vuln_class": "idor",
+            "endpoint": "/api/v2/users/1",
+            "state": "SUSPECTED",
+            "schema_version": CURRENT_SCHEMA_VERSION,
+        }
+        assert validate_finding_state_entry(entry) == entry
+
+    def test_missing_state(self, sample_finding_state_entry):
+        del sample_finding_state_entry["state"]
+        with pytest.raises(SchemaError, match="missing required fields.*state"):
+            validate_finding_state_entry(sample_finding_state_entry)
+
+    def test_invalid_state_rejected(self, sample_finding_state_entry):
+        sample_finding_state_entry["state"] = "IN_PROGRESS"
+        with pytest.raises(SchemaError, match="'state' must be one of"):
+            validate_finding_state_entry(sample_finding_state_entry)
+
+    def test_all_valid_states_accepted(self, sample_finding_state_entry):
+        for state in ("SUSPECTED", "TESTING", "VALIDATED", "CONFIRMED", "REPORT_READY", "REJECTED"):
+            sample_finding_state_entry["state"] = state
+            assert validate_finding_state_entry(sample_finding_state_entry)["state"] == state
+
+    def test_invalid_previous_state_rejected(self, sample_finding_state_entry):
+        sample_finding_state_entry["previous_state"] = "NOT_A_STATE"
+        with pytest.raises(SchemaError, match="'previous_state' must be one of"):
+            validate_finding_state_entry(sample_finding_state_entry)
+
+    def test_valid_verdict_accepted(self, sample_finding_state_entry):
+        sample_finding_state_entry["verdict"] = "STRONG"
+        assert validate_finding_state_entry(sample_finding_state_entry)["verdict"] == "STRONG"
+
+    def test_invalid_verdict_rejected(self, sample_finding_state_entry):
+        sample_finding_state_entry["verdict"] = "KINDA_STRONG"
+        with pytest.raises(SchemaError, match="'verdict' must be one of"):
+            validate_finding_state_entry(sample_finding_state_entry)
+
+    def test_reproducible_must_be_bool(self, sample_finding_state_entry):
+        sample_finding_state_entry["reproducible"] = "yes"
+        with pytest.raises(SchemaError, match="'reproducible' must be a boolean"):
+            validate_finding_state_entry(sample_finding_state_entry)
+
+    def test_reproducible_true_accepted(self, sample_finding_state_entry):
+        sample_finding_state_entry["reproducible"] = True
+        assert validate_finding_state_entry(sample_finding_state_entry)["reproducible"] is True
+
+    def test_empty_target_rejected(self, sample_finding_state_entry):
+        sample_finding_state_entry["target"] = ""
+        with pytest.raises(SchemaError, match="'target' must be a non-empty"):
+            validate_finding_state_entry(sample_finding_state_entry)
+
+    def test_unknown_field_rejected(self, sample_finding_state_entry):
+        sample_finding_state_entry["extra_field"] = "oops"
+        with pytest.raises(SchemaError, match="unknown fields"):
+            validate_finding_state_entry(sample_finding_state_entry)
+
+    def test_not_a_dict(self):
+        with pytest.raises(SchemaError, match="must be a dict"):
+            validate_finding_state_entry("not a dict")

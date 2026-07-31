@@ -99,9 +99,32 @@ ACTION:
 - REJECT: "<Check N> failed: <reason>. Kill this candidate, move to the next lead."
 ```
 
+## Update the Finding's Lifecycle State
+
+Your verdict is the exact evidence `memory/finding_state.py` needs to enforce "weak evidence cannot become CONFIRMED" — record it, don't just print it:
+
+```bash
+# STRONG verdict: this finding earned its way from TESTING to VALIDATED
+python3 -m memory.finding_state advance --target <target> --vuln-class <class> --endpoint <endpoint> \
+  --state VALIDATED --verdict STRONG --memory-dir hunt-memory
+
+# WEAK verdict: do NOT advance -- it stays in TESTING until the gap named in
+# your WEAK output is closed and this check is re-run
+# (no command to run; advancing is the wrong move here)
+
+# REJECT verdict: kill it explicitly so it stops showing up as a live lead
+python3 -m memory.finding_state advance --target <target> --vuln-class <class> --endpoint <endpoint> \
+  --state REJECTED --memory-dir hunt-memory
+```
+
+If this is the first time this finding has been touched (no prior `SUSPECTED`/`TESTING` entry), register it first: `python3 -m memory.finding_state advance --target <target> --vuln-class <class> --endpoint <endpoint> --state SUSPECTED --memory-dir hunt-memory`, then `--state TESTING` before running your checks. `python3 -m memory.finding_state current --target <target> --vuln-class <class> --endpoint <endpoint> --memory-dir hunt-memory` tells you where it already is instead of guessing.
+
+The `--verdict STRONG` you pass here is what a later `validator`/`report-writer` step relies on to legally advance the same finding to `CONFIRMED` (once policy checks also pass) and eventually `REPORT_READY` (once `--reproducible` is on record too) — `memory/finding_state.py` hard-blocks both of those transitions without it, so skipping this step here isn't just a missed log entry, it's a wall the finding can't get past later.
+
 ## Rules
 
 1. Never mark STRONG on a check you didn't actually re-verify — re-run the request during this check, don't just trust the hunter's earlier description of it.
 2. The duplicate-check call is mandatory, not optional — a real bug that's a duplicate of your own prior finding wastes exactly as much time downstream as a fake one.
 3. You are not the policy gate. Never kill a finding for being on the never-submit list or out of program scope — that's `validator`'s job. Stay in your lane: reproducibility, impact, authorization, PoC quality, internal duplication.
 4. If `duplicate-check` returns `is_noise: true`, check whether meaningful time has passed or the app has changed since the failed attempt — if the hunter has a specific reason this run differs, note it and downgrade to WEAK instead of REJECT; otherwise REJECT.
+5. Always update the finding's lifecycle state (above) before finishing — a STRONG verdict that never reaches `finding_states.jsonl` is invisible to every downstream step that checks it.

@@ -37,6 +37,13 @@ If the `validation-engine` agent hasn't already run on this finding, run its dup
 python3 -m memory.vuln_intelligence duplicate-check --target <target> --vuln-class <class> --endpoint <endpoint> --memory-dir hunt-memory
 ```
 
+Once you answered all four questions above concretely (especially #1 and #4 — that's what "reproducible" means here), advance the finding to `REPORT_READY`. `memory/finding_state.py` hard-blocks this transition without `--reproducible`, so a finding you're not actually ready to write can't be marked ready by accident:
+```bash
+python3 -m memory.finding_state advance --target <target> --vuln-class <class> --endpoint <endpoint> \
+  --state REPORT_READY --reproducible --memory-dir hunt-memory
+```
+If that command errors, it's telling you something upstream is missing — either `validator` never ran (finding never reached `CONFIRMED`) or `validation-engine` never recorded a STRONG verdict. Don't write the report until it succeeds.
+
 ## Memory-Informed Writing
 
 Before choosing wording/severity framing, check what's actually converted to paid reports before:

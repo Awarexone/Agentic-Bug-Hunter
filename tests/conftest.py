@@ -185,6 +185,26 @@ def sample_hypothesis_entry():
 
 
 @pytest.fixture
+def finding_states_path(tmp_hunt_dir):
+    """Path to a temporary finding_states.jsonl file."""
+    return tmp_hunt_dir / "finding_states.jsonl"
+
+
+@pytest.fixture
+def sample_finding_state_entry():
+    """A valid finding-state transition event dict."""
+    return {
+        "ts": "2026-03-24T21:00:00Z",
+        "target": "target.com",
+        "vuln_class": "idor",
+        "endpoint": "/api/v2/users/{id}/orders",
+        "state": "TESTING",
+        "previous_state": "SUSPECTED",
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+
+
+@pytest.fixture
 def sample_target_profile():
     """A valid target profile dict."""
     return {

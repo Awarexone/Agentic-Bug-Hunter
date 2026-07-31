@@ -143,3 +143,14 @@ ACTION: [What researcher should do next]
 - DOWNGRADE: "Reproduce with two accounts and show victim PII in response, then re-triage"
 - CHAIN REQUIRED: "Build [specific chain]. Confirm it works end-to-end. Then report both together."
 ```
+
+## Update the Finding's Lifecycle State
+
+On PASS, advance the finding from `VALIDATED` to `CONFIRMED` — this is the transition `memory/finding_state.py` blocks unless `validation-engine` already recorded a STRONG verdict for it, so run `validation-engine` first if that step got skipped:
+
+```bash
+python3 -m memory.finding_state advance --target <target> --vuln-class <class> --endpoint <endpoint> \
+  --state CONFIRMED --verdict STRONG --memory-dir hunt-memory
+```
+
+On KILL, advance it to `REJECTED` so it stops surfacing as a live lead: `python3 -m memory.finding_state advance --target <target> --vuln-class <class> --endpoint <endpoint> --state REJECTED --memory-dir hunt-memory`. On DOWNGRADE/CHAIN REQUIRED, leave the state where it is — the finding isn't confirmed or dead yet, it's waiting on more evidence.

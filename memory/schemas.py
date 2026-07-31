@@ -82,6 +82,23 @@ HYPOTHESIS_OPTIONAL = {
 }
 HYPOTHESIS_ALL = HYPOTHESIS_REQUIRED | HYPOTHESIS_OPTIONAL
 
+# One line per lifecycle transition event (append-only, same pattern as
+# journal.jsonl/experiments.jsonl) -- SUSPECTED -> TESTING -> VALIDATED ->
+# CONFIRMED -> REPORT_READY, or REJECTED from any non-terminal state. See
+# memory/finding_state.py for the transition-legality rules; this schema
+# only validates that one event's shape is well-formed.
+FINDING_STATE_REQUIRED = {"ts", "target", "vuln_class", "endpoint", "state", "schema_version"}
+FINDING_STATE_OPTIONAL = {
+    "previous_state",  # the state this event transitioned FROM
+    "verdict",         # validation-engine's STRONG/WEAK/REJECT verdict, if this transition cited one
+    "reproducible",    # bool -- whether reproducible evidence was on hand at this transition
+    "notes", "tags", "session_id",
+}
+FINDING_STATE_ALL = FINDING_STATE_REQUIRED | FINDING_STATE_OPTIONAL
+
+VALID_FINDING_STATES = {"SUSPECTED", "TESTING", "VALIDATED", "CONFIRMED", "REPORT_READY", "REJECTED"}
+VALID_FINDING_VERDICTS = {"STRONG", "WEAK", "REJECT"}
+
 
 def _current_session_id() -> str | None:
     """Return the BBHUNT_SESSION_ID env var if set (the auth-aware hash).
@@ -472,6 +489,62 @@ def validate_hypothesis_entry(entry: dict) -> dict:
     return entry
 
 
+def validate_finding_state_entry(entry: dict) -> dict:
+    """Validate one finding-lifecycle transition event. Returns the entry if
+    valid, raises SchemaError if not.
+
+    This only checks the event's own shape (known state names, well-formed
+    verdict/reproducible fields) -- it does NOT check whether the transition
+    itself was legal (e.g. SUSPECTED -> CONFIRMED skipping steps). That's
+    memory/finding_state.py's can_transition()/transition() job, run before
+    an entry ever reaches here.
+    """
+    if not isinstance(entry, dict):
+        raise SchemaError(f"Finding-state entry must be a dict, got {type(entry).__name__}")
+
+    _check_required(entry, FINDING_STATE_REQUIRED, "Finding-state entry")
+    _check_unknown_fields(entry, FINDING_STATE_ALL, "Finding-state entry")
+    _check_schema_version(entry)
+    _check_timestamp(entry["ts"], "ts")
+
+    if not isinstance(entry["target"], str) or not entry["target"].strip():
+        raise SchemaError("Finding-state entry: 'target' must be a non-empty string")
+
+    if not isinstance(entry["vuln_class"], str) or not entry["vuln_class"].strip():
+        raise SchemaError("Finding-state entry: 'vuln_class' must be a non-empty string")
+
+    if not isinstance(entry["endpoint"], str) or not entry["endpoint"].strip():
+        raise SchemaError("Finding-state entry: 'endpoint' must be a non-empty string")
+
+    if entry["state"] not in VALID_FINDING_STATES:
+        raise SchemaError(
+            f"Finding-state entry: 'state' must be one of {sorted(VALID_FINDING_STATES)}, got {entry['state']!r}"
+        )
+
+    if "previous_state" in entry and entry["previous_state"] not in VALID_FINDING_STATES:
+        raise SchemaError(
+            f"Finding-state entry: 'previous_state' must be one of {sorted(VALID_FINDING_STATES)}, got {entry['previous_state']!r}"
+        )
+
+    if "verdict" in entry and entry["verdict"] not in VALID_FINDING_VERDICTS:
+        raise SchemaError(
+            f"Finding-state entry: 'verdict' must be one of {sorted(VALID_FINDING_VERDICTS)}, got {entry['verdict']!r}"
+        )
+
+    if "reproducible" in entry and not isinstance(entry["reproducible"], bool):
+        raise SchemaError(f"Finding-state entry: 'reproducible' must be a boolean, got {entry['reproducible']!r}")
+
+    if "tags" in entry:
+        if not isinstance(entry["tags"], list) or not all(isinstance(t, str) for t in entry["tags"]):
+            raise SchemaError("Finding-state entry: 'tags' must be a list of strings")
+
+    if "session_id" in entry:
+        if not isinstance(entry["session_id"], str) or not entry["session_id"].strip():
+            raise SchemaError("Finding-state entry: 'session_id' must be a non-empty string")
+
+    return entry
+
+
 def validate_target_profile(profile: dict) -> dict:
     """Validate a target profile. Returns the profile if valid, raises SchemaError if not."""
     if not isinstance(profile, dict):
@@ -813,6 +886,45 @@ def make_hypothesis_entry(
         entry["session_id"] = session_id
 
     return validate_hypothesis_entry(entry)
+
+
+def make_finding_state_entry(
+    target: str,
+    vuln_class: str,
+    endpoint: str,
+    state: str,
+    previous_state: str | None = None,
+    verdict: str | None = None,
+    reproducible: bool | None = None,
+    notes: str | None = None,
+    tags: list[str] | None = None,
+    session_id: str | None = None,
+) -> dict:
+    """Create and validate a new finding-state transition event with current timestamp."""
+    entry = {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "target": target,
+        "vuln_class": vuln_class,
+        "endpoint": endpoint,
+        "state": state,
+        "schema_version": CURRENT_SCHEMA_VERSION,
+    }
+    if previous_state is not None:
+        entry["previous_state"] = previous_state
+    if verdict is not None:
+        entry["verdict"] = verdict
+    if reproducible is not None:
+        entry["reproducible"] = reproducible
+    if notes is not None:
+        entry["notes"] = notes
+    if tags is not None:
+        entry["tags"] = tags
+    if session_id is None:
+        session_id = _current_session_id()
+    if session_id is not None:
+        entry["session_id"] = session_id
+
+    return validate_finding_state_entry(entry)
 
 
 def validate_audit_entry(entry: dict) -> dict:

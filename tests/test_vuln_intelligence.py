@@ -12,6 +12,7 @@ from memory.vuln_intelligence import (
     duplicate_or_noise_check,
     endpoint_shape_stats,
     expected_value_per_hour,
+    format_browser_test_plan,
     format_decision,
     hypothesis_calibration,
     normalize_endpoint,
@@ -800,3 +801,35 @@ class TestFormatDecision:
         ps = priority_score("idor", ["express"], "a.com")
         out = format_decision(ps, "/x", "test")
         assert "not estimated" in out
+
+
+class TestFormatBrowserTestPlan:
+    """Phase 5 — the Browser Test Plan block (Reason:/Target flow:/Expected
+    weakness:) an agent presents when it flags surface curl-based testing
+    can't reach. Pure formatting over caller-supplied text, same convention
+    as format_decision() above."""
+
+    def test_contains_all_three_labeled_sections(self):
+        out = format_browser_test_plan(
+            reason="React Router SPA, no server-rendered routes",
+            target_flow="Login -> OAuth popup -> callback",
+            expected_weakness="PKCE validated client-side only",
+        )
+        assert "Browser Test Plan:" in out
+        assert "Reason:" in out
+        assert "Target flow:" in out
+        assert "Expected weakness:" in out
+
+    def test_preserves_caller_supplied_text_verbatim(self):
+        out = format_browser_test_plan(
+            reason="WebSocket-only channel, no REST fallback",
+            target_flow="Open chat -> send message -> observe socket frames",
+            expected_weakness="No server-side authorization check on socket messages",
+        )
+        assert "WebSocket-only channel, no REST fallback" in out
+        assert "Open chat -> send message -> observe socket frames" in out
+        assert "No server-side authorization check on socket messages" in out
+
+    def test_sections_appear_in_order(self):
+        out = format_browser_test_plan(reason="R", target_flow="F", expected_weakness="W")
+        assert out.index("Reason:") < out.index("Target flow:") < out.index("Expected weakness:")

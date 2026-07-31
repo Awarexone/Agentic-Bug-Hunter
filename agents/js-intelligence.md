@@ -96,6 +96,14 @@ These are your starting point, not your output. If `js/endpoints.txt` has 40 ent
   Routed: hunt-browser-required (lb-xxxxxx) — flag for `/hunt target.com --chrome` (Chrome MCP mode),
   curl-based testing cannot reach this surface
 
+For each browser-required finding, render the concrete test plan instead of leaving it as a routing note — `hypothesis-engine`/`recon-ranker` read this file, and "flag for --chrome" alone doesn't tell them what flow to actually drive:
+```bash
+python3 -m memory.vuln_intelligence browser-plan \
+  --reason "WebSocket-only real-time channel, no REST polling equivalent found" \
+  --target-flow "Open live.js consumer -> observe wss://target.com/ws frames -> replay with a different session" \
+  --expected-weakness "No server-side authorization check applied per-message on the socket"
+```
+
 ## Stats
 - JS files analyzed: N (recon_engine.sh covered M, this pass added N-M)
 - Hidden endpoints found: N | Internal URLs: N | Debug routes: N | Source maps recovered: N

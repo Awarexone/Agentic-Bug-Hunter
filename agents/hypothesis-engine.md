@@ -126,6 +126,15 @@ Expected Impact:
   no hypothesis generated because there's no curl-based testing strategy for it, but this is
   untested surface, not ruled out. Recommended: `/hunt <target> --chrome` (Chrome MCP mode).
 
+  Browser Test Plan:
+  ```bash
+  python3 -m memory.vuln_intelligence browser-plan \
+    --reason "React Router SPA + client-side-only OAuth popup — no server-rendered login form anywhere in recon, curl can't drive the JS-executed handshake" \
+    --target-flow "Login -> OAuth popup -> callback -> token stored client-side -> authenticated SPA route" \
+    --expected-weakness "OAuth state/PKCE validated client-side only, or token stored somewhere an injected script (XSS) could read it"
+  ```
+  Write this block into the hypothesis entry under "Needs Browser-Driven Testing" instead of the one-line note above — it's the same Reason:/Target flow:/Expected weakness: structure `/hunt --chrome` needs to actually drive the flow, not just a pointer that browser testing is needed.
+
 ## Stats
 - Hypotheses generated: N (P1: N, P2: N)
 - Backed by a lead-board correlation: N

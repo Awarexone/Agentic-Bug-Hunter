@@ -843,6 +843,29 @@ def format_decision(
     )
 
 
+def format_browser_test_plan(reason: str, target_flow: str, expected_weakness: str) -> str:
+    """Render the standard Browser Test Plan block an agent presents when it
+    flags surface that curl-based testing structurally cannot reach — SPA
+    client-side routing, client-only auth (OAuth popup/redirect driven by
+    JS), WebSocket-only channels, hidden API calls only ever fired from JS.
+
+    The Chrome MCP mode (`/hunt <target> --chrome`, see commands/hunt.md)
+    analogue of format_decision() above: a pure presentation layer over
+    reasoning the caller already did (js-intelligence's signal detection,
+    hypothesis-engine's "Needs Browser-Driven Testing" section) — it doesn't
+    decide *whether* browser testing is required, only renders the plan once
+    that's already been decided. No new scanner, no new browser automation:
+    the actual testing still happens through whatever Chrome MCP integration
+    is already configured.
+    """
+    return (
+        f"Browser Test Plan:\n\n"
+        f"Reason:\n{reason}\n\n"
+        f"Target flow:\n{target_flow}\n\n"
+        f"Expected weakness:\n{expected_weakness}"
+    )
+
+
 def duplicate_or_noise_check(
     target: str,
     vuln_class: str,
@@ -1107,6 +1130,11 @@ def _cmd_decision(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_browser_plan(args: argparse.Namespace) -> int:
+    print(format_browser_test_plan(args.reason, args.target_flow, args.expected_weakness))
+    return 0
+
+
 def _cmd_save_outcome(args: argparse.Namespace) -> int:
     paths = _memory_paths(args.memory_dir)
     entry = make_report_outcome_entry(
@@ -1281,6 +1309,12 @@ def main() -> int:
     p.add_argument("--minutes", type=float, default=None)
     p.add_argument("--memory-dir", default="hunt-memory")
     p.set_defaults(func=_cmd_decision)
+
+    p = sub.add_parser("browser-plan", help="Render a Browser Test Plan (Reason/Target flow/Expected weakness) for browser-required surface")
+    p.add_argument("--reason", required=True, help="Why curl-based testing can't reach this (SPA routing, client-only auth, WebSocket-only, ...)")
+    p.add_argument("--target-flow", required=True, help="The specific flow to drive through Chrome MCP")
+    p.add_argument("--expected-weakness", required=True, help="What you expect to find and why")
+    p.set_defaults(func=_cmd_browser_plan)
 
     p = sub.add_parser("save-outcome", help="Record what a submitted report turned into (accepted/N-A/duplicate/...)")
     p.add_argument("--target", required=True)

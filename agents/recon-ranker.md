@@ -154,6 +154,8 @@ This prints `Decision:/Reason:/Evidence:/Confidence:/Expected Impact:/Estimated 
 - app.target.com — score 58 (reference only, not curl-testable), hunt-browser-required lb-xxxxxx
   Why not curl-testable: React Router SPA + client-side-only OAuth (js-intelligence.md)
   Next step: `/hunt target.com --chrome`
+  If `js-intelligence.md` didn't already render one, generate the Browser Test Plan here so `/hunt --chrome`
+  has a concrete flow instead of just a pointer: `python3 -m memory.vuln_intelligence browser-plan --reason "<why curl can't reach it>" --target-flow "<flow to drive>" --expected-weakness "<what you expect to find>"`
 
 ## Memory Context
 - Tech-vuln affinity source: N patterns, M failed attempts (from intelligence-briefing.md)

@@ -12,13 +12,25 @@
 
 set -uo pipefail
 
+# Normalize dynamic response bodies before comparison
+_normalize_body() {
+    sed -E \
+    -e 's/[0-9]{10,}/<NUM>/g' \
+    -e 's/[a-f0-9]{32,}/<HASH>/gi' \
+    -e 's/[0-9]{4}-[0-9]{2}-[0-9]{2}/<DATE>/g'
+}
+
+# Confidence tiers for validation/reporting
+CONFIRMED="[CONFIRMED]"
+POSSIBLE="[POSSIBLE]"
+INFORMATIONAL="[INFORMATIONAL]"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$SCRIPT_DIR/external_arsenal.sh"
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; MAG='\033[0;35m'; NC='\033[0m'
 log()  { echo -e "${CYAN}[*]${NC} $1"; }
 ok()   { echo -e "${GREEN}[+]${NC} $1"; }
-hit()  { echo -e "${MAG}[BYPASS]${NC} $1"; }
+hit()  { echo -e "${MAG}${CONFIRMED}${NC} $1"; }
 err()  { echo -e "${RED}[-]${NC} $1" >&2; }
 
 URL=""; LIST=""
@@ -36,6 +48,10 @@ done
 OUT_DIR="${BYPASS_OUT_DIR:-$(pwd)/findings/bypass/$(date +%Y%m%d_%H%M%S)}"
 mkdir -p "$OUT_DIR"
 
+orig_norm="$OUT_DIR/orig_norm"
+bypass_norm="$OUT_DIR/bypass_norm"
+[ "$bypass_norm" = "$orig_norm" ] && log "normalized response matches baseline"
+baseline_code=$orig_code
 # shellcheck source=banner.sh
 . "$SCRIPT_DIR/banner.sh"
 print_banner "403 / 401 Bypass Probe" "${URL:-$LIST}" \

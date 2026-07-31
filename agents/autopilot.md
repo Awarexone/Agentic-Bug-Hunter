@@ -183,6 +183,16 @@ python3 -m memory.experiment_memory should-stop --target <target> --endpoint <en
 
 `should-stop` returns `stop: true` once 5 minutes have passed with zero successes OR 3 distinct payload categories have been burned with zero successes — whichever comes first — and `stop: false` immediately if any experiment on this endpoint already succeeded. `payload-stats` is the "GraphQL + Node + missing authorization checks produced findings before" learning made concrete: a payload category with wins on 2+ overlapping technologies outranks one with a single overlapping technology or none.
 
+`should-stop` only answers "abandon the current endpoint or not" — it doesn't say what to do next. For the full continue/pivot/stop call (has this exact technique already failed here, has it worked on similar tech elsewhere, is the EV still worth it), use `evaluate` instead of eyeballing the three signals yourself:
+
+```bash
+python3 -m memory.experiment_memory evaluate --target <target> --technique <technique> \
+  --vuln-class <class> --tech-stack "<stack>" --endpoint <endpoint> \
+  --elapsed-minutes <n> --memory-dir hunt-memory
+```
+
+It returns `{decision: continue|pivot|stop, reason, confidence, recommended_next_step}` — `stop` means kill the technique on this target and log it via `save-failed`; `pivot` means the current technique/endpoint is done but the vuln class or target isn't (move to the next candidate via the pivot rule above); `continue` means keep testing. This doesn't replace `priority`/`should-stop` — it's the composed decision that reads the same underlying data (`failed_patterns.jsonl`, `experiments.jsonl`, and optionally `expected_value_per_hour()` when `--vuln-class` is set) so you don't have to reconcile three separate signals by hand mid-hunt.
+
 ## Step 4: Hunt
 
 For each P1 target endpoint:

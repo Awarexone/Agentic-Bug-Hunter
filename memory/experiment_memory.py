@@ -298,6 +298,144 @@ def suggest_pivot(candidates: list[dict], exhausted_endpoints: set[str] | list[s
     return remaining[0]
 
 
+def evaluate_experiment(
+    target: str,
+    technique: str,
+    vuln_class: str | None = None,
+    tech_stack: list[str] | None = None,
+    endpoint: str | None = None,
+    experiments: list[dict] | None = None,
+    failed_patterns: list[dict] | None = None,
+    elapsed_minutes: float = 0.0,
+    minute_limit: float = 5,
+    category_limit: int = 3,
+    ev_per_hour: float | None = None,
+    ev_label: str | None = None,
+) -> dict:
+    """Continue / pivot / stop on ``technique`` right now, and why.
+
+    Answers the three questions a hunter actually asks mid-experiment:
+      1. Has this exact technique already failed here? (failed_patterns.jsonl —
+         the same hard-kill signal priority_score() in vuln_intelligence.py uses)
+      2. Has it worked on similar tech before? (experiments.jsonl, technique +
+         vuln_class + tech-stack overlap — a narrower slice than
+         payload_category_affinity()'s payload_category grouping above)
+      3. Is the EV still worth the time? (caller-supplied ev_per_hour/ev_label
+         from vuln_intelligence.expected_value_per_hour() — this function does
+         not recompute EV itself; priority_score()/expected_value_per_hour()
+         stay the single source of truth for that formula)
+
+    Pure function over pre-loaded lists, same convention as should_stop() and
+    suggest_pivot() above — the ``evaluate`` CLI subcommand does the loading.
+    """
+    tech_stack = tech_stack or []
+    experiments = experiments or []
+    failed_patterns = failed_patterns or []
+
+    # Q1: exact repeat of a technique already known to be dead here.
+    failed_entry = next(
+        (f for f in failed_patterns if f.get("target") == target and f.get("technique") == technique),
+        None,
+    )
+    if failed_entry:
+        reason = f"'{technique}' already failed on {target}"
+        if failed_entry.get("reason"):
+            reason += f": {failed_entry['reason']}"
+        return {
+            "decision": "stop",
+            "reason": reason,
+            "confidence": 95,
+            "recommended_next_step": "Do not re-attempt this technique here — pivot to a different technique or vuln class.",
+        }
+
+    # Q2: track record of this exact technique on similar tech, independent of this target.
+    matching = [
+        e for e in experiments
+        if e.get("technique") == technique
+        and (vuln_class is None or e.get("vuln_class") == vuln_class)
+        and _tech_overlap(tech_stack, e.get("tech_stack", []))
+    ]
+    successes = sum(1 for e in matching if e.get("result") == "success")
+    failures = sum(1 for e in matching if e.get("result") == "fail")
+    sample = successes + failures
+
+    # Q3 (time/category budget): should_stop() on the endpoint being tested
+    # right now, when the caller tells us which one that is.
+    budget = None
+    if endpoint is not None:
+        endpoint_experiments = [
+            e for e in experiments
+            if e.get("target") == target
+            and (
+                e.get("endpoint") == endpoint
+                or normalize_endpoint(e.get("endpoint", "")) == normalize_endpoint(endpoint)
+            )
+        ]
+        budget = should_stop(endpoint_experiments, elapsed_minutes, minute_limit, category_limit)
+
+    # A live success right now beats every other signal — same "active signal
+    # overrides the clock" rule should_stop() itself uses.
+    if successes > 0 and (budget is None or not budget["stop"]):
+        return {
+            "decision": "continue",
+            "reason": f"{successes} success(es) with '{technique}' on this tech stack — active signal overrides budget/EV checks.",
+            "confidence": min(100, 60 + 10 * successes),
+            "recommended_next_step": f"Keep testing '{technique}' — push toward a confirmable PoC on {endpoint or target}.",
+        }
+
+    if ev_label == "Kill":
+        return {
+            "decision": "stop",
+            "reason": f"expected_value_per_hour() rates this candidate 'Kill' (ev_per_hour={ev_per_hour}) — not worth further time regardless of technique history.",
+            "confidence": 85,
+            "recommended_next_step": "Abandon this candidate entirely — move to the next-highest-EV candidate in the queue.",
+        }
+
+    if budget and budget["stop"]:
+        no_wins_yet = sample > 0 and successes == 0
+        decision = "stop" if (no_wins_yet and failures >= 3) else "pivot"
+        reason = budget["reason"]
+        if sample:
+            reason += f"; '{technique}' has {successes}W/{failures}L on similar tech stacks"
+        return {
+            "decision": decision,
+            "reason": reason,
+            "confidence": min(100, 40 + 10 * sample),
+            "recommended_next_step": (
+                f"Kill '{technique}' on this target — log it via save-failed so it isn't retried."
+                if decision == "stop"
+                else "Time/category budget is exhausted here — move to the next candidate in the queue (suggest_pivot())."
+            ),
+        }
+
+    if sample == 0:
+        return {
+            "decision": "continue",
+            "reason": f"No prior data for '{technique}' on this tech stack yet, and no time/category budget exhausted — still worth a first real attempt.",
+            "confidence": 20,
+            "recommended_next_step": f"Run '{technique}' against {endpoint or target} and record the result via 'record'.",
+        }
+
+    # By construction, successes == 0 down here: any success would already
+    # have triggered the active-signal "continue" return above, unless the
+    # current endpoint's own budget was exhausted — and that case is handled
+    # by the budget branch above too. So what's left is purely a failure
+    # count on similar tech stacks, with the current endpoint's own budget
+    # (if any) not yet exhausted.
+    if failures >= 2:
+        decision = "pivot"
+        step = f"'{technique}' has failed {failures} time(s) on similar tech stacks with 0 successes — try a different technique before spending more budget here."
+    else:
+        decision = "continue"
+        step = f"Only {failures} prior failure(s) on similar tech stacks — still early, worth one more attempt with '{technique}'."
+    return {
+        "decision": decision,
+        "reason": f"'{technique}' has {successes}W/{failures}L on similar tech stacks, budget not yet exhausted.",
+        "confidence": min(100, 30 + 10 * sample),
+        "recommended_next_step": step,
+    }
+
+
 # ─── CLI — for agents that only have bash/read/glob/grep tools ──────────────
 
 def _experiments_path(memory_dir: str) -> Path:
@@ -337,6 +475,57 @@ def _cmd_should_stop(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_evaluate(args: argparse.Namespace) -> int:
+    from memory.pattern_db import PatternDB
+    from memory.vuln_intelligence import (
+        ChainDB,
+        FailedPatternDB,
+        ReportOutcomeDB,
+        expected_value_per_hour,
+    )
+
+    memory_dir = Path(args.memory_dir)
+    tech_stack = [t.strip() for t in args.tech_stack.split(",") if t.strip()] if args.tech_stack else []
+
+    experiments = ExperimentDB(_experiments_path(args.memory_dir)).read_all()
+    failed_patterns = FailedPatternDB(memory_dir / "failed_patterns.jsonl").read_all()
+
+    ev_per_hour = ev_label = None
+    if args.vuln_class:
+        patterns = PatternDB(memory_dir / "patterns.jsonl").read_all()
+        chains = ChainDB(memory_dir / "chains.jsonl").read_all()
+        outcomes = ReportOutcomeDB(memory_dir / "report_outcomes.jsonl").read_all()
+        ev_result = expected_value_per_hour(
+            vuln_class=args.vuln_class,
+            tech_stack=tech_stack,
+            target=args.target,
+            technique=args.technique,
+            patterns=patterns,
+            failed_patterns=failed_patterns,
+            chains=chains,
+            report_outcomes=outcomes,
+            estimated_minutes=args.minutes,
+        )
+        ev_per_hour, ev_label = ev_result["ev_per_hour"], ev_result["ev_label"]
+
+    result = evaluate_experiment(
+        target=args.target,
+        technique=args.technique,
+        vuln_class=args.vuln_class,
+        tech_stack=tech_stack,
+        endpoint=args.endpoint,
+        experiments=experiments,
+        failed_patterns=failed_patterns,
+        elapsed_minutes=args.elapsed_minutes,
+        minute_limit=args.minute_limit,
+        category_limit=args.category_limit,
+        ev_per_hour=ev_per_hour,
+        ev_label=ev_label,
+    )
+    print(json.dumps(result, indent=2))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Experiment memory — payload-attempt log + stop/pivot decisions")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -369,6 +558,19 @@ def main() -> int:
     p.add_argument("--category-limit", type=int, default=3)
     p.add_argument("--memory-dir", default="hunt-memory")
     p.set_defaults(func=_cmd_should_stop)
+
+    p = sub.add_parser("evaluate", help="continue/pivot/stop decision on a technique, with reason/confidence/next-step")
+    p.add_argument("--target", required=True)
+    p.add_argument("--technique", required=True)
+    p.add_argument("--vuln-class", default=None, help="Also computes ev_per_hour/ev_label via expected_value_per_hour() when set")
+    p.add_argument("--tech-stack", default=None, help="Comma-separated")
+    p.add_argument("--endpoint", default=None, help="Enables the time/category budget check (should_stop) for this endpoint")
+    p.add_argument("--elapsed-minutes", type=float, default=0.0)
+    p.add_argument("--minute-limit", type=float, default=5)
+    p.add_argument("--category-limit", type=int, default=3)
+    p.add_argument("--minutes", type=float, default=None, help="Override the static per-vuln-class EV time estimate")
+    p.add_argument("--memory-dir", default="hunt-memory")
+    p.set_defaults(func=_cmd_evaluate)
 
     args = ap.parse_args()
     try:

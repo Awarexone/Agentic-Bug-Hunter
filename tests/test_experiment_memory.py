@@ -4,6 +4,7 @@ import pytest
 
 from memory.experiment_memory import (
     ExperimentDB,
+    evaluate_experiment,
     payload_category_affinity,
     should_stop,
     suggest_pivot,
@@ -186,3 +187,150 @@ class TestSuggestPivot:
 
     def test_returns_none_for_empty_candidates(self):
         assert suggest_pivot([], exhausted_endpoints=set()) is None
+
+
+class TestEvaluateExperiment:
+
+    def test_failed_pattern_hard_stop(self):
+        failed = [{"target": "a.com", "technique": "numeric_id_swap", "reason": "ownership check present"}]
+        result = evaluate_experiment(
+            target="a.com", technique="numeric_id_swap", vuln_class="idor",
+            failed_patterns=failed,
+        )
+        assert result["decision"] == "stop"
+        assert "already failed" in result["reason"]
+        assert "ownership check present" in result["reason"]
+        assert result["confidence"] >= 90
+
+    def test_failed_pattern_on_different_target_does_not_block(self):
+        failed = [{"target": "other.com", "technique": "numeric_id_swap", "reason": "n/a"}]
+        result = evaluate_experiment(
+            target="a.com", technique="numeric_id_swap", vuln_class="idor",
+            failed_patterns=failed,
+        )
+        assert result["decision"] != "stop" or "already failed" not in result["reason"]
+
+    def test_no_data_at_all_continues_with_low_confidence(self):
+        result = evaluate_experiment(target="a.com", technique="numeric_id_swap", vuln_class="idor")
+        assert result["decision"] == "continue"
+        assert result["confidence"] == 20
+
+    def test_active_success_overrides_everything(self):
+        experiments = [
+            {"target": "a.com", "endpoint": "/api/x", "technique": "numeric_id_swap",
+             "vuln_class": "idor", "tech_stack": ["express"], "result": "success", "payload_category": "id_swap"},
+        ]
+        result = evaluate_experiment(
+            target="a.com", technique="numeric_id_swap", vuln_class="idor", tech_stack=["express"],
+            endpoint="/api/x", experiments=experiments, elapsed_minutes=10, minute_limit=5,
+            ev_label="Kill", ev_per_hour=0,
+        )
+        assert result["decision"] == "continue"
+        assert "success" in result["reason"]
+
+    def test_ev_kill_stops_without_budget_or_history(self):
+        result = evaluate_experiment(
+            target="a.com", technique="numeric_id_swap", vuln_class="idor", tech_stack=["express"],
+            ev_label="Kill", ev_per_hour=0,
+        )
+        assert result["decision"] == "stop"
+        assert "Kill" in result["reason"]
+
+    def test_budget_exhausted_with_only_failures_stops(self):
+        experiments = [
+            {"target": "a.com", "endpoint": "/api/y", "technique": "numeric_id_swap", "vuln_class": "idor",
+             "tech_stack": ["express"], "result": "fail", "payload_category": cat}
+            for cat in ("id_swap", "header_swap", "jwt_swap")
+        ]
+        result = evaluate_experiment(
+            target="a.com", technique="numeric_id_swap", vuln_class="idor", tech_stack=["express"],
+            endpoint="/api/y", experiments=experiments, elapsed_minutes=2, minute_limit=5, category_limit=3,
+        )
+        assert result["decision"] == "stop"
+        assert "0W/3L" in result["reason"]
+
+    def test_budget_exhausted_with_no_history_pivots_not_stops(self):
+        # Time limit hit, but zero experiments logged for this technique yet
+        # (e.g. someone else's payload categories burned the clock) — nothing
+        # says this technique itself is a loser, so pivot rather than stop.
+        experiments = [
+            {"target": "a.com", "endpoint": "/api/y", "technique": "other_technique", "vuln_class": "idor",
+             "tech_stack": ["express"], "result": "fail", "payload_category": "other_cat"},
+        ]
+        result = evaluate_experiment(
+            target="a.com", technique="numeric_id_swap", vuln_class="idor", tech_stack=["express"],
+            endpoint="/api/y", experiments=experiments, elapsed_minutes=10, minute_limit=5,
+        )
+        assert result["decision"] == "pivot"
+
+    def test_success_on_another_target_still_triggers_continue(self):
+        # A win recorded anywhere with tech-stack overlap is an active signal,
+        # not just a win on the exact target being evaluated right now.
+        experiments = [
+            {"target": "other.com", "technique": "numeric_id_swap", "vuln_class": "idor",
+             "tech_stack": ["express"], "result": "success", "payload_category": "id_swap"},
+        ]
+        result = evaluate_experiment(
+            target="a.com", technique="numeric_id_swap", vuln_class="idor", tech_stack=["express"],
+            experiments=experiments,
+        )
+        assert result["decision"] == "continue"
+        assert "success" in result["reason"]
+
+    def test_single_prior_failure_still_continues(self):
+        # One failure elsewhere isn't enough of a track record to pivot on yet.
+        experiments = [
+            {"target": "other.com", "technique": "numeric_id_swap", "vuln_class": "idor",
+             "tech_stack": ["express"], "result": "fail", "payload_category": "id_swap"},
+        ]
+        result = evaluate_experiment(
+            target="a.com", technique="numeric_id_swap", vuln_class="idor", tech_stack=["express"],
+            experiments=experiments,
+        )
+        assert result["decision"] == "continue"
+        assert "1W/1L" not in result["reason"]
+
+    def test_similar_tech_poor_track_record_pivots(self):
+        experiments = [
+            {"target": "other.com", "technique": "numeric_id_swap", "vuln_class": "idor",
+             "tech_stack": ["express"], "result": "fail", "payload_category": "id_swap"},
+            {"target": "other2.com", "technique": "numeric_id_swap", "vuln_class": "idor",
+             "tech_stack": ["express"], "result": "fail", "payload_category": "id_swap"},
+            {"target": "other3.com", "technique": "numeric_id_swap", "vuln_class": "idor",
+             "tech_stack": ["express"], "result": "fail", "payload_category": "id_swap"},
+        ]
+        result = evaluate_experiment(
+            target="a.com", technique="numeric_id_swap", vuln_class="idor", tech_stack=["express"],
+            experiments=experiments,
+        )
+        assert result["decision"] == "pivot"
+
+    def test_tech_stack_mismatch_excludes_experiment(self):
+        experiments = [
+            {"target": "other.com", "technique": "numeric_id_swap", "vuln_class": "idor",
+             "tech_stack": ["django"], "result": "success", "payload_category": "id_swap"},
+        ]
+        result = evaluate_experiment(
+            target="a.com", technique="numeric_id_swap", vuln_class="idor", tech_stack=["express"],
+            experiments=experiments,
+        )
+        # No overlap with ["django"] -> treated as no prior data.
+        assert result["decision"] == "continue"
+        assert result["confidence"] == 20
+
+    def test_vuln_class_filter_excludes_other_classes(self):
+        experiments = [
+            {"target": "other.com", "technique": "numeric_id_swap", "vuln_class": "xss",
+             "tech_stack": ["express"], "result": "success", "payload_category": "id_swap"},
+        ]
+        result = evaluate_experiment(
+            target="a.com", technique="numeric_id_swap", vuln_class="idor", tech_stack=["express"],
+            experiments=experiments,
+        )
+        assert result["decision"] == "continue"
+        assert result["confidence"] == 20
+
+    def test_result_always_has_all_four_keys(self):
+        result = evaluate_experiment(target="a.com", technique="x")
+        assert set(result.keys()) == {"decision", "reason", "confidence", "recommended_next_step"}
+        assert result["decision"] in {"continue", "pivot", "stop"}

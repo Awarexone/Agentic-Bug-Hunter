@@ -683,6 +683,104 @@ def expected_value_per_hour(
     }
 
 
+def format_decision(
+    result: dict,
+    endpoint: str,
+    next_experiment: str,
+    affinity: dict | None = None,
+) -> str:
+    """Render a priority_score()/expected_value_per_hour() result as the
+    standard decision-explanation block every agent presents before testing
+    something:
+
+        Decision: / Reason: / Evidence: / Confidence: / Expected Impact: /
+        Estimated Effort: / Previous Similar Results: / Next Experiment:
+
+    Pure presentation layer — every value here is read from a dict
+    priority_score()/expected_value_per_hour() already computed, or from an
+    optional tech_vuln_affinity() entry passed in as `affinity`. This
+    function derives no new signal of its own.
+
+    Accepts either shape: the richer expected_value_per_hour() dict
+    (detected via the 'ev_per_hour' key) or a bare priority_score() dict.
+    """
+    vuln_class = result.get("vuln_class", "unknown")
+    components = result.get("priority_components") or result.get("components") or {}
+    hard_kill = result.get("hard_kill", False)
+    is_ev_shape = "ev_per_hour" in result
+
+    decision = f"KILL — {vuln_class}" if hard_kill else f"Test {vuln_class}"
+
+    reasons = []
+    if components.get("attack_chain_probability", 0) >= 60:
+        reasons.append("chain/hypothesis correlation detected on this tech stack")
+    if components.get("historical_success_probability", 0) >= 60:
+        reasons.append(f"{components['historical_success_probability']}% historical success on this stack")
+    if components.get("technology_match", 0) >= 50:
+        reasons.append("strong tech-stack match in memory")
+    if not reasons:
+        reasons.append("heuristic-only — no strong memory signal yet, treat confidence accordingly")
+    reason = ". ".join(reasons) + "."
+
+    evidence_lines = []
+    if result.get("matching_chains"):
+        evidence_lines.append(f"- Matching chains: {', '.join(result['matching_chains'])}")
+    if result.get("failed_pattern_reason"):
+        evidence_lines.append(f"- Failed-pattern note: {result['failed_pattern_reason']}")
+    recal = result.get("impact_recalibration")
+    if recal and recal.get("recalibrated"):
+        evidence_lines.append(
+            f"- Impact recalibrated {recal['static_prior']}->{recal['impact']} "
+            f"from {recal['sample_size']} real report outcomes"
+        )
+    if not evidence_lines:
+        evidence_lines.append("- No chain/failed-pattern/recalibration evidence yet — heuristic only")
+    evidence = "\n".join(evidence_lines)
+
+    confidence = components.get("technology_match", 20)
+
+    if is_ev_shape:
+        expected_impact = f"{result['ev_label']} (EV/hr {result['ev_per_hour']}, payout probability {result['payout_probability']}%)"
+        minutes = result.get("estimated_minutes")
+        if minutes is None:
+            estimated_effort = "not estimated"
+        elif minutes < 15:
+            estimated_effort = f"Low (~{minutes} min)"
+        elif minutes <= 30:
+            estimated_effort = f"Medium (~{minutes} min)"
+        else:
+            estimated_effort = f"High (~{minutes} min)"
+    else:
+        expected_impact = f"score {result.get('score', 0)}/100"
+        estimated_effort = "not estimated (pass an expected_value_per_hour() result for a time estimate)"
+
+    if affinity:
+        wins, losses = affinity.get("wins", 0), affinity.get("losses", 0)
+        if wins or losses:
+            # cross_target only tells us whether multiple distinct targets
+            # contributed, not whether any of them is the current query target —
+            # tech_vuln_affinity() doesn't expose that, so keep the wording
+            # honest about what's actually known.
+            scope = "across multiple targets sharing this tech stack" if affinity.get("cross_target") else "on a target sharing this tech stack"
+            payout_note = f", avg payout ${affinity['avg_payout']}" if affinity.get("avg_payout") else ""
+            previous_results = f"{wins} win(s) / {losses} loss(es) {scope}{payout_note}"
+        else:
+            previous_results = "no prior attempts recorded for this vuln class on this stack"
+    else:
+        previous_results = "not checked (pass a tech_vuln_affinity() entry for real history)"
+
+    return (
+        f"Decision:\n{decision}\n\n"
+        f"Reason:\n{reason}\n\n"
+        f"Evidence:\n{evidence}\n\n"
+        f"Confidence:\n{confidence}%\n\n"
+        f"Expected Impact:\n{expected_impact}\n\n"
+        f"Estimated Effort:\n{estimated_effort}\n\n"
+        f"Previous Similar Results:\n{previous_results}\n\n"
+        f"Next Experiment:\n{next_experiment} on {endpoint}"
+    )
+
+
 def duplicate_or_noise_check(
     target: str,
     vuln_class: str,
@@ -913,6 +1011,36 @@ def _cmd_priority(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_decision(args: argparse.Namespace) -> int:
+    from memory.pattern_db import PatternDB
+
+    paths = _memory_paths(args.memory_dir)
+    patterns = PatternDB(paths["patterns"]).read_all()
+    failed = FailedPatternDB(paths["failed_patterns"]).read_all()
+    chains = ChainDB(paths["chains"]).read_all()
+    outcomes = ReportOutcomeDB(paths["report_outcomes"]).read_all()
+    tech_stack = [t.strip() for t in args.tech.split(",") if t.strip()]
+
+    result = expected_value_per_hour(
+        vuln_class=args.vuln_class,
+        tech_stack=tech_stack,
+        target=args.target,
+        technique=args.technique,
+        patterns=patterns,
+        failed_patterns=failed,
+        chains=chains,
+        chain_detected=args.chain_detected,
+        impact_override=args.impact_override,
+        report_outcomes=outcomes,
+        estimated_minutes=args.minutes,
+    )
+    affinity_list = tech_vuln_affinity(tech_stack, patterns, failed)
+    affinity = next((a for a in affinity_list if a["vuln_class"] == args.vuln_class), None)
+
+    print(format_decision(result, args.endpoint, args.next_experiment, affinity=affinity))
+    return 0
+
+
 def _cmd_save_outcome(args: argparse.Namespace) -> int:
     paths = _memory_paths(args.memory_dir)
     entry = make_report_outcome_entry(
@@ -1066,6 +1194,19 @@ def main() -> int:
     p.add_argument("--impact-override", type=float, default=None)
     p.add_argument("--memory-dir", default="hunt-memory")
     p.set_defaults(func=_cmd_priority)
+
+    p = sub.add_parser("decision", help="Human-readable Decision/Reason/Evidence/... block for a candidate")
+    p.add_argument("--vuln-class", required=True)
+    p.add_argument("--tech", required=True, help="Comma-separated tech stack")
+    p.add_argument("--target", required=True)
+    p.add_argument("--endpoint", required=True)
+    p.add_argument("--next-experiment", required=True)
+    p.add_argument("--technique", default=None)
+    p.add_argument("--chain-detected", action="store_true")
+    p.add_argument("--impact-override", type=float, default=None)
+    p.add_argument("--minutes", type=float, default=None)
+    p.add_argument("--memory-dir", default="hunt-memory")
+    p.set_defaults(func=_cmd_decision)
 
     p = sub.add_parser("save-outcome", help="Record what a submitted report turned into (accepted/N-A/duplicate/...)")
     p.add_argument("--target", required=True)

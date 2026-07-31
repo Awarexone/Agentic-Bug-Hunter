@@ -538,3 +538,55 @@ class TestImpactRecalibrationInBriefing:
         self._seed_pattern_and_outcomes(h, domain, n=2, outcome="accepted")
         briefing = dispatcher.priority_briefing()
         assert "impact recalibrated" not in briefing
+
+
+class TestTopRecommendationDecisionBlock:
+    """Phase 1 — priority_briefing() renders the top-ranked candidate through
+    format_decision() as a 'Top Recommendation' block."""
+
+    def _seed_recon(self, h, domain):
+        live_dir = os.path.join(h.RECON_DIR, domain, "live")
+        os.makedirs(live_dir, exist_ok=True)
+        with open(os.path.join(live_dir, "httpx_full.txt"), "w") as f:
+            f.write("https://test.example [express] [postgresql]\n")
+
+    def test_top_recommendation_present_with_memory_data(self, h, dispatcher, domain):
+        from memory.pattern_db import PatternDB
+        from memory.schemas import make_pattern_entry
+
+        self._seed_recon(h, domain)
+        memory_dir = os.path.join(h.BASE_DIR, "hunt-memory")
+        PatternDB(os.path.join(memory_dir, "patterns.jsonl")).save(
+            make_pattern_entry(target="other.com", vuln_class="idor", technique="id_swap",
+                                tech_stack=["express", "postgresql"], payout=1500)
+        )
+        briefing = dispatcher.priority_briefing()
+        assert "--- Top Recommendation ---" in briefing
+        assert "Decision:\nTest idor" in briefing
+        assert "Next Experiment:" in briefing
+
+    def test_no_top_recommendation_without_tech_stack(self, dispatcher):
+        briefing = dispatcher.priority_briefing()
+        assert "Top Recommendation" not in briefing
+
+    def test_renders_without_crashing_when_failed_patterns_also_exist(self, h, dispatcher, domain):
+        # priority_briefing() doesn't pass a `technique` to expected_value_per_hour(),
+        # so hard_kill can never trigger there (it requires a specific technique
+        # match) -- this just confirms failed_patterns data doesn't break rendering.
+        from memory.pattern_db import PatternDB
+        from memory.vuln_intelligence import FailedPatternDB
+        from memory.schemas import make_pattern_entry, make_failed_pattern_entry
+
+        self._seed_recon(h, domain)
+        memory_dir = os.path.join(h.BASE_DIR, "hunt-memory")
+        PatternDB(os.path.join(memory_dir, "patterns.jsonl")).save(
+            make_pattern_entry(target="other.com", vuln_class="idor", technique="id_swap",
+                                tech_stack=["express", "postgresql"], payout=1500)
+        )
+        FailedPatternDB(os.path.join(memory_dir, "failed_patterns.jsonl")).save(
+            make_failed_pattern_entry(target=domain, vuln_class="idor", technique="id_swap",
+                                       tech_stack=["express", "postgresql"])
+        )
+        briefing = dispatcher.priority_briefing()
+        assert "idor" in briefing
+        assert "--- Top Recommendation ---" in briefing

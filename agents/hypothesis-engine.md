@@ -59,7 +59,11 @@ python3 -m memory.vuln_intelligence affinity --tech "<stack>" --memory-dir hunt-
 python3 -m memory.vuln_intelligence endpoint-stats --url "<endpoint>" --memory-dir hunt-memory
 python3 -m memory.vuln_intelligence priority --vuln-class <class> --tech "<stack>" --target <target> --technique <technique> --memory-dir hunt-memory
 ```
-`priority`'s returned `score` is a good confidence anchor — don't just eyeball a percentage, ground it in that number (adjusted by how much direct evidence you have beyond memory).
+`priority`'s returned `score` is a good confidence anchor — don't just eyeball a percentage, ground it in that number (adjusted by how much direct evidence you have beyond memory). To present a hypothesis as a full decision block (Decision:/Reason:/Evidence:/Confidence:/Expected Impact:/Estimated Effort:/Previous Similar Results:/Next Experiment:) instead of writing it out by hand, use:
+```bash
+python3 -m memory.vuln_intelligence decision --vuln-class idor --tech "<stack>" \
+  --target <target> --endpoint "<endpoint>" --next-experiment "<first testing strategy>" --memory-dir hunt-memory
+```
 
 ## Calibration Check (before finalizing any confidence number)
 

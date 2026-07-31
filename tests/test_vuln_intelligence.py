@@ -11,6 +11,7 @@ from memory.vuln_intelligence import (
     duplicate_or_noise_check,
     endpoint_shape_stats,
     expected_value_per_hour,
+    format_decision,
     hypothesis_calibration,
     normalize_endpoint,
     priority_score,
@@ -601,3 +602,80 @@ class TestImpactRecalibration:
         r = priority_score("totally_novel", ["express"], "a.com", report_outcomes=outcomes)
         assert r["impact_recalibration"]["static_prior"] == 50  # DEFAULT_IMPACT_POTENTIAL
         assert r["impact_recalibration"]["recalibrated"] is True
+
+
+class TestFormatDecision:
+    """Phase 1 — human-readable Decision/Reason/Evidence/Confidence/Expected
+    Impact/Estimated Effort/Previous Similar Results/Next Experiment block,
+    pure presentation over priority_score()/expected_value_per_hour() output."""
+
+    ALL_HEADERS = (
+        "Decision:", "Reason:", "Evidence:", "Confidence:",
+        "Expected Impact:", "Estimated Effort:", "Previous Similar Results:", "Next Experiment:",
+    )
+
+    def test_all_sections_present_ev_shape(self):
+        ev = expected_value_per_hour("idor", ["express"], "a.com")
+        out = format_decision(ev, "/api/users/1", "swap the id")
+        for header in self.ALL_HEADERS:
+            assert header in out
+
+    def test_all_sections_present_plain_priority_score_shape(self):
+        ps = priority_score("ssrf", ["express"], "a.com")
+        out = format_decision(ps, "/api/webhook", "test SSRF")
+        for header in self.ALL_HEADERS:
+            assert header in out
+
+    def test_hard_kill_shows_kill_decision(self):
+        failed = [{"target": "a.com", "vuln_class": "ssrf", "technique": "t", "tech_stack": ["express"]}]
+        ps = priority_score("ssrf", ["express"], "a.com", technique="t", failed_patterns=failed)
+        out = format_decision(ps, "/api/webhook", "test SSRF")
+        assert "KILL" in out.split("Decision:")[1].split("Reason:")[0]
+
+    def test_non_kill_shows_test_decision(self):
+        ps = priority_score("idor", ["express"], "a.com")
+        out = format_decision(ps, "/api/users/1", "swap id")
+        assert "Test idor" in out
+
+    def test_next_experiment_and_endpoint_included(self):
+        ps = priority_score("idor", ["express"], "a.com")
+        out = format_decision(ps, "/api/v2/orders/{id}", "swap numeric id on PUT")
+        tail = out.split("Next Experiment:\n")[1]
+        assert "swap numeric id on PUT" in tail
+        assert "/api/v2/orders/{id}" in tail
+
+    def test_no_affinity_says_not_checked(self):
+        ps = priority_score("idor", ["express"], "a.com")
+        out = format_decision(ps, "/x", "test")
+        assert "not checked" in out
+
+    def test_affinity_with_wins_shown_in_previous_results(self):
+        ps = priority_score("idor", ["express"], "a.com")
+        affinity = {"vuln_class": "idor", "wins": 3, "losses": 1, "avg_payout": 800.0, "cross_target": True}
+        out = format_decision(ps, "/x", "test", affinity=affinity)
+        section = out.split("Previous Similar Results:\n")[1].split("\n\n")[0]
+        assert "3 win(s) / 1 loss(es)" in section
+        assert "multiple targets" in section
+        assert "$800.0" in section
+
+    def test_affinity_with_no_wins_or_losses(self):
+        ps = priority_score("idor", ["express"], "a.com")
+        affinity = {"vuln_class": "idor", "wins": 0, "losses": 0}
+        out = format_decision(ps, "/x", "test", affinity=affinity)
+        assert "no prior attempts recorded" in out
+
+    def test_impact_recalibration_surfaces_in_evidence(self):
+        outcomes = [{"vuln_class": "idor", "outcome": "accepted"}] * 5
+        ev = expected_value_per_hour("idor", ["express"], "a.com", report_outcomes=outcomes)
+        out = format_decision(ev, "/x", "test")
+        assert "recalibrated" in out
+
+    def test_estimated_effort_bucketed_from_minutes(self):
+        ev = expected_value_per_hour("xss", ["express"], "a.com", estimated_minutes=10)
+        out = format_decision(ev, "/x", "test")
+        assert "Low" in out.split("Estimated Effort:\n")[1]
+
+    def test_plain_priority_score_has_no_time_estimate(self):
+        ps = priority_score("idor", ["express"], "a.com")
+        out = format_decision(ps, "/x", "test")
+        assert "not estimated" in out

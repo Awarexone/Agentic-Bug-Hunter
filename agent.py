@@ -573,7 +573,8 @@ class ToolDispatcher:
         try:
             from memory.pattern_db import PatternDB
             from memory.vuln_intelligence import (
-                ChainDB, FailedPatternDB, ReportOutcomeDB, expected_value_per_hour, tech_vuln_affinity,
+                ChainDB, FailedPatternDB, ReportOutcomeDB,
+                expected_value_per_hour, format_decision, tech_vuln_affinity,
             )
         except ImportError as e:
             return f"(memory.vuln_intelligence not importable — {e})"
@@ -596,11 +597,15 @@ class ToolDispatcher:
             return f"{base}\n{signal}" if signal else base
 
         lines = [f"Tech stack detected: {', '.join(tech_stack)}"]
+        top_ev = None
+        top_affinity = None
         for a in affinity:
             ev = expected_value_per_hour(
                 a["vuln_class"], tech_stack, self.domain,
                 patterns=patterns, failed_patterns=failed, chains=chains, report_outcomes=outcomes,
             )
+            if top_ev is None:
+                top_ev, top_affinity = ev, a  # affinity is net_score-sorted -- first is the top candidate
             recal = ev["impact_recalibration"]
             recal_note = (
                 f", impact recalibrated {recal['static_prior']}->{recal['impact']} "
@@ -615,6 +620,15 @@ class ToolDispatcher:
         if signal:
             lines.append("")
             lines.append(signal)
+
+        if top_ev and not top_ev["hard_kill"]:
+            lines.append("")
+            lines.append("--- Top Recommendation ---")
+            lines.append(format_decision(
+                top_ev, f"https://{self.domain}/",
+                f"Run run_vuln_scan and check the {top_affinity['vuln_class']} findings subdirectory",
+                affinity=top_affinity,
+            ))
         return "\n".join(lines)
 
     # ── Duplicate/noise gate on finish (Phase B2) ───────────────────────────

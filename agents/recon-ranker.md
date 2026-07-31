@@ -117,7 +117,13 @@ If no age signal is available, omit that modifier (don't guess a value).
 
 ## Output Format
 
-Every P1/P2 entry's "why" must name the specific score components that fired — not a restated description of the endpoint.
+Every P1/P2 entry's "why" must name the specific score components that fired — not a restated description of the endpoint. For your #1-ranked candidate specifically, render the full decision block instead of just the "why" line:
+```bash
+python3 -m memory.vuln_intelligence decision --vuln-class idor --tech "express,postgresql" \
+  --target target.com --endpoint "/api/v2/users/{id}/orders" \
+  --next-experiment "swap numeric ID on GET/PUT/DELETE" --memory-dir hunt-memory
+```
+This prints `Decision:/Reason:/Evidence:/Confidence:/Expected Impact:/Estimated Effort:/Previous Similar Results:/Next Experiment:` — pure formatting over the same `priority_score`/`expected_value_per_hour` data you already computed, not a second scoring pass.
 
 ```markdown
 # Attack Surface Ranking: <target>

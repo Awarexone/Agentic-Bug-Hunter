@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>AI-powered bug bounty hunting — recon to report, in your terminal.
-   </b>sub>Find vulnerabilities. Validate them. Get paid. No subscription required.</sub> <br>
+   </b>
     
  <sub>Find vulnerabilities. Validate them. Get paid. No subscription required.</sub>
 </p>

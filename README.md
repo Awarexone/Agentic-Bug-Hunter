@@ -92,6 +92,20 @@ cd claude-bug-bounty
 ./install.sh --agent standalone
 ```
 
+Rerun the same command after pulling updates. The installer detects and
+refreshes the active managed `bughunter` command, including older installations
+under `/usr/local/bin` or `~/.local/bin`, while preserving your saved provider
+configuration in `~/.bughunter/config.json`.
+
+To uninstall the standalone command while keeping its configuration:
+
+```bash
+./uninstall.sh --agent standalone
+```
+
+Use `--purge-config` to also delete `~/.bughunter/config.json`. The uninstaller
+also supports `claude`, `opencode`, `pi`, `codex`, `agents`, and `all` targets.
+
 ```
 bughunter help               # show every command
 bughunter setup              # choose your AI provider (Ollama is free + offline)
@@ -101,6 +115,7 @@ bughunter validate "finding" # 7-Question Gate on your finding
 bughunter report             # write a submission-ready report
 bughunter chat               # interactive AI hunting shell
 bughunter providers          # list all available AI providers
+bughunter models             # list models and show the selected one
 bughunter status             # check which provider is active
 bughunter h target.com       # short alias for hunt
 bughunter r target.com       # short alias for recon
@@ -120,7 +135,18 @@ bughunter v "finding"        # short alias for validate
 
 BugHunter auto-detects providers in this order: **Ollama → Groq → DeepSeek → … → OpenRouter → Claude → OpenAI**
 
-Switch providers anytime: `bughunter setup`
+Switch providers or choose an installed Ollama model anytime: `bughunter setup`.
+The setup can also be fully non-interactive:
+
+```bash
+bughunter setup --provider ollama --model qwen2.5:14b
+```
+
+For a one-off override, put the option before the command:
+
+```bash
+bughunter --provider ollama --model qwen3:14b hunt target.com
+```
 
 ### Zero-cost fully offline setup
 
@@ -135,7 +161,7 @@ cd claude-bug-bounty
 ./install.sh --agent standalone   # creates system-wide 'bughunter' command
 
 # 3. Hunt
-bughunter setup       # choose Ollama
+bughunter setup       # choose Ollama, then choose one of its installed models
 bughunter recon target.com
 ```
 

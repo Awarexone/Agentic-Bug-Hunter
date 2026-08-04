@@ -10,6 +10,10 @@
   "interactsh_server": "oast.pro",
 
   "_brain_comment": "Set BRAIN_PROVIDER env var to force a specific LLM provider. Auto-detect picks the first available.",
+  "_brain_model_comment": "Set BRAIN_MODEL for a one-off model override, or use bughunter setup to save a per-provider choice.",
+  "models": {
+    "ollama": "qwen2.5:14b"
+  },
   "_brain_providers": {
     "ollama":      "OLLAMA_HOST=http://localhost:11434  (free, local)",
     "groq":        "GROQ_API_KEY=...  (free tier — llama-3.3-70b)",

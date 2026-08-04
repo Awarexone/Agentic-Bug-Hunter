@@ -15,7 +15,7 @@ Defaults:
   ./install.sh                    Install for Claude Code globally
 
 Standalone (no subscription needed):
-  ./install.sh --agent standalone Install 'bughunter' system command
+  ./install.sh --agent standalone Install or update the 'bughunter' system command
                                   After install, type from anywhere:
                                     bughunter help
                                     bughunter setup
@@ -235,48 +235,72 @@ install_standalone() {
     echo "════════════════════════════════════════════════════"
     echo ""
 
-    REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    ENGINE="$REPO_DIR/engine.py"
+    local repo_dir engine existing_cmd bin_dir target action
+    local -a install_cmd
+    repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    engine="$repo_dir/engine.py"
 
     # Make engine.py executable
-    chmod +x "$ENGINE"
+    chmod +x "$engine"
 
     # ── Install bughunter system command ──────────────────────────────────────
-    # Try /usr/local/bin first (needs sudo on some systems), fall back to ~/.local/bin
-    BIN_DIR=""
-    if [ -w /usr/local/bin ]; then
-        BIN_DIR="/usr/local/bin"
-    elif sudo -n true 2>/dev/null; then
-        BIN_DIR="/usr/local/bin"
-        SUDO="sudo"
+    # Prefer updating the currently active managed installation. This prevents
+    # an old /usr/local/bin entry from shadowing a new ~/.local/bin symlink.
+    existing_cmd="$(command -v bughunter 2>/dev/null || true)"
+    if [ -n "${BBHUNTER_BIN_DIR:-}" ]; then
+        bin_dir="$BBHUNTER_BIN_DIR"
+    elif [ -n "$existing_cmd" ] && [[ -e "$existing_cmd" || -L "$existing_cmd" ]]; then
+        if [ -L "$existing_cmd" ] && [ "$(basename "$(readlink "$existing_cmd")")" = "engine.py" ]; then
+            bin_dir="$(dirname "$existing_cmd")"
+        elif [ -f "$existing_cmd" ] && grep -q "Standalone BugHunter CLI" "$existing_cmd" 2>/dev/null; then
+            bin_dir="$(dirname "$existing_cmd")"
+        elif [ -w /usr/local/bin ]; then
+            bin_dir="/usr/local/bin"
+        else
+            bin_dir="$HOME/.local/bin"
+        fi
+    elif [ -w /usr/local/bin ]; then
+        bin_dir="/usr/local/bin"
     else
-        BIN_DIR="$HOME/.local/bin"
-        mkdir -p "$BIN_DIR"
+        bin_dir="$HOME/.local/bin"
     fi
 
-    SUDO="${SUDO:-}"
-    TARGET="$BIN_DIR/bughunter"
+    target="$bin_dir/bughunter"
+    action="Installed"
+    if [ -e "$target" ] || [ -L "$target" ]; then
+        action="Updated"
+    fi
 
-    # Remove old symlink/file if exists
-    $SUDO rm -f "$TARGET" 2>/dev/null || true
-    $SUDO ln -sf "$ENGINE" "$TARGET"
+    install_cmd=()
+    if [ ! -d "$bin_dir" ] || [ ! -w "$bin_dir" ]; then
+        if command -v sudo >/dev/null 2>&1 && [[ "$bin_dir" == /usr/local/* ]]; then
+            install_cmd=(sudo)
+        else
+            mkdir -p "$bin_dir"
+        fi
+    fi
 
-    if [ -f "$TARGET" ] || [ -L "$TARGET" ]; then
-        echo "[+] Installed: bughunter -> $TARGET"
+    "${install_cmd[@]}" mkdir -p "$bin_dir"
+    "${install_cmd[@]}" ln -sfn "$engine" "$target"
+
+    if [ -L "$target" ] && [ "$(readlink "$target")" = "$engine" ]; then
+        echo "[+] $action: $target -> $engine"
     else
-        echo "[!] Could not install to $BIN_DIR — try: sudo ./install.sh --agent standalone"
+        echo "[!] Could not install or update $target" >&2
+        echo "    Try: sudo ./install.sh --agent standalone" >&2
         echo "    Or add this to ~/.bashrc / ~/.zshrc:"
-        echo "    alias bughunter='python3 $ENGINE'"
+        echo "    alias bughunter='python3 $engine'"
+        return 1
     fi
 
     # ── Check PATH ────────────────────────────────────────────────────────────
-    if ! echo "$PATH" | tr ':' '\n' | grep -q "$BIN_DIR"; then
+    if ! echo "$PATH" | tr ':' '\n' | grep -Fxq "$bin_dir"; then
         echo ""
-        echo "[!] $BIN_DIR is not in your PATH. Add it:"
+        echo "[!] $bin_dir is not in your PATH. Add it:"
         if echo "$SHELL" | grep -q zsh; then
-            echo "    echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.zshrc && source ~/.zshrc"
+            echo "    echo 'export PATH=\"$bin_dir:\$PATH\"' >> ~/.zshrc && source ~/.zshrc"
         else
-            echo "    echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
+            echo "    echo 'export PATH=\"$bin_dir:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
         fi
     fi
 
@@ -291,9 +315,13 @@ install_standalone() {
     fi
 
     # ── Optional Python deps ──────────────────────────────────────────────────
-    if command -v pip3 &>/dev/null; then
-        echo "Installing optional Python deps (requests, ollama)..."
-        pip3 install --quiet requests ollama 2>/dev/null || true
+    # Ollama setup/chat has a standard-library HTTP fallback, so a distro that
+    # blocks global pip installs still gets a working local provider.
+    if [ "${BBHUNTER_SKIP_DEPS:-0}" != "1" ] && command -v pip3 &>/dev/null; then
+        echo "Installing optional Python deps (cloud providers and agent mode)..."
+        if ! pip3 install --quiet requests ollama 2>/dev/null; then
+            echo "[!] Optional pip packages were not installed; standalone Ollama chat still works via HTTP."
+        fi
     fi
 
     echo ""
@@ -301,6 +329,7 @@ install_standalone() {
     echo "  Done! Type from anywhere:"
     echo ""
     echo "    bughunter setup"
+    echo "    bughunter models"
     echo "    bughunter recon target.com"
     echo "    bughunter hunt  target.com"
     echo "    bughunter validate \"<finding>\""

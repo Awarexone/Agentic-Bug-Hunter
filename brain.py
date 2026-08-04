@@ -13,6 +13,10 @@ Provider selection (in order of precedence):
                                perplexity | openrouter)
   2. Auto-detect: uses first provider whose API key / server is available
 
+Model selection:
+  BRAIN_MODEL env var forces one model. For Ollama, an unavailable explicit
+  model fails clearly instead of silently falling back to another local model.
+
 API keys (env vars):
   ANTHROPIC_API_KEY   — Claude (claude-opus-4-8, claude-sonnet-4-6, etc.)
   OPENAI_API_KEY      — OpenAI (gpt-4o, o1, etc.)
@@ -70,6 +74,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
 
 try:
     import ollama as _ollama_lib
@@ -78,6 +83,75 @@ except ImportError:
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+
+
+if _ollama_lib is None:
+    class _OllamaModel:
+        def __init__(self, model: str):
+            self.model = model
+
+
+    class _OllamaListResponse:
+        def __init__(self, models: list[str]):
+            self.models = [_OllamaModel(model) for model in models]
+
+
+    class _OllamaHTTPClient:
+        """Small Ollama SDK-compatible fallback using only the standard library."""
+
+        def __init__(self, host: str = OLLAMA_HOST):
+            self.host = host.rstrip("/")
+
+        def _request(self, path: str, payload: dict | None = None) -> dict:
+            data = json.dumps(payload).encode() if payload is not None else None
+            request = Request(
+                f"{self.host}{path}",
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST" if payload is not None else "GET",
+            )
+            with urlopen(request, timeout=120) as response:
+                return json.loads(response.read().decode())
+
+        def list(self) -> _OllamaListResponse:
+            result = self._request("/api/tags")
+            names = [
+                item.get("name") or item.get("model")
+                for item in result.get("models", [])
+            ]
+            return _OllamaListResponse([name for name in names if name])
+
+        def chat(self, *, model: str, messages: list[dict],
+                 options: dict | None = None, stream: bool = False):
+            payload = {
+                "model": model,
+                "messages": messages,
+                "options": options or {},
+                "stream": stream,
+            }
+            if not stream:
+                return self._request("/api/chat", payload)
+
+            def _chunks():
+                request = Request(
+                    f"{self.host}/api/chat",
+                    data=json.dumps(payload).encode(),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urlopen(request, timeout=120) as response:
+                    for line in response:
+                        if line.strip():
+                            yield json.loads(line.decode())
+
+            return _chunks()
+
+
+    class _OllamaHTTPModule:
+        Client = _OllamaHTTPClient
+
+
+    _ollama_lib = _OllamaHTTPModule()
 
 # ── Multi-provider LLM client ──────────────────────────────────────────────────
 # Wraps Ollama, Claude, OpenAI, Grok behind a single .chat() interface.
@@ -122,8 +196,9 @@ class LLMClient:
         "ollama":      None,  # resolved dynamically
     }
 
-    def __init__(self, provider: str | None = None):
+    def __init__(self, provider: str | None = None, model: str | None = None):
         self.provider    = (provider or os.environ.get("BRAIN_PROVIDER", "")).lower()
+        self.model       = model or os.environ.get("BRAIN_MODEL") or None
         self._ollama     = None
         self._http       = None   # requests session for OpenAI-compatible APIs
         self.available   = False
@@ -340,6 +415,7 @@ class LLMClient:
         """Send a chat request; return the assistant reply as a string."""
         if not self.available:
             return ""
+        model = model or self.model
         try:
             if self.provider == "ollama":
                 return self._chat_ollama(model, system, user, max_tokens, temperature)
@@ -558,6 +634,8 @@ def _pick_model(preferred: str = None) -> str | None:
         matches = [m for m in available if m.startswith(preferred)]
         if matches:
             return matches[0]
+        # An explicit request must never silently switch to another model.
+        return None
 
     for candidate in MODEL_PRIORITY:
         if candidate in available:
@@ -591,7 +669,8 @@ class Brain:
     """
 
     def __init__(self, model: str = None, provider: str | None = None):
-        self._llm = LLMClient(provider or os.environ.get("BRAIN_PROVIDER"))
+        model = model or os.environ.get("BRAIN_MODEL") or None
+        self._llm = LLMClient(provider or os.environ.get("BRAIN_PROVIDER"), model=model)
 
         if not self._llm.available:
             print(f"{YELLOW}[!] No LLM provider available. Set BRAIN_PROVIDER and API key, or start Ollama.{NC}")
@@ -604,11 +683,17 @@ class Brain:
         if self._llm.provider == "ollama":
             self.model = _pick_model(model)
             if not self.model:
-                print(f"{YELLOW}[!] No models found in Ollama. Pull one: ollama pull qwen2.5:14b{NC}")
+                if model:
+                    print(f"{YELLOW}[!] Requested Ollama model '{model}' is not installed. "
+                          f"Run: ollama pull {model}{NC}")
+                else:
+                    print(f"{YELLOW}[!] No models found in Ollama. Pull one: ollama pull qwen2.5:14b{NC}")
                 self.enabled = False
                 return
             self.client = self._llm._ollama  # backward compat for code that uses self.client
-            self.triage_model = _pick_triage_model() or self.model
+            # An explicit model choice applies to every task, including triage.
+            # This avoids silently switching to a second local model.
+            self.triage_model = self.model if model else (_pick_triage_model() or self.model)
         else:
             self.model        = model or LLMClient.DEFAULT_MODELS.get(self._llm.provider)
             self.triage_model = self.model

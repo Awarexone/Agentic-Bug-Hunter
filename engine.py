@@ -153,6 +153,18 @@ def _import_brain():
         sys.exit(1)
 
 
+def _import_validate_target():
+    """Import tools/hunt.py's validate_target() — the same target
+    sanity/shell-metacharacter check hunt.py's own CLI enforces."""
+    sys.path.insert(0, str(HERE))
+    try:
+        from tools.hunt import validate_target  # noqa: PLC0415
+        return validate_target
+    except ImportError as e:
+        err(f"Could not import tools/hunt.py: {e}")
+        sys.exit(1)
+
+
 def _get_client(provider: str | None = None):
     """Return an LLMClient, applying saved config if no env override."""
     _, LLMClient = _import_brain()
@@ -175,11 +187,14 @@ def _get_brain(provider: str | None = None):
     return Brain()
 
 
-def _run_shell(cmd: str, cwd: str | None = None, timeout: int = 3600) -> tuple[bool, str]:
-    """Run a shell command with live output, return (success, combined_output)."""
+def _run_shell(argv: list[str], cwd: str | None = None, timeout: int = 3600) -> tuple[bool, str]:
+    """Run argv (a list, shell=False) with live output, return (success, combined_output).
+
+    argv must be a list, not a pre-formatted string — target/recon_dir values
+    are user-supplied and must never be re-parsed by a shell."""
     try:
         proc = subprocess.Popen(
-            cmd, shell=True, cwd=cwd or str(HERE),
+            argv, cwd=cwd or str(HERE),
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
         )
         lines = []
@@ -343,7 +358,7 @@ def cmd_recon(args):
     script = TOOLS / "recon_engine.sh"
     if script.exists():
         info("Running recon pipeline...")
-        success, _ = _run_shell(f'bash "{script}" "{target}"')
+        success, _ = _run_shell(["bash", str(script), target])
         if not success:
             warn("Recon had issues — continuing with AI analysis")
     else:
@@ -368,14 +383,14 @@ def cmd_hunt(args):
     script = TOOLS / "recon_engine.sh"
     if script.exists():
         info("Phase 1: Recon...")
-        _run_shell(f'bash "{script}" "{target}"')
+        _run_shell(["bash", str(script), target])
 
     # Run vuln scan
     vuln_script = TOOLS / "vuln_scanner.sh"
     recon_dir = RECON / target
     if vuln_script.exists() and recon_dir.exists():
         info("Phase 2: Vuln scan...")
-        _run_shell(f'bash "{vuln_script}" "{recon_dir}"')
+        _run_shell(["bash", str(vuln_script), str(recon_dir)])
 
     # AI analysis
     info("Phase 3: AI analysis...")
@@ -661,6 +676,16 @@ def main():
     p_chain.add_argument("finding", nargs="?", default="", help="Bug A description (or pipe via stdin)")
 
     args = parser.parse_args(argv)
+
+    # Trust boundary — recon/hunt take a raw target string that reaches
+    # _run_shell(). Validate it once here, same check as hunt.py's own CLI.
+    if getattr(args, "target", None):
+        validate_target = _import_validate_target()
+        try:
+            validate_target(args.target)
+        except ValueError as exc:
+            err(f"Refusing target {args.target!r}: {exc}")
+            sys.exit(2)
 
     # Apply provider override
     if getattr(args, "provider", None):

@@ -94,17 +94,20 @@ sleep 2
 echo ""
 echo "══ PHASE 2: Cross-User IDOR Scanner ══"
 echo ""
-CMD="python3 $TOOLS_DIR/h1_idor_scanner.py \
-  --token-a $TOKEN_A \
-  --token-b $TOKEN_B"
+# Array, not a string passed to eval — TOKEN_A/TOKEN_B/REPORT_ID/etc. are
+# operator-edited values above, but eval re-parses the whole joined string
+# through the shell a second time, so even the previous single-quoting on
+# --attachment-url didn't stop a value containing `'; rm -rf ~; #` from
+# breaking out. An array + direct invocation passes each element through
+# as a literal argv item instead.
+CMD_ARGS=(python3 "$TOOLS_DIR/h1_idor_scanner.py" --token-a "$TOKEN_A" --token-b "$TOKEN_B")
+[[ -n "$REPORT_ID" ]] && CMD_ARGS+=(--report-id "$REPORT_ID")
+[[ -n "$USER_ID" ]] && CMD_ARGS+=(--user-id "$USER_ID")
+[[ -n "$PROGRAM" ]] && CMD_ARGS+=(--program "$PROGRAM")
+[[ -n "$ATTACHMENT_URL" ]] && CMD_ARGS+=(--attachment-url "$ATTACHMENT_URL")
 
-[[ -n "$REPORT_ID" ]] && CMD="$CMD --report-id $REPORT_ID"
-[[ -n "$USER_ID" ]] && CMD="$CMD --user-id $USER_ID"
-[[ -n "$PROGRAM" ]] && CMD="$CMD --program $PROGRAM"
-[[ -n "$ATTACHMENT_URL" ]] && CMD="$CMD --attachment-url '$ATTACHMENT_URL'"
-
-echo "  Running: $CMD"
-eval $CMD 2>&1 | tee -a "$LOG"
+echo "  Running: ${CMD_ARGS[*]}"
+"${CMD_ARGS[@]}" 2>&1 | tee -a "$LOG"
 
 sleep 2
 

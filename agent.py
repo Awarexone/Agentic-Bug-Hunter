@@ -426,11 +426,17 @@ class ToolDispatcher:
         self.default_cookies = default_cookies
         self.session_start   = time.time()  # for should_stop()'s elapsed_minutes
 
-    def _run_shell_tool(self, script_name: str, args_str: str,
+    def _run_shell_tool(self, script_name: str, args: list[str],
                          timeout: int = 900, extra_env: dict | None = None) -> bool:
         """Run a tools/*.sh script directly — for tools that don't have a Python
         wrapper in tools/hunt.py (secrets_hunter.sh, param_discovery.sh). Mirrors
-        tools/hunt.py's own subprocess pattern (used for recon_engine.sh/vuln_scanner.sh)."""
+        tools/hunt.py's own subprocess pattern (used for recon_engine.sh/vuln_scanner.sh).
+
+        args is a list of argv elements (e.g. domain-derived paths under
+        recon/<domain>/ or findings/<domain>/) — never a pre-formatted shell
+        string. self.domain is attacker/user-influenced, and recon_dir/out_dir
+        are built from it via os.path.join with no shell-metacharacter
+        screening, so this must never reach a shell that re-parses them."""
         h = _h()
         script = os.path.join(h.BASE_DIR, "tools", script_name)
         if not os.path.isfile(script):
@@ -441,8 +447,8 @@ class ToolDispatcher:
         proc = None
         try:
             proc = subprocess.Popen(
-                f'bash "{script}" {args_str}',
-                shell=True, cwd=h.BASE_DIR, env=child_env,
+                ["bash", script, *args],
+                cwd=h.BASE_DIR, env=child_env,
             )
             proc.wait(timeout=timeout)
             return proc.returncode == 0
@@ -802,7 +808,7 @@ class ToolDispatcher:
                     return "ERROR: no recon data yet. Run run_recon first."
                 out_dir = os.path.join(_findings_dir_for(domain), "secrets")
                 ok = self._run_shell_tool(
-                    "secrets_hunter.sh", f'--js-bundle "{recon_dir}" --out "{out_dir}"'
+                    "secrets_hunter.sh", ["--js-bundle", recon_dir, "--out", out_dir]
                 )
                 obs = self._summarize_findings(domain, "secrets", ok)
                 self._log_experiments_from_findings(name, self._SECRET_HUNT_SUBDIRS)
@@ -814,7 +820,7 @@ class ToolDispatcher:
                     return "ERROR: no crawled URLs yet (recon/<domain>/urls/all.txt missing). Run run_recon first."
                 out_dir = os.path.join(_findings_dir_for(domain), "params")
                 ok = self._run_shell_tool(
-                    "param_discovery.sh", f'-l "{urls_file}"',
+                    "param_discovery.sh", ["-l", urls_file],
                     extra_env={"PARAM_OUT_DIR": out_dir},
                 )
                 obs = self._summarize_params(domain, ok, out_dir)
@@ -1890,6 +1896,16 @@ Examples:
     if not args.target:
         parser.print_help()
         sys.exit(1)
+
+    # Trust boundary — same check hunt.py's CLI enforces. args.target flows
+    # into recon_dir/findings_dir (os.path.join) which _run_shell_tool passes
+    # to secrets_hunter.sh/param_discovery.sh; validating once here means
+    # every downstream use can assume a safe domain/IP/CIDR/path.
+    try:
+        _h().validate_target(args.target)
+    except ValueError as exc:
+        print(f"Refusing target {args.target!r}: {exc}")
+        sys.exit(2)
 
     result = run_agent_hunt(
         args.target,

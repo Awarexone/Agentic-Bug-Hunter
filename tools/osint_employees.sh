@@ -103,13 +103,17 @@ fi
 
 HARVESTER_JSON="$OUT_DIR/${HARVESTER_BASENAME}.json"
 if [ -f "$HARVESTER_JSON" ]; then
-    python3 -c "
-import json
-with open('$HARVESTER_JSON') as f:
+    # $HARVESTER_JSON is read via os.environ rather than spliced into the
+    # Python source — $TARGET (part of its path) is attacker/user-influenced,
+    # and a value like x'); __import__('os').system('id');# would otherwise
+    # break out of the string literal and execute inside this pipeline.
+    HARVESTER_JSON="$HARVESTER_JSON" python3 -c '
+import json, os
+with open(os.environ["HARVESTER_JSON"]) as f:
     data = json.load(f)
-for email in data.get('emails', []):
+for email in data.get("emails", []):
     print(email)
-" | sort -u > "$EMAILS"
+' | sort -u > "$EMAILS"
     EMAIL_COUNT=$(wc -l < "$EMAILS" | tr -d ' ')
     log_ok "Found $EMAIL_COUNT unique emails -> $EMAILS"
 else

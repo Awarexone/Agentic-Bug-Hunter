@@ -98,15 +98,19 @@ echo "  Time:   $(date)"
 echo "============================================="
 echo ""
 
-# Build sisakulint command
-CMD="sisakulint -remote \"$TARGET\" -D $DEPTH -l $LIMIT -p $PARALLEL"
-[ -n "$RECURSIVE" ] && CMD="$CMD -r"
+# Build sisakulint argv as an array — never a string passed to eval. $TARGET
+# is attacker/user-influenced; eval re-parses its whole argument through the
+# shell a second time, so even the double-quoting previously here didn't
+# stop a target like `x"; rm -rf ~; #` from breaking out. An array + direct
+# invocation passes each element through as a literal argv item instead.
+SISAKU_ARGS=(-remote "$TARGET" -D "$DEPTH" -l "$LIMIT" -p "$PARALLEL")
+[ -n "$RECURSIVE" ] && SISAKU_ARGS+=(-r)
 
-log_info "Running: $CMD"
+log_info "Running: sisakulint ${SISAKU_ARGS[*]}"
 echo ""
 
 # Run sisakulint and capture output (don't fail on non-zero exit — findings cause exit 1)
-eval "$CMD" 2>&1 | tee "$SCAN_RESULTS" || true
+sisakulint "${SISAKU_ARGS[@]}" 2>&1 | tee "$SCAN_RESULTS" || true
 
 echo ""
 

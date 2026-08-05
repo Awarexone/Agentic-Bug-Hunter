@@ -34,11 +34,22 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FINDINGS_DIR = os.path.join(BASE_DIR, "findings")
 
 
-def run_cmd(cmd, timeout=15):
+def run_cmd(argv, timeout=15):
+    """Run argv as a subprocess (shell=False) and return (success, stdout, stderr).
+
+    argv must be a list — historically callers passed a shell string, but
+    those callers have been migrated to pass argv lists so a URL/path never
+    reaches the shell unescaped.
+    """
+    if isinstance(argv, str):
+        raise TypeError(
+            "run_cmd now requires a list argv. Passing a shell string is "
+            "unsafe because URLs and paths reach the shell unescaped."
+        )
     proc = None
     try:
         proc = subprocess.Popen(
-            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, preexec_fn=os.setsid,
         )
         stdout, stderr = proc.communicate(timeout=timeout)
@@ -63,22 +74,24 @@ def run_cmd(cmd, timeout=15):
 
 def curl_request(url, method="GET", headers=None, data=None, timeout=10):
     """Make an HTTP request via curl and return status, headers, body."""
-    cmd_parts = ["curl", "-s", "-D-", "--max-time", str(timeout)]
+    argv = ["curl", "-s", "-D-", "--max-time", str(timeout)]
 
     if method != "GET":
-        cmd_parts.extend(["-X", method])
+        argv.extend(["-X", method])
 
     if headers:
         for k, v in headers.items():
-            cmd_parts.extend(["-H", f"{k}: {v}"])
+            argv.extend(["-H", f"{k}: {v}"])
 
     if data:
-        cmd_parts.extend(["-d", data])
+        argv.extend(["-d", data])
 
-    cmd_parts.append(f'"{url}"')
-    cmd = " ".join(cmd_parts)
+    # url goes in as its own argv element. shell=False means a value like
+    # `https://x"; id; echo "` is treated as a literal URL by curl (which
+    # will reject it as malformed), not interpreted by /bin/sh.
+    argv.append(url)
 
-    success, stdout, stderr = run_cmd(cmd, timeout=timeout + 5)
+    success, stdout, stderr = run_cmd(argv, timeout=timeout + 5)
 
     if not success or not stdout:
         return None, None, None
@@ -347,9 +360,11 @@ class ZeroDayFuzzer:
         for param in redirect_params:
             for payload in payloads[:3]:  # Test top 3 payloads per param
                 url = f"{base_url}/?{param}={payload}"
-                # Use curl with -L to follow redirects but capture all headers
-                cmd = f'curl -sI -D- --max-time 10 "{url}" 2>/dev/null'
-                success, stdout, _ = run_cmd(cmd, timeout=15)
+                # argv form — URL is its own element, no shell parsing.
+                success, stdout, _ = run_cmd(
+                    ["curl", "-sI", "-D-", "--max-time", "10", url],
+                    timeout=15,
+                )
                 if success and stdout:
                     location = re.search(r'location:\s*(.+)', stdout, re.I)
                     if location:

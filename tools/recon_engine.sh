@@ -33,12 +33,43 @@ BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 # contents as a pre-resolved scope list (one host per line, # comments OK).
 # Useful for programs without wildcards where subdomain enum is wasted work.
 # Output dir is derived from the file basename so multiple lists don't collide.
-if [ -f "$TARGET" ] && [ -r "$TARGET" ]; then
-    TARGET_TYPE="list"
-    LIST_FILE="$TARGET"
-    TARGET="$(basename "$LIST_FILE")"
-    TARGET="${TARGET%.*}"
+#
+# Containment: the file must resolve inside $HOME or BASE_DIR, must not be a
+# symlink, and must be ≤ 10MB. This blocks an attacker who can influence the
+# target arg from coaxing recon into probing arbitrary local files
+# (e.g. /etc/passwd) as if they were a scope list.
+if [ -f "$TARGET" ] && [ -r "$TARGET" ] && [ ! -L "$TARGET" ]; then
+    _list_real="$(cd "$(dirname "$TARGET")" 2>/dev/null && pwd -P)/$(basename "$TARGET")"
+    _home_real="$(cd "$HOME" 2>/dev/null && pwd -P)"
+    _base_real="$(cd "$BASE_DIR" 2>/dev/null && pwd -P)"
+    case "$_list_real" in
+        "$_home_real"/*|"$_base_real"/*)
+            # File size cap (10MB) — wc -c is portable across BSD/GNU.
+            _list_size=$(wc -c < "$TARGET" 2>/dev/null || echo 0)
+            if [ "$_list_size" -gt $((10 * 1024 * 1024)) ]; then
+                log_err "Domain list $TARGET is larger than 10MB — refusing to load"
+                exit 2
+            fi
+            TARGET_TYPE="list"
+            LIST_FILE="$_list_real"
+            TARGET="$(basename "$LIST_FILE")"
+            TARGET="${TARGET%.*}"
+            ;;
+        *)
+            log_err "Domain list $TARGET resolves outside \$HOME and the project directory; refusing"
+            exit 2
+            ;;
+    esac
 fi
+# Reject any TARGET that still contains shell metacharacters at this point —
+# defense-in-depth even though hunt.py validates first (any caller that
+# doesn't go through hunt.py, e.g. a direct invocation, still gets this gate).
+case "$TARGET" in
+    *[\;\|\&\$\`\<\>\(\)\{\}\\\'\"\!\*\?\#$'\n'$'\r']*)
+        log_err "TARGET contains characters not allowed in domain/IP/path: $TARGET"
+        exit 2
+        ;;
+esac
 
 RECON_DIR="${RECON_OUT_DIR:-$BASE_DIR/recon/$TARGET}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -252,24 +283,30 @@ else
 fi
 
 # crt.sh (certificate transparency)
+# $TARGET is read inside the Python heredoc via os.environ rather than being
+# spliced into the source — this closes a Python-code injection vector where
+# a target like  x'); __import__('os').system('id');#  would otherwise execute
+# arbitrary code inside the recon pipeline.
 log_step "Querying crt.sh..."
-curl -s "https://crt.sh/?q=%25.$TARGET&output=json" 2>/dev/null \
-    | python3 -c "
-import sys, json
+BBHUNT_TARGET="$TARGET" curl -s "https://crt.sh/?q=%25.$TARGET&output=json" 2>/dev/null \
+    | python3 -c '
+import os, sys, json
+target = "." + os.environ.get("BBHUNT_TARGET", "")
 try:
     data = json.load(sys.stdin)
     names = set()
     for entry in data:
-        for name in entry.get('name_value', '').split('\n'):
+        for name in entry.get("name_value", "").split("\n"):
             name = name.strip().lower()
-            if name and '*' not in name and name.endswith('.$TARGET'):
+            if name and "*" not in name and name.endswith(target):
                 names.add(name)
-            elif name and '*' not in name and '.' in name:
+            elif name and "*" not in name and "." in name:
                 names.add(name)
     for n in sorted(names):
         print(n)
-except: pass
-" > "$RECON_DIR/subdomains/crtsh.txt" 2>/dev/null || true
+except Exception:
+    pass
+' > "$RECON_DIR/subdomains/crtsh.txt" 2>/dev/null || true
 log_done "crt.sh: $(wc -l < "$RECON_DIR/subdomains/crtsh.txt" 2>/dev/null || echo 0) subdomains"
 
 # Wayback subdomains

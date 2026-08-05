@@ -4,9 +4,16 @@ validate.py — Interactive bug validation assistant.
 Walks through the 4 validation gates, checks for duplicates, calculates CVSS,
 and generates a skeleton HackerOne report.
 
+The 4 gates and the CVSS 4.0 calculator are pure functions in
+tools/validation_core.py — this file is a thin interactive wrapper around
+them (prompts, printing, network dup-checks, file output). That's what lets
+the exact same gate logic run headless via --non-interactive for the
+autonomous path.
+
 Usage:
   python3 tools/validate.py
   python3 tools/validate.py --output findings/myreport.md
+  python3 tools/validate.py --json --non-interactive --input finding.json
 """
 
 import argparse
@@ -22,6 +29,12 @@ _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 from tools.banner import print_banner  # noqa: E402
+from tools import validation_core as vcore  # noqa: E402
+from tools.validation_core import (  # noqa: E402,F401
+    calculate_cvss40,
+    severity_from_score,
+    ValidationInputError,
+)
 
 # macOS: Python may not have system SSL certs. Use unverified context for API queries.
 _SSL_CTX = ssl.create_default_context()
@@ -41,94 +54,6 @@ BLUE   = "\033[94m"
 BOLD   = "\033[1m"
 DIM    = "\033[2m"
 RESET  = "\033[0m"
-
-# ─── CVSS 4.0 scoring ─────────────────────────────────────────────────────────
-# Implements the CVSS 4.0 macro-vector approach from FIRST.org.
-# For authoritative scores verify at: https://www.first.org/cvss/calculator/4.0
-
-def _eq1(av: str, pr: str, ui: str) -> int:
-    """EQ1: Attack Vector / Privileges Required / User Interaction (0=highest severity)."""
-    if av == "N" and (pr == "N" or ui == "N"):
-        return 0
-    if av == "N" or pr == "N" or ui == "N":
-        return 1
-    return 2
-
-def _eq2(ac: str, at: str) -> int:
-    """EQ2: Attack Complexity / Attack Requirements."""
-    return 0 if (ac == "L" and at == "N") else 1
-
-def _eq3(vc: str, vi: str, va: str) -> int:
-    """EQ3: Vulnerable System CIA impact."""
-    if vc == "H" and vi == "H":
-        return 0
-    if vc == "H" or vi == "H" or va == "H":
-        return 1
-    return 2
-
-def _eq4(sc: str, si: str, sa: str) -> int:
-    """EQ4: Subsequent System impact (Safety > High > Low/None)."""
-    if si == "S" or sa == "S":
-        return 0
-    if sc == "H" or si == "H" or sa == "H":
-        return 1
-    return 2
-
-# CVSS 4.0 base score lookup by macro vector (eq1, eq2, eq3, eq4).
-# EQ5=0 (E=Active, default for base metrics).
-# EQ6 is derived from EQ3 with default CR=IR=AR=High.
-# Values approximate FIRST.org CVSS 4.0 specification.
-# Verify exact scores at: https://www.first.org/cvss/calculator/4.0
-#
-# eq1: 0=Network+(no-auth or no-UI), 1=partial advantage, 2=local/physical/high-priv+UI
-# eq2: 0=Low-complexity+no-prereqs, 1=otherwise
-# eq3: 0=VC+VI both High, 1=partial High, 2=no High CIA on vulnerable system
-# eq4: 0=Safety impact, 1=High subsequent-system impact, 2=no subsequent impact
-_CVSS40_TABLE: dict[tuple[int, int, int, int], float] = {
-    # eq1=0 (widest attack reach: network + no-auth OR no-UI)
-    (0, 0, 0, 0): 10.0, (0, 0, 0, 1): 10.0, (0, 0, 0, 2): 9.3,
-    (0, 0, 1, 0): 9.5,  (0, 0, 1, 1): 9.1,  (0, 0, 1, 2): 7.1,
-    (0, 0, 2, 0): 7.9,  (0, 0, 2, 1): 6.9,  (0, 0, 2, 2): 4.8,
-    (0, 1, 0, 0): 9.5,  (0, 1, 0, 1): 9.1,  (0, 1, 0, 2): 8.0,
-    (0, 1, 1, 0): 8.9,  (0, 1, 1, 1): 8.5,  (0, 1, 1, 2): 6.5,
-    (0, 1, 2, 0): 7.0,  (0, 1, 2, 1): 5.5,  (0, 1, 2, 2): 4.0,
-    # eq1=1 (some network/auth/UI advantage)
-    (1, 0, 0, 0): 9.3,  (1, 0, 0, 1): 9.0,  (1, 0, 0, 2): 7.8,
-    (1, 0, 1, 0): 8.8,  (1, 0, 1, 1): 8.5,  (1, 0, 1, 2): 6.5,
-    (1, 0, 2, 0): 7.0,  (1, 0, 2, 1): 6.0,  (1, 0, 2, 2): 4.5,
-    (1, 1, 0, 0): 9.0,  (1, 1, 0, 1): 8.5,  (1, 1, 0, 2): 7.5,
-    (1, 1, 1, 0): 8.5,  (1, 1, 1, 1): 7.5,  (1, 1, 1, 2): 5.9,
-    (1, 1, 2, 0): 6.0,  (1, 1, 2, 1): 5.5,  (1, 1, 2, 2): 3.5,
-    # eq1=2 (local/physical or high-privileges + active UI required)
-    (2, 0, 0, 0): 9.0,  (2, 0, 0, 1): 8.5,  (2, 0, 0, 2): 7.5,
-    (2, 0, 1, 0): 8.0,  (2, 0, 1, 1): 7.5,  (2, 0, 1, 2): 6.5,
-    (2, 0, 2, 0): 6.0,  (2, 0, 2, 1): 5.5,  (2, 0, 2, 2): 4.0,
-    (2, 1, 0, 0): 8.5,  (2, 1, 0, 1): 8.0,  (2, 1, 0, 2): 7.0,
-    (2, 1, 1, 0): 7.5,  (2, 1, 1, 1): 7.0,  (2, 1, 1, 2): 5.5,
-    (2, 1, 2, 0): 5.5,  (2, 1, 2, 1): 5.0,  (2, 1, 2, 2): 3.5,
-}
-
-
-def calculate_cvss40(av, ac, at, pr, ui, vc, vi, va, sc, si, sa) -> tuple[float, str]:
-    """Calculate CVSS 4.0 base score (approximate) and return (score, vector_string)."""
-    e1 = _eq1(av, pr, ui)
-    e2 = _eq2(ac, at)
-    e3 = _eq3(vc, vi, va)
-    e4 = _eq4(sc, si, sa)
-    score = _CVSS40_TABLE.get((e1, e2, e3, e4), 5.0)
-    vector = (
-        f"CVSS:4.0/AV:{av}/AC:{ac}/AT:{at}/PR:{pr}/UI:{ui}"
-        f"/VC:{vc}/VI:{vi}/VA:{va}/SC:{sc}/SI:{si}/SA:{sa}"
-    )
-    return score, vector
-
-
-def severity_from_score(score: float) -> str:
-    if score == 0.0:  return "NONE"
-    if score < 4.0:   return "LOW"
-    if score < 7.0:   return "MEDIUM"
-    if score < 9.0:   return "HIGH"
-    return "CRITICAL"
 
 
 # ─── HackerOne dup check ──────────────────────────────────────────────────────
@@ -253,19 +178,10 @@ def gate_header(n: int, name: str, status: str | None = None):
     print(f"{'─' * 40}")
 
 
-# ─── Gate implementations ─────────────────────────────────────────────────────
-
-# Auth-related vuln types that require session identity checks before Gate 1 can pass.
-_AUTH_KEYWORDS = {
-    "idor", "ato", "auth", "session", "login", "privilege", "account",
-    "bypass", "takeover", "permission", "access control", "broken auth",
-    "bac", "broken access", "insecure direct",
-}
-
-def _is_auth_related(vuln_type: str) -> bool:
-    vt = vuln_type.lower()
-    return any(k in vt for k in _AUTH_KEYWORDS)
-
+# ─── Gate implementations (thin wrappers over validation_core) ───────────────
+# Each gate collects the same prompts in the same order as before, then hands
+# the answers to validation_core's pure gate function for the pass/fail
+# decision — that decision is made in exactly one place now.
 
 def gate1_is_real(vuln_type: str = "") -> tuple[bool, dict]:
     gate_header(1, "Is It Real?")
@@ -276,43 +192,36 @@ def gate1_is_real(vuln_type: str = "") -> tuple[bool, dict]:
     no_state = ask_yn("No unusual preconditions (doesn't require specific timing or race)?")
     rtfm     = ask_yn("Checked documentation — this isn't expected/documented behavior?")
 
+    data = {
+        "vuln_type":               vuln_type,
+        "repro_3_3":               repro3,
+        "works_without_proxy":     no_burp,
+        "no_special_state":        no_state,
+        "not_documented_behavior": rtfm,
+    }
+
     # Identity check for auth/access-control findings.
     # The #1 reason IDOR/ATO get N/A: tester only accessed their own data.
-    identity_ok = True
-    identity_notes: dict = {}
-    if _is_auth_related(vuln_type):
+    if vcore.is_auth_related(vuln_type):
         print(f"\n  {CYAN}Identity Check  (required — auth-related vuln type detected){RESET}")
         print(f"  {DIM}Most IDOR/ATO N/As happen because the tester only read their own data.{RESET}\n")
         cross_account = ask_yn_required("Tested with two accounts: Session A read Session B's data (not your own)?")
         fresh_session = ask_yn_required("Reproduced with a fresh session (not your existing logged-in cookie)?")
         anon_delta    = ask_yn_required("Confirmed the delta: anonymous is blocked, attacker-authenticated succeeds?")
-        identity_ok   = cross_account and fresh_session and anon_delta
-        identity_notes = {
-            "cross_account_tested":    cross_account,
-            "fresh_session_tested":    fresh_session,
-            "anon_vs_auth_delta":      anon_delta,
-            "identity_required":       True,
-        }
-        if not identity_ok:
-            print(f"\n  {RED}Identity check FAIL — gate cannot pass without cross-account proof.{RESET}")
+        data.update({
+            "cross_account_tested": cross_account,
+            "fresh_session_tested": fresh_session,
+            "anon_vs_auth_delta":   anon_delta,
+        })
 
-    passed = repro3 and no_burp and no_state and rtfm and identity_ok
+    result = vcore.gate1_is_real(data)
+    passed, notes = result["passed"], result["notes"]
 
-    rejection_reason: str | None = None
-    if not passed:
-        rejection_reason = "identity_not_proven" if (repro3 and no_burp and no_state and rtfm and not identity_ok) else "not_reproducible"
-
-    notes: dict = {
-        "repro_3_3":               repro3,
-        "works_without_proxy":     no_burp,
-        "no_special_state":        no_state,
-        "not_documented_behavior": rtfm,
-        **identity_notes,
-        "rejection_reason":        rejection_reason,
-    }
+    if notes.get("identity_required") and notes.get("rejection_reason") == "identity_not_proven":
+        print(f"\n  {RED}Identity check FAIL — gate cannot pass without cross-account proof.{RESET}")
 
     if not passed:
-        print(f"\n  {RED}GATE 1 FAIL: {rejection_reason}{RESET}")
+        print(f"\n  {RED}GATE 1 FAIL: {notes['rejection_reason']}{RESET}")
         print(f"  {DIM}Do not submit yet. Verify the bug is deterministic first.{RESET}")
     else:
         print(f"\n  {GREEN}GATE 1 PASS{RESET}")
@@ -352,13 +261,12 @@ def gate2_in_scope(program_handle: str) -> tuple[bool, dict]:
         except Exception:
             print(f"  {YELLOW}Could not fetch scope (network error){RESET}")
 
-    passed = asset_in_scope and not_excluded and version_ok
-    notes: dict = {
-        "asset_in_scope":    asset_in_scope,
-        "not_excluded":      not_excluded,
-        "version_ok":        version_ok,
-        "rejection_reason":  "out_of_scope" if not passed else None,
-    }
+    result = vcore.gate2_in_scope({
+        "asset_in_scope": asset_in_scope,
+        "not_excluded":   not_excluded,
+        "version_ok":     version_ok,
+    })
+    passed, notes = result["passed"], result["notes"]
 
     if not passed:
         print(f"\n  {RED}GATE 2 FAIL: out_of_scope{RESET}")
@@ -387,37 +295,22 @@ def gate3_exploitable() -> tuple[bool, dict]:
     print(f"  {BOLD}Paste the exact curl command that reproduces this.{RESET}")
     print(f"  {DIM}Example: curl -s 'https://target.com/api/user/456' -H 'Cookie: sess=ATTACKER'{RESET}")
     print(f"  {YELLOW}Leave blank or type 'skip' → auto-FAIL (no proof = no submit){RESET}")
-    curl_poc   = ask("curl PoC").strip()
-    curl_valid = bool(curl_poc) and curl_poc.lower() != "skip"
+    curl_poc = ask("curl PoC").strip()
 
-    if not curl_valid:
+    result = vcore.gate3_exploitable({
+        "concrete_impact":              concrete_impact,
+        "no_unrealistic_preconditions": no_unrealistic,
+        "curl_poc":                     curl_poc,
+        "impact_description":           impact_desc,
+    })
+    passed, notes = result["passed"], result["notes"]
+
+    if not notes["has_proof"]:
         print(f"\n  {RED}No PoC provided — this is a scanner hit, not a confirmed finding.{RESET}")
         print(f"  {DIM}Reproduce it with curl, then come back.{RESET}")
 
-    passed = concrete_impact and no_unrealistic and curl_valid
-
-    rejection_reason: str | None = None
     if not passed:
-        if not curl_valid:
-            rejection_reason = "no_reproducible_impact"
-        elif not concrete_impact:
-            rejection_reason = "no_concrete_impact"
-        elif not no_unrealistic:
-            rejection_reason = "unrealistic_privileges"
-        else:
-            rejection_reason = "no_reproducible_impact"
-
-    notes: dict = {
-        "concrete_impact":             concrete_impact,
-        "no_unrealistic_preconditions":no_unrealistic,
-        "curl_poc":                    curl_poc if curl_valid else "",
-        "has_proof":                   curl_valid,
-        "impact_description":          impact_desc,
-        "rejection_reason":            rejection_reason,
-    }
-
-    if not passed:
-        print(f"\n  {RED}GATE 3 FAIL: {rejection_reason}{RESET}")
+        print(f"\n  {RED}GATE 3 FAIL: {notes['rejection_reason']}{RESET}")
         print(f"  {DIM}Build a working PoC before submitting.{RESET}")
     else:
         print(f"\n  {GREEN}GATE 3 PASS{RESET}")
@@ -450,14 +343,13 @@ def gate4_not_dup(vuln_type: str, endpoint: str, program_handle: str) -> tuple[b
     not_in_issues   = ask_yn("Not already fixed/reported in GitHub issues or CHANGELOG?")
     checked_history = ask_yn("Checked git log for recent security fixes with this pattern?")
 
-    passed = not_disclosed and not_in_issues and checked_history
-    notes: dict = {
+    result = vcore.gate4_not_dup({
         "not_in_h1_disclosed":  not_disclosed,
         "not_in_github_issues": not_in_issues,
         "checked_git_history":  checked_history,
         "h1_similar_reports":   [r.get("title") for r in h1_results],
-        "rejection_reason":     "duplicate_or_already_disclosed" if not passed else None,
-    }
+    })
+    passed, notes = result["passed"], result["notes"]
 
     if not passed:
         print(f"\n  {RED}GATE 4 FAIL: duplicate_or_already_disclosed{RESET}")
@@ -795,9 +687,39 @@ def write_validation_json(output_dir: str, info: dict, gate_notes: dict) -> str:
     return path
 
 
+# ─── Non-interactive / headless mode ──────────────────────────────────────────
+
+def _run_non_interactive(args) -> int:
+    """Read a finding dict from --input, run validation_core.evaluate_finding(),
+    print the result as JSON on stdout. Exit 0 if overall_pass, 1 if not,
+    2 on a malformed/missing input file (usage error, not a gate failure)."""
+    if not args.input:
+        print(json.dumps({"error": "--non-interactive requires --input <finding.json>"}))
+        return 2
+
+    try:
+        with open(args.input, "r", encoding="utf-8") as fh:
+            finding = json.load(fh)
+    except FileNotFoundError:
+        print(json.dumps({"error": f"input file not found: {args.input}"}))
+        return 2
+    except json.JSONDecodeError as exc:
+        print(json.dumps({"error": f"invalid JSON in {args.input}: {exc}"}))
+        return 2
+
+    try:
+        result = vcore.evaluate_finding(finding)
+    except ValidationInputError as exc:
+        print(json.dumps({"error": str(exc)}))
+        return 2
+
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if result["overall_pass"] else 1
+
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(description="Interactive bug validation assistant")
     parser.add_argument("--output",  default="", help="Output path for generated report skeleton")
     parser.add_argument("--notes-output", default="", help="Output path for persisted submission notes")
@@ -813,7 +735,29 @@ def main():
         choices=["confirmed", "possible", "informational", "unknown"],
         help="Confidence level from the scanner that produced this finding",
     )
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Skip all prompts. Read a finding dict from --input, run the 4 gates "
+             "+ CVSS headlessly, print gate verdicts + overall pass/fail as JSON. "
+             "Exit 0 if all gates pass, 1 if any fail, 2 on malformed input.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Alias for --non-interactive's output format (JSON is always used "
+             "in --non-interactive mode; this flag exists for command-line clarity).",
+    )
+    parser.add_argument(
+        "--input",
+        default="",
+        help="Path to a finding JSON file (required with --non-interactive). "
+             "See validation_core.evaluate_finding() for the expected shape.",
+    )
     args = parser.parse_args()
+
+    if args.non_interactive:
+        return _run_non_interactive(args)
 
     print_banner(
         "Bug Validation Assistant",
@@ -929,7 +873,8 @@ def main():
     print(f"    3. Replace all [bracketed] placeholders with specific details")
     print(f"    4. Review submission-notes.md before sending the report")
     print()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

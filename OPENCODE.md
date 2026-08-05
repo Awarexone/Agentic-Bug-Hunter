@@ -41,22 +41,29 @@ opencode
 
 ## What's Here
 
-### Skills (9 domains)
+### Skills (13 domains)
 
+<!-- GENERATED:skills:START (see docs/manifest.json — run scripts/gen_docs.py) -->
 | Skill | Domain |
 |---|---|
 | `bug-bounty` | Master workflow — recon to report, all vuln classes, LLM testing, chains |
 | `bb-methodology` | Hunting mindset + 5-phase non-linear workflow + tool routing + session discipline |
 | `web2-recon` | Subdomain enum, live host discovery, URL crawling, nuclei |
-| `web2-vuln-classes` | 18 bug classes with bypass tables (SSRF, open redirect, file upload, Agentic AI) |
+| `web2-vuln-classes` | 24 bug classes with bypass tables (SSRF, open redirect, file upload, Agentic AI) |
 | `security-arsenal` | Payloads, bypass tables, gf patterns, always-rejected list |
 | `web3-audit` | 10 smart contract bug classes, Foundry PoC template, pre-dive kill signals |
 | `meme-coin-audit` | Meme coin rug pull detection, token authority checks, bonding curve exploits, LP attacks |
 | `report-writing` | H1/Bugcrowd/Intigriti/Immunefi report templates, CVSS 3.1, human tone |
 | `triage-validation` | 7-Question Gate, 4 gates, never-submit list, conditionally valid table |
+| `credential-attack` | Password spray methodology — when/why, 4-stage pipeline, mode selection, lockout tactics, legal guardrails |
+| `mobile-pentest` | Android/iOS app pentest — runtime-first proxy workflow, APK/IPA decompile, deeplink/WebView bridge injection, SSL pinning bypass |
+| `cicd-security` | CI/CD pipeline hunting — GitHub Actions injection, secret exfil, self-hosted runner poisoning, OIDC abuse, supply chain attacks |
+| `graphql-audit` | GraphQL hunting — introspection, field suggestions, batching DoS, IDOR via aliasing, injection, auth bypass, depth bombs |
+<!-- GENERATED:skills:END -->
 
-### Commands (23 commands)
+### Commands (27 commands)
 
+<!-- GENERATED:commands:START (see docs/manifest.json — run scripts/gen_docs.py) -->
 | Command | Usage |
 |---|---|
 | `recon` | "recon target.com" — full recon pipeline |
@@ -65,23 +72,28 @@ opencode
 | `report` | "report" — write submission-ready report |
 | `chain` | "chain" — build A→B→C exploit chain |
 | `scope` | "scope <asset>" — verify asset is in scope |
-| `scope-aggregate` | "scope-aggregate <program>" — pull every in-scope asset |
+| `scope-aggregate` | "scope-aggregate <program>" — pull every in-scope asset across H1/Bugcrowd/Intigriti/YWH/Immunefi |
 | `triage` | "triage" — quick 7-Question Gate |
 | `web3-audit` | "web3-audit <contract.sol>" — smart contract audit |
 | `autopilot` | "autopilot target.com --normal" — autonomous hunt loop |
 | `surface` | "surface target.com" — ranked attack surface |
-| `pickup` | "pickup target.com" — pick up previous hunt |
+| `pickup` | "pickup target.com" — pick up previous hunt (was /resume) |
 | `remember` | "remember" — log finding to hunt memory |
 | `intel` | "intel target.com" — fetch CVE + disclosure intel |
 | `token-scan` | "token-scan <contract>" — meme coin/token rug pull scanner |
-| `memory-gc` | "memory-gc" — inspect/rotate hunt-memory JSONL files |
-| `secrets-hunt` | "secrets-hunt --js-bundle <recon-dir>" — leaked-credential scan |
-| `takeover` | "takeover --recon <recon-dir>" — subdomain takeover candidates |
-| `cloud-recon` | "cloud-recon --keyword <name>" — public S3/Azure/GCP |
-| `param-discover` | "param-discover <url>" — find hidden HTTP parameters |
-| `bypass-403` | "bypass-403 <url>" — try header/method/encoding tricks |
-| `arsenal` | "arsenal [tool]" — list installed external tools |
-| `scan-cves` | "scan-cves <host>" — focused nuclei CVE sweep |
+| `memory-gc` | "memory-gc [--rotate|--purge-backups]" — inspect/rotate hunt-memory JSONL files (10MB cap, 3 backups) |
+| `secrets-hunt` | "secrets-hunt --js-bundle <recon-dir>" — leaked-credential scan (trufflehog/noseyparker/gitleaks) |
+| `takeover` | "takeover --recon <recon-dir>" — subdomain takeover candidates (dnsReaper/subjack) |
+| `cloud-recon` | "cloud-recon --keyword <name>" — public S3/Azure/GCP + CloudFlare-bypass origin IPs |
+| `param-discover` | "param-discover <url>" — find hidden HTTP parameters (Arjun/x8) |
+| `bypass-403` | "bypass-403 <url>" — try header/method/encoding tricks against a 403/401 |
+| `arsenal` | "arsenal [tool]" — list installed external tools or get an install hint |
+| `scan-cves` | "scan-cves <host>" — focused nuclei CVE sweep (high/critical) + optional log4j-scan |
+| `wordlist-gen` | "wordlist-gen <target>" — company-specific password wordlist (cewler + hashcat); requires --with-credential-attack |
+| `osint-employees` | "osint-employees <target>" — employee names + emails (theHarvester + username-anarchy, opt-in LinkedIn); requires --with-credential-attack |
+| `breach-check` | "breach-check <wordlist>" — HIBP k-anonymity rank wordlist by real-world breach count |
+| `spray` | "spray <url> --mode http-form|oauth|o365|okta --users <f> --passes <f>" — password spray with hard guards |
+<!-- GENERATED:commands:END -->
 
 ## Usage
 

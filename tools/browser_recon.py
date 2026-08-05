@@ -14,8 +14,8 @@ with only `requests` (already a hard dependency) when Playwright isn't
 installed. Browser-driven features call require_playwright() first and raise
 a clear, actionable error instead of crashing.
 
-Implemented so far (batch 1: #2 + #5; batch 2: #1 — see module docstring
-bottom for what's still to come):
+All 5 pieces of the original plan are implemented (batch 1: #2 + #5; batch 2:
+#1; batch 3: #3 + #4):
 
   1. RUNTIME API CAPTURE -> recon/<target>/browser/api-calls.json
      Headless Chromium session (optionally authenticated via the same
@@ -36,6 +36,25 @@ bottom for what's still to come):
      guess), unpack sourcesContent to recover original TS/JSX. Pure HTTP
      (requests), no browser needed.
 
+  3. FRAMEWORK ROUTE EXTRACTION -> recon/<target>/browser/routes.json
+     Next.js's __NEXT_DATA__ (server-rendered into the raw HTML) and
+     _buildManifest.js/_ssgManifest.js (static assets once the buildId is
+     known); React Router/Angular route tables via `path: "..."` literals
+     that tend to survive minification; lazy-loaded chunks via dynamic
+     `import(...)` across all three frameworks. Pure HTTP, no browser
+     needed — every source here is static content, not something that only
+     exists after JS executes.
+
+  4. CLIENT-SIDE AUTH MODEL ANALYSIS -> recon/<target>/browser/auth-model.json
+     Where tokens live (localStorage/sessionStorage key NAMES + cookie
+     flags — httpOnly/secure/sameSite — never values), role/permission
+     constant-naming conventions found in bundle text, and (cross-
+     referencing #1/#3 if they've run) candidate refresh/logout endpoints
+     and client-side routes that look privileged. Requires Playwright for
+     the storage/cookie inspection; never clicks a logout button or
+     actively tests whether a route's guard is real — that is hunting, not
+     recon, and stays out of this module on purpose.
+
   5. HIDDEN ENDPOINT DISCOVERY -> recon/<target>/browser/never-called.json
      Diff: endpoints referenced in bundles (recon_engine.sh's js/endpoints.txt
      plus anything #2 recovered) MINUS endpoints actually crawled/called
@@ -44,11 +63,6 @@ bottom for what's still to come):
      urls/api_endpoints.txt — the exact file tools/lead_board.py's
      gather_recon() already globs — so `lead_board.py ingest` routes them
      through the normal pipeline. No parallel storage mechanism.
-
-NOT YET IMPLEMENTED (tracked for the next pass of this phase):
-  3. Framework route extraction (Next.js/React Router/Angular) -> browser/routes.json
-  4. Client-side auth model analysis -> browser/auth-model.json
-  Both will reuse the same Chromium session capture_runtime_api() launches.
 
 SAFETY — every outbound request in this module goes through Fetcher, which is
 the single choke point: scope_checker.is_in_scope() first (browsers/crawlers
@@ -62,16 +76,21 @@ Fetcher.check() (scope + circuit-breaker + safe-method + rate-limit, no
 actual I/O) runs inside a page.route() handler for EVERY request the browser
 tries to make — navigation, fetch, XHR, asset loads, all of it — and a
 non-conforming request is route.abort()'d before Playwright ever sends it
-over the wire. Only method/URL/header-name/body-shape are ever recorded;
-tools/auth_session.py's AuthSession already guarantees raw credential values
-never leave process memory, and this module never asks it for anything but
-its redacted/shape views.
+over the wire. #4 installs the identical page.route() gate for its one
+navigation even though it isn't persisting that traffic itself (#1 owns
+api-calls.json) — no browser-driving function in this module is exempt.
+Only method/URL/header-name/body-shape are ever recorded; storage/cookie
+inspection in #4 reads a value only long enough to compute a boolean
+(looks-like-a-JWT) or a length, then discards it. tools/auth_session.py's
+AuthSession already guarantees raw credential values never leave process
+memory, and this module never asks it for anything but its redacted/shape
+views.
 
 Usage:
   python3 tools/browser_recon.py target.com --domain '*.target.com' \\
-      --source-maps --hidden-endpoints
+      --source-maps --hidden-endpoints --route-extraction
   python3 tools/browser_recon.py target.com --domain '*.target.com' \\
-      --api-capture --entry-url https://target.com/dashboard --bearer TOKEN
+      --api-capture --auth-model --entry-url https://target.com/dashboard --bearer TOKEN
 """
 
 from __future__ import annotations
@@ -130,6 +149,16 @@ class RequestCapExceeded(BrowserReconError):
 
 class BrowserUnavailable(BrowserReconError):
     """Raised by require_playwright() when Playwright isn't installed."""
+
+
+# Every per-item fetch in this module (a bundle, a manifest, an entry page)
+# is expected to fail sometimes — a dead link, a timeout, a genuinely
+# unreachable host — without aborting the whole run. Fetcher.get()/request()
+# can raise either our own BrowserReconError subclasses (scope/guard/cap) or
+# let a real `requests.RequestException` (ConnectionError, Timeout, ...)
+# propagate on an actual network failure; callers that want "skip this one
+# item and keep going" must catch both, not just BrowserReconError.
+_FETCH_ERRORS = (BrowserReconError, requests.RequestException)
 
 
 def require_playwright():
@@ -347,7 +376,7 @@ def recover_source_maps_for_target(target: str, recon_dir: str, fetcher: Fetcher
         entry = {"js_url": js_url, "map_url": None, "files_written": 0, "skipped_reason": None}
         try:
             js_resp = fetcher.get(js_url)
-        except BrowserReconError as exc:
+        except _FETCH_ERRORS as exc:
             entry["skipped_reason"] = str(exc)
             bundles.append(entry)
             continue
@@ -375,7 +404,7 @@ def recover_source_maps_for_target(target: str, recon_dir: str, fetcher: Fetcher
         else:
             try:
                 map_resp = fetcher.get(map_url)
-            except BrowserReconError as exc:
+            except _FETCH_ERRORS as exc:
                 entry["skipped_reason"] = str(exc)
                 bundles.append(entry)
                 continue
@@ -792,6 +821,418 @@ def capture_runtime_api(
     return result
 
 
+# ─── #3 Framework route extraction — pure logic ────────────────────────────
+#
+# Unlike #1, none of this needs a live browser: Next.js embeds __NEXT_DATA__
+# server-side in the raw HTML response, _buildManifest.js/_ssgManifest.js are
+# static assets at a known URL once the buildId is known, and React
+# Router/Angular route tables + lazy-chunk dynamic imports are string
+# literals sitting in bundle text whether or not any JS ever executes. Plain
+# HTTP (the same Fetcher as #2/#5) is enough, and it's the lower-risk choice
+# when it's available — no reason to drive a browser for this.
+#
+# The `path:`-literal and role/permission regexes below are deliberately
+# heuristic, not a JS/TS parser — minified bundles vary, and a full AST
+# parse is out of scope for a recon tool. False positives are expected and
+# labeled as such; this is a lead generator, not a certainty.
+
+_NEXT_DATA_RE = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
+_BUILD_MANIFEST_MARKER_RE = re.compile(r"__BUILD_MANIFEST\s*=\s*(\{)")
+_SSG_MANIFEST_MARKER_RE = re.compile(r"__SSG_MANIFEST\s*=\s*new Set\(\[")
+_ROUTE_PATH_LITERAL_RE = re.compile(r'\bpath\s*:\s*["\'](/[^"\']*)["\']')
+_DYNAMIC_IMPORT_RE = re.compile(r'''import\(\s*["']([^"']+)["']\s*\)''')
+
+
+def extract_next_data(html: str) -> dict | None:
+    """Parse the __NEXT_DATA__ JSON blob Next.js embeds server-side in the
+    initial HTML response. Returns None if absent or malformed (a plain
+    404/error page, or just not a Next.js app)."""
+    m = _NEXT_DATA_RE.search(html or "")
+    if not m:
+        return None
+    try:
+        data = json.loads(m.group(1))
+    except (ValueError, TypeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _extract_balanced_braces(text: str, start: int) -> str | None:
+    """text[start] must be '{'. Returns the balanced {...} substring
+    (inclusive), tracking string literals so a brace inside a quoted string
+    doesn't throw off the depth count. None if never balanced."""
+    if start >= len(text) or text[start] != "{":
+        return None
+    depth = 0
+    in_string = None
+    i = start
+    while i < len(text):
+        c = text[i]
+        if in_string:
+            if c == "\\":
+                i += 2
+                continue
+            if c == in_string:
+                in_string = None
+        elif c in ('"', "'"):
+            in_string = c
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
+        i += 1
+    return None
+
+
+def extract_build_manifest_routes(js_text: str) -> list[str]:
+    """Next.js `self.__BUILD_MANIFEST = {"/route": [...chunks], ...}` lists
+    EVERY route the app knows about, including ones nothing on the crawled
+    site links to. Bracket-matched, not regex-only, so nested arrays inside
+    the object don't truncate the extraction early."""
+    m = _BUILD_MANIFEST_MARKER_RE.search(js_text or "")
+    if not m:
+        return []
+    body = _extract_balanced_braces(js_text, m.start(1))
+    if not body:
+        return []
+    return sorted(set(re.findall(r'"(/[^"]*)"\s*:\s*\[', body)))
+
+
+def extract_ssg_manifest_routes(js_text: str) -> list[str]:
+    """Next.js `self.__SSG_MANIFEST = new Set(["/route", ...])` — statically
+    generated paths."""
+    m = _SSG_MANIFEST_MARKER_RE.search(js_text or "")
+    if not m:
+        return []
+    end = js_text.find("])", m.end())
+    if end == -1:
+        return []
+    return sorted(set(re.findall(r'"(/[^"]*)"', js_text[m.end():end])))
+
+
+def extract_route_path_literals(js_text: str) -> list[str]:
+    """React Router (`<Route path="/x">`, `createBrowserRouter([{path: "/x"}])`)
+    and Angular (`RouterModule.forRoot([{path: 'x', ...}])`) route tables
+    both compile down to `path: "..."` string literals that tend to survive
+    minification. Heuristic — see module note above."""
+    return sorted(set(_ROUTE_PATH_LITERAL_RE.findall(js_text or "")))
+
+
+def extract_lazy_chunk_imports(js_text: str) -> list[str]:
+    """Dynamic `import("...")` — React.lazy(), Angular loadChildren, Vue
+    async components all compile to this same JS-language construct, so
+    this one regex covers all three frameworks' lazy-loaded route chunks."""
+    return sorted(set(_DYNAMIC_IMPORT_RE.findall(js_text or "")))
+
+
+def detect_framework(html: str, bundle_texts: list[str]) -> str:
+    """Cheap marker-based detection — "nextjs" | "angular" | "react" | "unknown"."""
+    html = html or ""
+    if "__NEXT_DATA__" in html or any(
+        "__BUILD_MANIFEST" in t or "__SSG_MANIFEST" in t for t in bundle_texts
+    ):
+        return "nextjs"
+    if "ng-version" in html or any("@angular/core" in t for t in bundle_texts):
+        return "angular"
+    if "data-reactroot" in html or any("react-router" in t.lower() for t in bundle_texts):
+        return "react"
+    return "unknown"
+
+
+def extract_framework_routes(
+    target: str, recon_dir: str, fetcher: Fetcher, *, entry_urls: list[str] | None = None
+) -> dict:
+    """Orchestrates #3 end to end. Pure HTTP via the same safety-gated
+    Fetcher as #2/#5 — no browser needed. Prefers already-recovered sources
+    under browser/sources/ (#2, higher fidelity, unminified) over raw bundle
+    fetches when available. Never raises on a single fetch's failure — one
+    unreachable entry URL or bundle doesn't abort the whole run."""
+    adapter = ReconAdapter(recon_dir)
+    recon_path = Path(recon_dir)
+    urls = entry_urls if entry_urls is not None else adapter.get_live_hosts()[:5]
+
+    html_blobs: list[str] = []
+    for url in urls:
+        try:
+            resp = fetcher.get(url)
+        except _FETCH_ERRORS:
+            continue
+        if resp.ok:
+            html_blobs.append(resp.text)
+
+    bundle_texts: list[str] = []
+    sources_dir = recon_path / "browser" / "sources"
+    if sources_dir.is_dir():
+        for f in sources_dir.rglob("*"):
+            if f.is_file() and f.suffix.lower() in {".js", ".ts", ".jsx", ".tsx", ".mjs"}:
+                bundle_texts.append(f.read_text(errors="replace"))
+    for js_url in adapter.get_js_files():
+        try:
+            resp = fetcher.get(js_url)
+        except _FETCH_ERRORS:
+            continue
+        if resp.ok:
+            bundle_texts.append(resp.text)
+
+    next_data_list = [d for d in (extract_next_data(h) for h in html_blobs) if d]
+    build_id = next((d.get("buildId") for d in next_data_list if d.get("buildId")), None)
+
+    routes: set[str] = {d["page"] for d in next_data_list if d.get("page")}
+
+    if build_id and urls:
+        for manifest_name in ("_buildManifest.js", "_ssgManifest.js"):
+            manifest_url = urljoin(urls[0], f"/_next/static/{build_id}/{manifest_name}")
+            try:
+                resp = fetcher.get(manifest_url)
+            except _FETCH_ERRORS:
+                continue
+            if resp.ok:
+                bundle_texts.append(resp.text)
+
+    lazy_chunks: set[str] = set()
+    heuristic_path_literal_count = 0
+    for text in bundle_texts:
+        routes |= set(extract_build_manifest_routes(text))
+        routes |= set(extract_ssg_manifest_routes(text))
+        literals = extract_route_path_literals(text)
+        heuristic_path_literal_count += len(literals)
+        routes |= set(literals)
+        lazy_chunks |= set(extract_lazy_chunk_imports(text))
+
+    framework = "unknown"
+    for h in html_blobs or [""]:
+        framework = detect_framework(h, bundle_texts)
+        if framework != "unknown":
+            break
+
+    out_dir = recon_path / "browser"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    result = {
+        "target": target,
+        "framework_detected": framework,
+        "build_id": build_id,
+        "routes": sorted(routes),
+        "lazy_chunk_imports": sorted(lazy_chunks),
+        "heuristic_path_literal_count": heuristic_path_literal_count,
+    }
+    (out_dir / "routes.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return result
+
+
+# ─── #4 Client-side auth model analysis ────────────────────────────────────
+#
+# Storage/cookie inspection genuinely needs a live browser (localStorage/
+# sessionStorage/cookies only exist in a browser context, not in static
+# HTML/JS). Only KEY NAMES and metadata are ever recorded — never values —
+# matching tools/auth_session.py's own guarantee that raw credential values
+# never leave process memory. This function never clicks a logout button or
+# actively probes auth bypass — see find_candidate_privileged_routes()'s
+# docstring for why that's a hunting-phase action, not a recon one.
+
+_AUTH_STORAGE_KEY_HINTS_RE = re.compile(r"(token|jwt|auth|session|sid|access|refresh|id_token)", re.I)
+_JWT_SHAPE_RE = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$")
+_ROLE_CONST_RE = re.compile(r"\b((?:ROLE|PERM|PERMISSION|SCOPE)_[A-Z][A-Z0-9_]*)\b")
+_ROLE_KV_RE = re.compile(r'''\b(?:role|permission|scope)s?\s*[:=]\s*["']([A-Za-z0-9_\-]+)["']''', re.I)
+_SENSITIVE_ROUTE_RE = re.compile(r"/(admin|dashboard|settings|account|internal|manage|billing|users?)\b", re.I)
+_AUTH_LIFECYCLE_ENDPOINT_RE = re.compile(r"(refresh|logout|signout|sign-out|revoke|invalidate)", re.I)
+
+
+def _classify_storage_keys(page, storage_area: str) -> list[dict]:
+    """storage_area: "localStorage" or "sessionStorage". Returns key NAMES +
+    metadata (auth-name heuristic match, JWT-shape check, length) — the
+    VALUE itself is read once inside the browser to compute these two
+    booleans/a length and then discarded; it is never included in the
+    returned dict or written anywhere."""
+    try:
+        entries = page.evaluate(
+            "(area) => { const s = window[area]; const out = []; "
+            "for (let i = 0; i < s.length; i++) { const k = s.key(i); out.push([k, s.getItem(k)]); } "
+            "return out; }",
+            storage_area,
+        )
+    except Exception:
+        return []
+    result = []
+    for key, value in entries or []:
+        value = value or ""
+        result.append({
+            "key": key,
+            "looks_auth_related": bool(_AUTH_STORAGE_KEY_HINTS_RE.search(key or "")),
+            "looks_like_jwt": bool(_JWT_SHAPE_RE.match(value.strip())),
+            "value_length": len(value),
+        })
+    return result
+
+
+def _classify_cookies(context) -> list[dict]:
+    """Cookie NAME + flags only — httpOnly/secure/sameSite are exactly the
+    signal a hunter needs (e.g. a session cookie missing httpOnly is an XSS
+    escalation path); the cookie value is never read into this dict."""
+    result = []
+    for c in context.cookies():
+        result.append({
+            "name": c.get("name"),
+            "domain": c.get("domain"),
+            "path": c.get("path"),
+            "http_only": c.get("httpOnly"),
+            "secure": c.get("secure"),
+            "same_site": c.get("sameSite"),
+            "looks_auth_related": bool(_AUTH_STORAGE_KEY_HINTS_RE.search(c.get("name") or "")),
+        })
+    return result
+
+
+def extract_role_constants(js_text: str) -> list[str]:
+    """ROLE_ADMIN-style naming-convention constants plus `role: "admin"`-
+    style key/value literals in bundle text — becomes the list of privileges
+    a hunter tests escalation against. Heuristic, see module note above."""
+    found = set(_ROLE_CONST_RE.findall(js_text or ""))
+    found |= {m for m in _ROLE_KV_RE.findall(js_text or "") if len(m) > 1}
+    return sorted(found)
+
+
+def find_candidate_privileged_routes(routes: list[str]) -> list[str]:
+    """Client-side routes (from #3) whose path LOOKS privileged — a lead
+    worth a manual server-side authorization check, e.g. confirming /admin
+    actually 403s when hit directly without going through the client router.
+    This function does not fetch or test anything itself: actively probing
+    whether a route's guard is enforced server-side is authorization-bypass
+    testing, which belongs to the hunt-auth-bypass skill once a human (or
+    the hunting phase) decides to pursue it — not something recon does
+    automatically."""
+    return sorted({r for r in (routes or []) if _SENSITIVE_ROUTE_RE.search(r)})
+
+
+def find_auth_lifecycle_endpoints(api_calls: list[dict]) -> list[str]:
+    """From #1's captured calls (if browser/api-calls.json exists), URLs
+    that look like refresh/logout/revoke endpoints by name — informational
+    only. Never triggered or tested here; logging out an authenticated
+    session as a side effect of recon would be exactly the kind of mutating
+    action --no-mutate exists to prevent."""
+    return sorted({
+        c.get("url", "") for c in (api_calls or [])
+        if isinstance(c, dict) and _AUTH_LIFECYCLE_ENDPOINT_RE.search(c.get("url", ""))
+    })
+
+
+def analyze_auth_model(
+    target: str,
+    recon_dir: str,
+    fetcher: Fetcher,
+    *,
+    entry_urls: list[str],
+    auth_session: AuthSession | None = None,
+    page_timeout: float = 30.0,
+) -> dict:
+    """Orchestrates #4 end to end. Requires Playwright — call
+    require_playwright() first (raises BrowserUnavailable with a clear
+    message if it's not installed).
+
+    Launches its own short-lived headless Chromium session (independent of
+    capture_runtime_api()'s — keeps this function self-contained and
+    testable in isolation; the extra browser-launch cost is a non-issue for
+    a recon tool), visits entry_urls[0] (storage/cookies are origin-wide,
+    not per-route, so one representative page is enough), and inspects
+    localStorage/sessionStorage KEY NAMES + cookie metadata — never values.
+    Every request the page makes during that single navigation still goes
+    through the identical page.route() -> fetcher.check() safety gate as
+    capture_runtime_api(); this function just doesn't persist that traffic
+    (#1 owns api-calls.json).
+
+    Bundle text (recovered sources from #2, or raw fetch fallback) is
+    scanned for role/permission constants. If browser/api-calls.json (#1)
+    or browser/routes.json (#3) already exist, cross-references them for
+    auth-lifecycle endpoints and candidate privileged routes — richer
+    output if #1/#3 ran first, but works standalone too.
+
+    Writes recon/<target>/browser/auth-model.json."""
+    sync_playwright = require_playwright()
+    if not entry_urls:
+        raise ValueError("analyze_auth_model requires at least one entry URL")
+    entry = entry_urls[0]
+
+    extra_headers = None
+    if auth_session is not None and not auth_session.is_empty():
+        extra_headers = auth_session.headers_dict()
+
+    local_storage: list[dict] = []
+    session_storage: list[dict] = []
+    cookies: list[dict] = []
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            context = browser.new_context(extra_http_headers=extra_headers)
+            page = context.new_page()
+            page.set_default_timeout(page_timeout * 1000)
+            _install_capture_hooks(page, fetcher, ApiCallRecorder())  # safety gate only
+            try:
+                page.goto(entry, wait_until="networkidle", timeout=page_timeout * 1000)
+            except Exception:
+                pass
+            else:
+                local_storage = _classify_storage_keys(page, "localStorage")
+                session_storage = _classify_storage_keys(page, "sessionStorage")
+                cookies = _classify_cookies(context)
+        finally:
+            browser.close()
+
+    recon_path = Path(recon_dir)
+    bundle_texts: list[str] = []
+    sources_dir = recon_path / "browser" / "sources"
+    if sources_dir.is_dir():
+        for f in sources_dir.rglob("*"):
+            if f.is_file() and f.suffix.lower() in {".js", ".ts", ".jsx", ".tsx", ".mjs"}:
+                bundle_texts.append(f.read_text(errors="replace"))
+    else:
+        for js_url in ReconAdapter(recon_dir).get_js_files():
+            try:
+                resp = fetcher.get(js_url)
+            except _FETCH_ERRORS:
+                continue
+            if resp.ok:
+                bundle_texts.append(resp.text)
+
+    role_constants: set[str] = set()
+    for text in bundle_texts:
+        role_constants |= set(extract_role_constants(text))
+
+    auth_lifecycle_endpoints: list[str] = []
+    api_calls_path = recon_path / "browser" / "api-calls.json"
+    if api_calls_path.exists():
+        try:
+            payload = json.loads(api_calls_path.read_text())
+            calls = payload.get("calls", []) if isinstance(payload, dict) else payload
+            auth_lifecycle_endpoints = find_auth_lifecycle_endpoints(calls)
+        except (ValueError, OSError):
+            pass
+
+    candidate_privileged_routes: list[str] = []
+    routes_path = recon_path / "browser" / "routes.json"
+    if routes_path.exists():
+        try:
+            routes_payload = json.loads(routes_path.read_text())
+            candidate_privileged_routes = find_candidate_privileged_routes(routes_payload.get("routes", []))
+        except (ValueError, OSError):
+            pass
+
+    out_dir = recon_path / "browser"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    result = {
+        "target": target,
+        "local_storage": local_storage,
+        "session_storage": session_storage,
+        "cookies": cookies,
+        "role_permission_constants": sorted(role_constants),
+        "auth_lifecycle_endpoints": auth_lifecycle_endpoints,
+        "candidate_privileged_client_routes": candidate_privileged_routes,
+    }
+    (out_dir / "auth-model.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return result
+
+
 # ─── CLI ────────────────────────────────────────────────────────────────────
 
 def _split_patterns(values: list[str]) -> list[str]:
@@ -806,7 +1247,8 @@ def _split_patterns(values: list[str]) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Browser intelligence layer — runtime API capture + source-map recovery + hidden-endpoint discovery."
+        description="Browser intelligence layer — runtime API capture, source-map recovery, "
+                     "route extraction, auth-model analysis, hidden-endpoint discovery."
     )
     parser.add_argument("target", help="Target domain (e.g. example.com)")
     parser.add_argument("--recon-dir", default=None, help="default: recon/<target>")
@@ -818,13 +1260,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--hidden-endpoints", action="store_true", help="Run hidden-endpoint discovery (#5)")
     parser.add_argument("--api-capture", action="store_true",
                          help="Run runtime API capture (#1) — drives a real headless browser; requires Playwright")
+    parser.add_argument("--route-extraction", action="store_true",
+                         help="Run framework route extraction (#3) — pure HTTP, no browser needed")
+    parser.add_argument("--auth-model", action="store_true",
+                         help="Run client-side auth-model analysis (#4) — drives a real headless browser; requires Playwright")
     parser.add_argument("--entry-url", action="append", default=[],
-                         help="Seed URL for --api-capture's browser walk. Repeatable. "
+                         help="Seed URL for --api-capture/--route-extraction/--auth-model. Repeatable. "
                               "Default: recon's live hosts (capped by --max-pages).")
     parser.add_argument("--max-pages", type=int, default=20,
                          help="Global cap on pages visited during --api-capture (default: 20)")
     parser.add_argument("--page-timeout", type=float, default=30.0,
-                         help="Per-page navigation timeout in seconds for --api-capture (default: 30)")
+                         help="Per-page navigation timeout in seconds for --api-capture/--auth-model (default: 30)")
     parser.add_argument("--max-links-per-page", type=int, default=5,
                          help="Same-scope links followed per page during --api-capture (default: 5)")
     parser.add_argument("--no-mutate", dest="no_mutate", action="store_true", default=True,
@@ -838,20 +1284,24 @@ def main(argv: list[str] | None = None) -> int:
     add_auth_cli_args(parser)
     args = parser.parse_args(argv)
 
-    if not args.source_maps and not args.hidden_endpoints and not args.api_capture:
+    wants_network = (args.source_maps or args.hidden_endpoints or args.api_capture
+                      or args.route_extraction or args.auth_model)
+    if not wants_network:
         parser.error(
-            "choose at least one of --source-maps / --hidden-endpoints / --api-capture "
-            "(route extraction / auth-model analysis are not implemented yet)"
+            "choose at least one of --source-maps / --hidden-endpoints / --api-capture / "
+            "--route-extraction / --auth-model"
         )
 
+    wants_fetcher = args.source_maps or args.api_capture or args.route_extraction or args.auth_model
     domains = _split_patterns(args.domain)
-    if (args.source_maps or args.api_capture) and not domains:
+    if wants_fetcher and not domains:
         parser.error(
-            "--source-maps / --api-capture send network requests and require "
-            "at least one --domain pattern"
+            "--source-maps / --api-capture / --route-extraction / --auth-model send network "
+            "requests and require at least one --domain pattern"
         )
 
-    if args.api_capture:
+    wants_browser = args.api_capture or args.auth_model
+    if wants_browser:
         try:
             require_playwright()
         except BrowserUnavailable as exc:
@@ -860,9 +1310,8 @@ def main(argv: list[str] | None = None) -> int:
     recon_dir = args.recon_dir or os.path.join("recon", args.target)
     result: dict = {"target": args.target, "recon_dir": recon_dir}
 
-    checker = None
     fetcher = None
-    if args.source_maps or args.api_capture:
+    if wants_fetcher:
         checker = ScopeChecker(domains, _split_patterns(args.exclude_domain))
         fetcher = Fetcher(
             checker,
@@ -875,13 +1324,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.source_maps:
         result["source_maps"] = recover_source_maps_for_target(args.target, recon_dir, fetcher)
 
-    if args.api_capture:
+    entry_urls = None
+    if args.api_capture or args.auth_model:
         entry_urls = args.entry_url or ReconAdapter(recon_dir).get_live_hosts()
         if not entry_urls:
             parser.error(
-                "--api-capture needs at least one entry URL — pass --entry-url or "
+                "--api-capture/--auth-model need at least one entry URL — pass --entry-url or "
                 "run recon first so recon/<target>/live/urls.txt has hosts"
             )
+
+    if args.api_capture:
         auth_session = session_from_args(args)
         result["api_capture"] = capture_runtime_api(
             args.target, recon_dir, fetcher,
@@ -890,6 +1342,20 @@ def main(argv: list[str] | None = None) -> int:
             max_pages=args.max_pages,
             page_timeout=args.page_timeout,
             max_links_per_page=args.max_links_per_page,
+        )
+
+    if args.route_extraction:
+        result["route_extraction"] = extract_framework_routes(
+            args.target, recon_dir, fetcher, entry_urls=args.entry_url or None
+        )
+
+    if args.auth_model:
+        auth_session = session_from_args(args)
+        result["auth_model"] = analyze_auth_model(
+            args.target, recon_dir, fetcher,
+            entry_urls=entry_urls,
+            auth_session=auth_session,
+            page_timeout=args.page_timeout,
         )
 
     if args.hidden_endpoints:
@@ -907,6 +1373,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"API capture: {ac['pages_visited']} page(s) visited, "
                   f"{ac['requests_captured']} request(s) captured -> "
                   f"{recon_dir}/browser/api-calls.json")
+        if "route_extraction" in result:
+            re_ = result["route_extraction"]
+            print(f"Route extraction: {len(re_['routes'])} route(s) found "
+                  f"(framework: {re_['framework_detected']}) -> {recon_dir}/browser/routes.json")
+        if "auth_model" in result:
+            am = result["auth_model"]
+            print(f"Auth model: {len(am['local_storage'])} localStorage key(s), "
+                  f"{len(am['session_storage'])} sessionStorage key(s), {len(am['cookies'])} cookie(s), "
+                  f"{len(am['role_permission_constants'])} role/permission constant(s) -> "
+                  f"{recon_dir}/browser/auth-model.json")
         if "hidden_endpoints" in result:
             he = result["hidden_endpoints"]
             print(f"Hidden endpoints: {len(he['never_called'])} never-called path(s) found "

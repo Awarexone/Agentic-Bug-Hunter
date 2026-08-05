@@ -30,6 +30,7 @@ import threading
 from pathlib import Path
 
 import pytest
+import requests
 
 import browser_recon as br  # tools/ is on sys.path via tests/conftest.py
 from tools.auth_session import AuthSession
@@ -950,6 +951,400 @@ class TestApiCaptureCliGating:
         with pytest.raises(SystemExit) as exc:
             br.main(["t.example", "--domain", "t.example", "--api-capture",
                      "--recon-dir", str(tmp_path / "empty")])
+        assert exc.value.code != 0
+
+
+# ─── #3 framework route extraction: pure functions ─────────────────────────
+
+_NEXT_DATA_HTML = """<!DOCTYPE html><html><head></head><body><div id="__next"></div>
+<script id="__NEXT_DATA__" type="application/json">{"props":{},"page":"/blog/[slug]","query":{},"buildId":"abc123"}</script>
+</body></html>"""
+
+_BUILD_MANIFEST_JS = """self.__BUILD_MANIFEST = {
+  "/": ["static/chunks/index.js"],
+  "/blog/[slug]": ["static/chunks/blog.js", "static/chunks/[slug].js"],
+  "/admin/dashboard": ["static/chunks/admin.js"],
+  "sortedPages": ["/", "/blog/[slug]", "/admin/dashboard"]
+};
+self.__BUILD_MANIFEST_CB && self.__BUILD_MANIFEST_CB();
+"""
+
+_SSG_MANIFEST_JS = 'self.__SSG_MANIFEST = new Set(["/", "/blog/hello-world"]); self.__SSG_MANIFEST_CB && self.__SSG_MANIFEST_CB();'
+
+_REACT_ROUTER_BUNDLE = """
+const routes = [
+  {path: "/settings", element: Settings},
+  {path: '/users/:id', element: UserDetail},
+];
+const LazyAdmin = () => import("./admin/AdminPanel");
+"""
+
+
+class TestExtractNextData:
+    def test_parses_valid_next_data(self):
+        data = br.extract_next_data(_NEXT_DATA_HTML)
+        assert data["page"] == "/blog/[slug]"
+        assert data["buildId"] == "abc123"
+
+    def test_returns_none_when_absent(self):
+        assert br.extract_next_data("<html><body>plain page</body></html>") is None
+
+    def test_returns_none_on_malformed_json(self):
+        html = '<script id="__NEXT_DATA__" type="application/json">{not valid json</script>'
+        assert br.extract_next_data(html) is None
+
+    def test_empty_input(self):
+        assert br.extract_next_data("") is None
+        assert br.extract_next_data(None) is None
+
+
+class TestExtractBalancedBraces:
+    def test_simple_object(self):
+        text = 'x = {"a": 1}; y = 2;'
+        assert br._extract_balanced_braces(text, text.index("{")) == '{"a": 1}'
+
+    def test_nested_object_not_truncated_early(self):
+        text = 'x = {"a": {"b": [1, 2]}, "c": 3};'
+        result = br._extract_balanced_braces(text, text.index("{"))
+        assert result == '{"a": {"b": [1, 2]}, "c": 3}'
+
+    def test_brace_inside_string_does_not_confuse_depth(self):
+        text = 'x = {"a": "contains } a brace"};'
+        result = br._extract_balanced_braces(text, text.index("{"))
+        assert result == '{"a": "contains } a brace"}'
+
+    def test_unbalanced_returns_none(self):
+        text = 'x = {"a": 1'
+        assert br._extract_balanced_braces(text, text.index("{")) is None
+
+    def test_not_a_brace_at_start_returns_none(self):
+        assert br._extract_balanced_braces("hello", 0) is None
+
+
+class TestExtractBuildManifestRoutes:
+    def test_extracts_all_route_keys(self):
+        routes = br.extract_build_manifest_routes(_BUILD_MANIFEST_JS)
+        assert "/" in routes
+        assert "/blog/[slug]" in routes
+        assert "/admin/dashboard" in routes
+
+    def test_no_marker_returns_empty(self):
+        assert br.extract_build_manifest_routes("var x = 1;") == []
+
+
+class TestExtractSsgManifestRoutes:
+    def test_extracts_set_members(self):
+        routes = br.extract_ssg_manifest_routes(_SSG_MANIFEST_JS)
+        assert routes == ["/", "/blog/hello-world"]
+
+    def test_no_marker_returns_empty(self):
+        assert br.extract_ssg_manifest_routes("var x = 1;") == []
+
+
+class TestExtractRoutePathLiterals:
+    def test_extracts_react_router_style_paths(self):
+        literals = br.extract_route_path_literals(_REACT_ROUTER_BUNDLE)
+        assert "/settings" in literals
+        assert "/users/:id" in literals
+
+    def test_no_paths_returns_empty(self):
+        assert br.extract_route_path_literals("const x = {name: 'bob'};") == []
+
+
+class TestExtractLazyChunkImports:
+    def test_extracts_dynamic_imports(self):
+        chunks = br.extract_lazy_chunk_imports(_REACT_ROUTER_BUNDLE)
+        assert "./admin/AdminPanel" in chunks
+
+    def test_none_returns_empty(self):
+        assert br.extract_lazy_chunk_imports("no imports here") == []
+
+
+class TestDetectFramework:
+    def test_detects_nextjs_from_html(self):
+        assert br.detect_framework(_NEXT_DATA_HTML, []) == "nextjs"
+
+    def test_detects_nextjs_from_bundle_marker(self):
+        assert br.detect_framework("", [_BUILD_MANIFEST_JS]) == "nextjs"
+
+    def test_detects_angular(self):
+        assert br.detect_framework('<html ng-version="17.0.0">', []) == "angular"
+
+    def test_detects_react_from_bundle(self):
+        assert br.detect_framework("", ["import { BrowserRouter } from 'react-router-dom'"]) == "react"
+
+    def test_unknown_when_no_markers(self):
+        assert br.detect_framework("<html><body>static site</body></html>", []) == "unknown"
+
+
+# ─── #3 framework route extraction: end to end (FakeSession, no browser) ──
+
+class TestExtractFrameworkRoutesEndToEnd:
+    def test_nextjs_full_pipeline(self, tmp_path, checker):
+        entry_url = "https://t.example/"
+        manifest_url = "https://t.example/_next/static/abc123/_buildManifest.js"
+        ssg_url = "https://t.example/_next/static/abc123/_ssgManifest.js"
+        session = FakeSession({
+            entry_url: FakeResponse(200, _NEXT_DATA_HTML),
+            manifest_url: FakeResponse(200, _BUILD_MANIFEST_JS),
+            ssg_url: FakeResponse(200, _SSG_MANIFEST_JS),
+        })
+        fetcher = br.Fetcher(checker, session=session, limiter=SpyLimiter())
+        rd = make_recon_dir(tmp_path)  # no js_files -> only entry + manifest fetches
+
+        result = br.extract_framework_routes("t.example", str(rd), fetcher, entry_urls=[entry_url])
+
+        assert result["framework_detected"] == "nextjs"
+        assert result["build_id"] == "abc123"
+        assert "/blog/[slug]" in result["routes"]        # from __NEXT_DATA__ "page"
+        assert "/admin/dashboard" in result["routes"]     # from _buildManifest.js
+        assert "/blog/hello-world" in result["routes"]    # from _ssgManifest.js
+
+        written = json.loads((rd / "browser" / "routes.json").read_text())
+        assert written["target"] == "t.example"
+
+    def test_react_router_bundle_via_js_files(self, tmp_path, checker):
+        entry_url = "https://t.example/"
+        bundle_url = "https://t.example/static/app.js"
+        session = FakeSession({
+            entry_url: FakeResponse(200, "<html><body>plain</body></html>"),
+            bundle_url: FakeResponse(200, _REACT_ROUTER_BUNDLE),
+        })
+        fetcher = br.Fetcher(checker, session=session, limiter=SpyLimiter())
+        rd = make_recon_dir(tmp_path, js_files=[bundle_url])
+
+        result = br.extract_framework_routes("t.example", str(rd), fetcher, entry_urls=[entry_url])
+
+        assert "/settings" in result["routes"]
+        assert "/users/:id" in result["routes"]
+        assert "./admin/AdminPanel" in result["lazy_chunk_imports"]
+
+    def test_prefers_recovered_sources_over_raw_bundle(self, tmp_path, checker):
+        """If #2 already recovered original sources, use those instead of
+        re-fetching the (possibly minified) raw bundle."""
+        entry_url = "https://t.example/"
+        session = FakeSession({entry_url: FakeResponse(200, "<html></html>")})
+        fetcher = br.Fetcher(checker, session=session, limiter=SpyLimiter())
+        rd = make_recon_dir(tmp_path)
+        sources_dir = rd / "browser" / "sources" / "app"
+        sources_dir.mkdir(parents=True)
+        (sources_dir / "routes.tsx").write_text(_REACT_ROUTER_BUNDLE)
+
+        result = br.extract_framework_routes("t.example", str(rd), fetcher, entry_urls=[entry_url])
+        assert "/settings" in result["routes"]
+
+    def test_unreachable_entry_url_does_not_crash(self, tmp_path, checker):
+        """A real network failure (DNS, connection refused, timeout) must be
+        tolerated the same way an out-of-scope/blocked URL is -- this one
+        item is skipped, the run doesn't abort."""
+        class _ConnectionErrorSession:
+            def request(self, method, url, timeout=None):
+                raise requests.ConnectionError(f"simulated: could not resolve {url}")
+
+        fetcher = br.Fetcher(checker, session=_ConnectionErrorSession(), limiter=SpyLimiter())
+        rd = make_recon_dir(tmp_path)
+        result = br.extract_framework_routes(
+            "t.example", str(rd), fetcher, entry_urls=["https://t.example/unreachable"]
+        )
+        assert result["framework_detected"] == "unknown"
+        assert result["routes"] == []
+
+    def test_out_of_scope_entry_url_does_not_crash(self, tmp_path, checker):
+        fetcher = br.Fetcher(checker, session=FakeSession({}), limiter=SpyLimiter())
+        rd = make_recon_dir(tmp_path)
+        result = br.extract_framework_routes(
+            "t.example", str(rd), fetcher, entry_urls=["https://evil.example/x"]
+        )
+        assert result["routes"] == []
+
+
+# ─── #4 client-side auth model: pure functions ─────────────────────────────
+
+class TestExtractRoleConstants:
+    def test_naming_convention_constants(self):
+        text = "const ROLE_ADMIN = 'admin'; const PERM_DELETE_USER = 1; const x = ROLE_ADMIN;"
+        found = br.extract_role_constants(text)
+        assert "ROLE_ADMIN" in found
+        assert "PERM_DELETE_USER" in found
+
+    def test_key_value_role_literals(self):
+        text = "const user = {role: 'superadmin', name: 'bob'};"
+        assert "superadmin" in br.extract_role_constants(text)
+
+    def test_no_constants_returns_empty(self):
+        assert br.extract_role_constants("const x = 1;") == []
+
+
+class TestFindCandidatePrivilegedRoutes:
+    def test_flags_privileged_looking_routes(self):
+        routes = ["/", "/about", "/admin/dashboard", "/account/settings", "/blog/hello"]
+        found = br.find_candidate_privileged_routes(routes)
+        assert "/admin/dashboard" in found
+        assert "/account/settings" in found
+        assert "/about" not in found
+        assert "/blog/hello" not in found
+
+    def test_empty_input(self):
+        assert br.find_candidate_privileged_routes([]) == []
+        assert br.find_candidate_privileged_routes(None) == []
+
+
+class TestFindAuthLifecycleEndpoints:
+    def test_flags_refresh_and_logout(self):
+        calls = [
+            {"url": "https://t.example/api/auth/refresh"},
+            {"url": "https://t.example/api/logout"},
+            {"url": "https://t.example/api/products"},
+        ]
+        found = br.find_auth_lifecycle_endpoints(calls)
+        assert "https://t.example/api/auth/refresh" in found
+        assert "https://t.example/api/logout" in found
+        assert "https://t.example/api/products" not in found
+
+    def test_empty_input(self):
+        assert br.find_auth_lifecycle_endpoints([]) == []
+        assert br.find_auth_lifecycle_endpoints(None) == []
+
+
+# ─── #4 client-side auth model: storage/cookie classification (fakes) ─────
+
+class _FakeAuthPage:
+    def __init__(self, storage_data):
+        self._storage_data = storage_data  # {"localStorage": [(k, v), ...], "sessionStorage": [...]}
+
+    def evaluate(self, script, arg=None):
+        return self._storage_data.get(arg, [])
+
+
+class _FakeAuthContext:
+    def __init__(self, cookies):
+        self._cookies = cookies
+
+    def cookies(self):
+        return self._cookies
+
+
+class TestClassifyStorageKeys:
+    def test_classifies_auth_related_and_jwt_shape(self):
+        page = _FakeAuthPage({
+            "localStorage": [("auth_token", "aaa.bbb.ccc"), ("theme", "dark")],
+        })
+        result = br._classify_storage_keys(page, "localStorage")
+        by_key = {e["key"]: e for e in result}
+        assert by_key["auth_token"]["looks_auth_related"] is True
+        assert by_key["auth_token"]["looks_like_jwt"] is True
+        assert by_key["theme"]["looks_auth_related"] is False
+        assert by_key["theme"]["looks_like_jwt"] is False
+
+    def test_never_includes_raw_value(self):
+        page = _FakeAuthPage({"localStorage": [("auth_token", "super-secret-raw-value.x.y")]})
+        result = br._classify_storage_keys(page, "localStorage")
+        assert "super-secret-raw-value" not in json.dumps(result)
+
+    def test_evaluate_failure_returns_empty(self):
+        class ExplodingPage:
+            def evaluate(self, *a, **k):
+                raise RuntimeError("boom")
+        assert br._classify_storage_keys(ExplodingPage(), "localStorage") == []
+
+
+class TestClassifyCookies:
+    def test_classifies_flags_and_never_includes_value(self):
+        context = _FakeAuthContext([
+            {"name": "session_id", "value": "raw-secret-cookie-value", "domain": "t.example",
+             "path": "/", "httpOnly": True, "secure": True, "sameSite": "Lax"},
+        ])
+        result = br._classify_cookies(context)
+        assert result[0]["name"] == "session_id"
+        assert result[0]["http_only"] is True
+        assert result[0]["looks_auth_related"] is True
+        assert "raw-secret-cookie-value" not in json.dumps(result)
+        assert "value" not in result[0]
+
+
+# ─── #4 client-side auth model: real Chromium end to end ───────────────────
+
+@needs_playwright
+class TestAnalyzeAuthModelEndToEnd:
+    def _fetcher(self):
+        checker = ScopeChecker(["localhost"])
+        return br.Fetcher(checker, recon_rps=1000.0, max_requests=50, timeout=10.0)
+
+    def test_captures_storage_and_cookie_metadata_not_values(self, tmp_path, local_server):
+        result = br.analyze_auth_model(
+            "t.example", str(tmp_path), self._fetcher(),
+            entry_urls=[local_server + "/"],
+        )
+        # the demo page (served by _CaptureTestHandler) has no storage-setting
+        # script of its own, so this mainly proves the mechanism doesn't crash
+        # against a real page and writes a well-shaped file.
+        assert isinstance(result["local_storage"], list)
+        assert isinstance(result["cookies"], list)
+        out_path = tmp_path / "browser" / "auth-model.json"
+        assert out_path.exists()
+
+    def test_role_constants_from_recovered_sources(self, tmp_path, local_server):
+        sources_dir = tmp_path / "browser" / "sources" / "app"
+        sources_dir.mkdir(parents=True)
+        (sources_dir / "roles.js").write_text("const ROLE_SUPERADMIN = 'superadmin';")
+
+        result = br.analyze_auth_model(
+            "t.example", str(tmp_path), self._fetcher(),
+            entry_urls=[local_server + "/"],
+        )
+        assert "ROLE_SUPERADMIN" in result["role_permission_constants"]
+
+    def test_cross_references_api_calls_and_routes_json(self, tmp_path, local_server):
+        browser_dir = tmp_path / "browser"
+        browser_dir.mkdir(parents=True)
+        (browser_dir / "api-calls.json").write_text(json.dumps({
+            "calls": [{"url": "https://t.example/api/auth/refresh"}, {"url": "https://t.example/x"}]
+        }))
+        (browser_dir / "routes.json").write_text(json.dumps({
+            "routes": ["/admin/dashboard", "/about"]
+        }))
+
+        result = br.analyze_auth_model(
+            "t.example", str(tmp_path), self._fetcher(),
+            entry_urls=[local_server + "/"],
+        )
+        assert "https://t.example/api/auth/refresh" in result["auth_lifecycle_endpoints"]
+        assert "/admin/dashboard" in result["candidate_privileged_client_routes"]
+
+    def test_requires_entry_url(self, tmp_path):
+        with pytest.raises(ValueError):
+            br.analyze_auth_model("t.example", str(tmp_path), self._fetcher(), entry_urls=[])
+
+
+class TestRouteExtractionAndAuthModelCliGating:
+    def test_route_extraction_requires_domain(self):
+        with pytest.raises(SystemExit) as exc:
+            br.main(["t.example", "--route-extraction"])
+        assert exc.value.code != 0
+
+    def test_route_extraction_does_not_require_playwright(self, monkeypatch, tmp_path):
+        # No --entry-url and an empty recon-dir (no live/urls.txt, no
+        # js_files.txt) means extract_framework_routes() makes zero network
+        # calls -- this exercises the real CLI path (a real requests.Session,
+        # since main() doesn't accept a fake one) without ever touching a
+        # socket, while still proving --route-extraction works with
+        # Playwright unavailable.
+        monkeypatch.setattr(br, "sync_playwright", None)
+        rd = make_recon_dir(tmp_path)
+        code = br.main(["t.example", "--domain", "t.example", "--route-extraction",
+                         "--recon-dir", str(rd)])
+        assert code == 0
+
+    def test_auth_model_requires_domain(self):
+        with pytest.raises(SystemExit) as exc:
+            br.main(["t.example", "--auth-model"])
+        assert exc.value.code != 0
+
+    def test_auth_model_without_playwright_errors_cleanly(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(br, "sync_playwright", None)
+        with pytest.raises(SystemExit) as exc:
+            br.main(["t.example", "--domain", "t.example", "--auth-model",
+                     "--recon-dir", str(tmp_path), "--entry-url", "https://t.example/"])
         assert exc.value.code != 0
 
 

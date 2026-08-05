@@ -5,10 +5,8 @@
 <h1 align="center">BugHunter</h1>
 
 <p align="center">
-  <b>AI-powered bug bounty hunting — recon to report, in your terminal.
-    CA:0xFE8280D7eADEf663146789798768671a55233025
-    </b><br>
-    
+  <b>AI-powered bug bounty hunting — recon to report, in your terminal.</b><br>
+
   <sub>Find vulnerabilities. Validate them. Get paid. No subscription required.</sub>
 </p>
 

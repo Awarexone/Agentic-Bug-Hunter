@@ -8,11 +8,23 @@ only exist post-login inside a rendered app, minified bundles that hide their
 original source, and route tables the crawler never triggers because nothing
 links to them directly.
 
-Playwright is an OPTIONAL dependency (same pattern as tools/hai_probe.py's
-`requests` guard): this module imports fine and its non-browser features work
-with only `requests` (already a hard dependency) when Playwright isn't
-installed. Browser-driven features call require_playwright() first and raise
-a clear, actionable error instead of crashing.
+Playwright is an OPTIONAL dependency — deliberately NOT in requirements.txt,
+same convention this codebase already uses for agent.py's langgraph/
+langchain-ollama/ollama (see agent.py's own module docstring): this module
+imports fine and its non-browser features (#2 source-map recovery, #3 route
+extraction, #5 hidden-endpoint discovery) work with only `requests` (already
+a hard dependency) when Playwright isn't installed. Browser-driven features
+(#1 runtime API capture, #4 auth-model analysis) call require_playwright()
+first and raise a clear, actionable error instead of crashing.
+
+ONE-TIME SETUP for #1/#4 (two steps — easy to do only the first and wonder
+why nothing works):
+    python3 -m pip install playwright
+    playwright install chromium
+The pip package alone does not include a browser binary; `playwright
+install chromium` downloads it separately. See README.md's Installation
+section for the same note in the place a fresh clone is more likely to see
+it before ever importing this module.
 
 All 5 pieces of the original plan are implemented (batch 1: #2 + #5; batch 2:
 #1; batch 3: #3 + #4):
@@ -165,15 +177,22 @@ def require_playwright():
     """Return the playwright.sync_api module, or raise BrowserUnavailable with
     an actionable install hint. Every browser-driving feature must call this
     before touching sync_playwright — it's what lets the rest of this module
-    (source-map recovery, hidden-endpoint discovery) work with zero crash
-    when Playwright isn't installed."""
+    (source-map recovery, route extraction, hidden-endpoint discovery — none
+    of which need a real browser) work with zero crash when Playwright isn't
+    installed."""
     if sync_playwright is None:
         raise BrowserUnavailable(
-            "Playwright is not installed — browser-driven recon (runtime API "
-            "capture, route extraction, auth-model analysis) is unavailable. "
-            "Install with: python3 -m pip install playwright && "
-            "playwright install chromium. Source-map recovery and hidden-"
-            "endpoint discovery do not need a browser and still work."
+            "Playwright is not installed — browser-driven recon (--api-capture "
+            "runtime API capture, --auth-model client-side auth analysis) is "
+            "unavailable. Two steps are required, not one:\n"
+            "  1. python3 -m pip install playwright\n"
+            "  2. playwright install chromium\n"
+            "(step 2 downloads the actual browser binary — the pip package "
+            "alone does not include it, and step 1 succeeding is not proof "
+            "step 2 happened). Playwright is an OPTIONAL dependency — see "
+            "requirements.txt and README.md's Installation section — "
+            "--source-maps, --route-extraction, and --hidden-endpoints do "
+            "not need a browser and still work without any of this."
         )
     return sync_playwright
 

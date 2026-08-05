@@ -457,6 +457,15 @@ export CHAOS_API_KEY="your-key"
 echo 'export CHAOS_API_KEY="your-key"' >> ~/.zshrc
 ```
 
+**Optional: browser recon** (`tools/browser_recon.py --api-capture` / `--auth-model` — runtime API capture + client-side auth-model analysis on modern SPAs)
+
+```bash
+python3 -m pip install playwright
+playwright install chromium   # separate step — the pip package alone has no browser binary
+```
+
+Not required for `--source-maps` / `--route-extraction` / `--hidden-endpoints`, which work with only `requests` (already installed above).
+
 ---
 
 ## Rules

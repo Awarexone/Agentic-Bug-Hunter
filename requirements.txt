@@ -1,2 +1,16 @@
 requests>=2.31.0
 pytest>=8.0.0
+
+# ── Optional dependencies ───────────────────────────────────────────────────
+# Not installed by `pip install -r requirements.txt` on purpose — this repo's
+# convention (see also agent.py's langgraph/langchain-ollama/ollama) is that
+# optional integrations stay out of the hard requirements list and degrade
+# gracefully (a clear error at call time, not an import crash) when absent.
+#
+# playwright   — powers tools/browser_recon.py's --api-capture and
+#                --auth-model (runtime API capture + client-side auth-model
+#                analysis). --source-maps / --route-extraction /
+#                --hidden-endpoints do NOT need it. Two-step install, not one:
+#                    python3 -m pip install playwright
+#                    playwright install chromium
+#                (the pip package alone does not include the browser binary)

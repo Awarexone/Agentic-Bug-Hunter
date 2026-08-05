@@ -98,11 +98,11 @@ Items deferred from the MCP-First Bionic Hunter design review (2026-03-24).
 
 ---
 
-## TODO-8: Missing test coverage (partially resolved)
+## ~~TODO-8: Missing test coverage~~ ✅ RESOLVED (2026-08-05)
 
 **What:** 4 test gaps identified in /autoplan eng review:
 1. ✅ Concurrent-write stress test for `AuditLog` (2 cases in `test_rotation.py::TestConcurrentWrites`, 2026-04-30) — `HuntJournal` removed in 97d4efb so no longer applicable
-2. ⏳ End-to-end hunt loop integration test (recon → rank → hunt → validate → report as a sequence)
+2. ✅ End-to-end hunt loop integration test (`tests/test_e2e_hunt_loop.py`, 2026-08-05) — recon → rank → hunt → validate → report run as a real sequence against a real in-process demo/app.py instance (never the real network, per project convention). Covers the deterministic tool layer each pipeline-stage agent calls: `tools/lead_board.py`'s `ingest()`, `memory/vuln_intelligence.py`'s `priority_score()`, `tools/validation_core.py`'s `evaluate_finding()`, and `memory/finding_state.py`'s lifecycle gates + self-learning write-back — not the agents' own LLM reasoning, which pytest can't invoke. 12 tests.
 3. ✅ Disk-full OSError propagation test (`test_rotation.py::TestDiskFullPropagation`, 2026-04-30)
 4. ✅ `PatternDB.save()` performance test at 10,000 entries (`test_pattern_db.py::TestPatternPerformance`, 2026-05-01) — uncovered an O(n²) latent perf bug, fixed via in-memory dedup index
 

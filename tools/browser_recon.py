@@ -14,9 +14,21 @@ with only `requests` (already a hard dependency) when Playwright isn't
 installed. Browser-driven features call require_playwright() first and raise
 a clear, actionable error instead of crashing.
 
-Implemented in this pass (source-map recovery + hidden-endpoint discovery —
-the two highest-value, lowest-risk pieces; see module docstring bottom for
-what's still to come):
+Implemented so far (batch 1: #2 + #5; batch 2: #1 — see module docstring
+bottom for what's still to come):
+
+  1. RUNTIME API CAPTURE -> recon/<target>/browser/api-calls.json
+     Headless Chromium session (optionally authenticated via the same
+     AuthSession headers hunt.py uses). Visits a bounded, scope-checked set
+     of entry URLs plus same-scope links discovered on those pages, and
+     captures every fetch/XHR/navigation request the page itself makes via
+     Playwright's page.route() interception — the ONE thing a crawler-based
+     pipeline structurally cannot see, because it never executes the page's
+     JS. Records method, URL, request/response body SHAPE (keys + types,
+     never real values), which headers looked auth-related (names only,
+     values redacted), and which page/link triggered each request.
+     WebSocket connection URLs are recorded too (frame contents are not).
+     Requires Playwright — see require_playwright() below.
 
   2. SOURCE MAP RECOVERY -> recon/<target>/browser/sources/
      For each JS bundle in recon/<target>/urls/js_files.txt: fetch it, find
@@ -28,17 +40,15 @@ what's still to come):
      Diff: endpoints referenced in bundles (recon_engine.sh's js/endpoints.txt
      plus anything #2 recovered) MINUS endpoints actually crawled/called
      (urls/all.txt, urls/api_endpoints.txt, urls/with_params.txt, and
-     browser/api-calls.json once feature #1 exists). Newly-found endpoints are
-     appended to urls/api_endpoints.txt — the exact file tools/lead_board.py's
+     browser/api-calls.json from #1). Newly-found endpoints are appended to
+     urls/api_endpoints.txt — the exact file tools/lead_board.py's
      gather_recon() already globs — so `lead_board.py ingest` routes them
      through the normal pipeline. No parallel storage mechanism.
 
 NOT YET IMPLEMENTED (tracked for the next pass of this phase):
-  1. Runtime API capture (fetch/XHR/WebSocket/EventSource hooking) -> browser/api-calls.json
   3. Framework route extraction (Next.js/React Router/Angular) -> browser/routes.json
   4. Client-side auth model analysis -> browser/auth-model.json
-  These all require actually driving a browser; require_playwright() and the
-  Fetcher safety chokepoint below are the scaffolding they'll build on.
+  Both will reuse the same Chromium session capture_runtime_api() launches.
 
 SAFETY — every outbound request in this module goes through Fetcher, which is
 the single choke point: scope_checker.is_in_scope() first (browsers/crawlers
@@ -47,11 +57,21 @@ memory/audit_log.py's AutopilotGuard (circuit breaker + safe-method policy)
 and RateLimiter, then the request, then guard feedback + an audit log entry.
 --no-mutate (default ON) blocks non-idempotent methods outright — there's no
 human in a headless recon run to approve them. A global --max-requests cap
-and a per-request --timeout bound total exposure.
+and a per-request --timeout bound total exposure. For #1 specifically:
+Fetcher.check() (scope + circuit-breaker + safe-method + rate-limit, no
+actual I/O) runs inside a page.route() handler for EVERY request the browser
+tries to make — navigation, fetch, XHR, asset loads, all of it — and a
+non-conforming request is route.abort()'d before Playwright ever sends it
+over the wire. Only method/URL/header-name/body-shape are ever recorded;
+tools/auth_session.py's AuthSession already guarantees raw credential values
+never leave process memory, and this module never asks it for anything but
+its redacted/shape views.
 
 Usage:
   python3 tools/browser_recon.py target.com --domain '*.target.com' \\
       --source-maps --hidden-endpoints
+  python3 tools/browser_recon.py target.com --domain '*.target.com' \\
+      --api-capture --entry-url https://target.com/dashboard --bearer TOKEN
 """
 
 from __future__ import annotations
@@ -62,7 +82,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
 
@@ -72,6 +92,7 @@ if _REPO not in sys.path:
 
 from tools.scope_checker import ScopeChecker  # noqa: E402
 from tools.recon_adapter import ReconAdapter  # noqa: E402
+from tools.auth_session import AuthSession, add_cli_args as add_auth_cli_args, session_from_args  # noqa: E402
 from memory.audit_log import AutopilotGuard, RateLimiter, AuditLog  # noqa: E402
 
 try:
@@ -164,9 +185,12 @@ class Fetcher:
     def get(self, url: str) -> requests.Response:
         return self.request("GET", url)
 
-    def request(self, method: str, url: str) -> requests.Response:
-        method = method.upper()
-
+    def _preflight(self, method: str, url: str) -> str:
+        """Scope + request cap + circuit-breaker + safe-method checks, shared
+        by request() and check(). Does not touch the rate limiter or the
+        request counter — callers do that after a successful preflight, so
+        check() (no actual I/O) and request() (real I/O) both pace/count
+        correctly relative to each other on the same Fetcher instance."""
         if self.request_count >= self.max_requests:
             raise RequestCapExceeded(
                 f"global request cap ({self.max_requests}) reached — refusing to fetch {url}"
@@ -185,8 +209,25 @@ class Fetcher:
                 f"{method} {url} blocked by --no-mutate (default ON; pass --allow-mutate "
                 f"to override): {decision.get('reason')}"
             )
+        return decision["host"]
 
-        host = decision["host"]
+    def check(self, method: str, url: str) -> str:
+        """Preflight-only: the exact same scope/cap/circuit-breaker/safe-method
+        checks as request(), plus the rate-limiter wait and request-count
+        increment, but WITHOUT sending an HTTP request. For browser-driven
+        features (Playwright route interception) where Playwright itself
+        performs the actual network I/O — the same safety gates must still
+        run before Playwright is allowed to send anything. Returns the host
+        on success; raises a BrowserReconError subclass otherwise."""
+        method = method.upper()
+        host = self._preflight(method, url)
+        self.limiter.wait(host, is_recon=True)
+        self.request_count += 1
+        return host
+
+    def request(self, method: str, url: str) -> requests.Response:
+        method = method.upper()
+        host = self._preflight(method, url)
         self.limiter.wait(host, is_recon=True)
         self.request_count += 1
 
@@ -472,7 +513,10 @@ def discover_hidden_endpoints(target: str, recon_dir: str) -> dict:
     api_calls_path = recon_path / "browser" / "api-calls.json"
     if api_calls_path.exists():
         try:
-            calls = json.loads(api_calls_path.read_text())
+            payload = json.loads(api_calls_path.read_text())
+            # capture_runtime_api() (#1) writes {"calls": [...], ...}; accept
+            # a bare list too in case something else ever writes this file.
+            calls = payload.get("calls", []) if isinstance(payload, dict) else payload
             called |= {c.get("url", "") for c in calls if isinstance(c, dict) and c.get("url")}
         except (ValueError, OSError):
             pass
@@ -493,6 +537,261 @@ def discover_hidden_endpoints(target: str, recon_dir: str) -> dict:
     return result
 
 
+# ─── #1 Runtime API capture — pure logic ───────────────────────────────────
+
+_AUTH_HEADER_NAMES = {
+    "authorization", "cookie", "set-cookie", "x-api-key", "x-auth-token",
+    "x-access-token", "x-csrf-token", "x-xsrf-token", "proxy-authorization",
+}
+
+_MAX_SHAPE_DEPTH = 6
+_MAX_RESPONSE_BODY_BYTES = 200_000  # never buffer a huge response just to shape it
+
+
+def is_auth_header(name: str) -> bool:
+    return (name or "").lower() in _AUTH_HEADER_NAMES
+
+
+def shape_of(value, _depth: int = 0):
+    """Pure: a JSON-decoded value -> its shape (keys + type names), never the
+    real values. {"user": "bob", "id": 7} -> {"user": "string", "id": "number"}.
+    Depth-capped so a pathological nested payload can't blow the stack."""
+    if _depth > _MAX_SHAPE_DEPTH:
+        return "..."
+    if isinstance(value, dict):
+        return {k: shape_of(v, _depth + 1) for k, v in value.items()}
+    if isinstance(value, list):
+        return [shape_of(value[0], _depth + 1)] if value else []
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, (int, float)):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if value is None:
+        return "null"
+    return type(value).__name__
+
+
+def shape_of_body(raw, content_type: str = ""):
+    """Best-effort shape of a request/response body. Tries JSON first, then
+    application/x-www-form-urlencoded, else records only a byte length —
+    never the actual content. Returns None for an empty/absent body."""
+    if not raw:
+        return None
+    if isinstance(raw, bytes):
+        try:
+            raw = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return {"_opaque_bytes": len(raw)}
+
+    try:
+        return shape_of(json.loads(raw))
+    except (ValueError, TypeError):
+        pass
+
+    ct = (content_type or "").lower()
+    if "form-urlencoded" in ct or ("=" in raw and "\n" not in raw and " " not in raw.strip("&=")):
+        try:
+            parsed = parse_qs(raw, strict_parsing=True)
+            if parsed:
+                return {k: ("string" if len(v) == 1 else "array") for k, v in parsed.items()}
+        except ValueError:
+            pass
+
+    return {"_opaque_text_length": len(raw)}
+
+
+class ApiCallRecorder:
+    """Accumulates captured request/response entries during a browser
+    session. Playwright's real Request/Response objects are fed in via
+    on_request()/on_response()/on_websocket() (matched on their .method/
+    .url/.headers/.post_data/.status surface); this class never imports
+    playwright itself, so it's fully unit-testable with lightweight fakes
+    exposing that same surface."""
+
+    def __init__(self):
+        self.calls: list[dict] = []
+        self._by_key: dict[tuple[str, str], dict] = {}
+        self.trigger: str = "page_load"
+
+    def on_request(self, request) -> dict:
+        headers = dict(getattr(request, "headers", {}) or {})
+        entry = {
+            "method": request.method,
+            "url": request.url,
+            "resource_type": getattr(request, "resource_type", None),
+            "request_headers_auth": sorted(h for h in headers if is_auth_header(h)),
+            "request_body_shape": shape_of_body(
+                getattr(request, "post_data", None), headers.get("content-type", "")
+            ),
+            "trigger": self.trigger,
+            "response_status": None,
+            "response_shape": None,
+            "blocked": False,
+            "block_reason": None,
+        }
+        self.calls.append(entry)
+        self._by_key[(request.url, request.method)] = entry
+        return entry
+
+    def on_blocked(self, request, reason: str) -> dict:
+        entry = self.on_request(request)
+        entry["blocked"] = True
+        entry["block_reason"] = reason
+        return entry
+
+    def on_response(self, response) -> None:
+        req = getattr(response, "request", None)
+        key = (response.url, getattr(req, "method", "GET"))
+        entry = self._by_key.get(key)
+        if entry is None:
+            return
+        entry["response_status"] = response.status
+        headers = dict(getattr(response, "headers", {}) or {})
+        ct = headers.get("content-type", "")
+        if "json" in ct.lower():
+            try:
+                body = response.body()
+                if len(body) <= _MAX_RESPONSE_BODY_BYTES:
+                    entry["response_shape"] = shape_of(json.loads(body))
+                else:
+                    entry["response_shape"] = {"_opaque_bytes": len(body)}
+            except Exception:
+                entry["response_shape"] = None
+        elif ct:
+            entry["response_shape"] = {"_content_type": ct}
+
+    def on_websocket(self, ws) -> dict:
+        entry = {
+            "method": "WEBSOCKET",
+            "url": ws.url,
+            "resource_type": "websocket",
+            "request_headers_auth": [],
+            "request_body_shape": None,
+            "trigger": self.trigger,
+            "response_status": None,
+            "response_shape": None,
+            "blocked": False,
+            "block_reason": None,
+        }
+        self.calls.append(entry)
+        return entry
+
+    def to_list(self) -> list[dict]:
+        return self.calls
+
+
+def _install_capture_hooks(page, fetcher: Fetcher, recorder: ApiCallRecorder) -> None:
+    """Wires Playwright's route interception + response/websocket events to
+    the safety-gated Fetcher and the recorder. This is the ONLY place in the
+    module where a real network request is allowed to leave the machine
+    without going through `requests` — Playwright sends it — so
+    fetcher.check() (same scope/cap/circuit-breaker/safe-method/rate-limit
+    gates as every other fetch in this module) has to run for every single
+    one, and route.abort() is what actually stops a non-conforming request
+    from ever being sent."""
+
+    def handle_route(route):
+        request = route.request
+        try:
+            fetcher.check(request.method, request.url)
+        except BrowserReconError as exc:
+            recorder.on_blocked(request, str(exc))
+            route.abort()
+            return
+        recorder.on_request(request)
+        route.continue_()
+
+    page.route("**/*", handle_route)
+    page.on("response", recorder.on_response)
+    page.on("websocket", recorder.on_websocket)
+
+
+def capture_runtime_api(
+    target: str,
+    recon_dir: str,
+    fetcher: Fetcher,
+    *,
+    entry_urls: list[str],
+    auth_session: AuthSession | None = None,
+    max_pages: int = 20,
+    page_timeout: float = 30.0,
+    max_links_per_page: int = 5,
+) -> dict:
+    """Orchestrates #1 end to end. Requires Playwright — call
+    require_playwright() first (raises BrowserUnavailable with a clear
+    message if it's not installed).
+
+    Launches one headless Chromium context (with auth_session's headers
+    attached, if given — never logged, never written anywhere but sent as
+    real request headers), visits entry_urls plus a small bounded set of
+    same-scope links discovered on those pages (link-following only; no
+    button/form interaction in this pass — clicking arbitrary buttons risks
+    triggering account-mutating actions no --no-mutate check can fully
+    predict, so it's deliberately deferred). Every request the page makes,
+    including navigation itself, is gated by fetcher.check() inside
+    page.route() before Playwright is allowed to send it.
+
+    Writes recon/<target>/browser/api-calls.json. Never raises on a single
+    page's navigation failure (bad link, timeout, blocked by our own
+    guard) — that page is just skipped, same resilience pattern as
+    recover_source_maps_for_target()."""
+    sync_playwright = require_playwright()
+    recorder = ApiCallRecorder()
+    visited: set[str] = set()
+    queue: list[str] = list(dict.fromkeys(entry_urls))[:max_pages]
+    pages_visited = 0
+
+    extra_headers = None
+    if auth_session is not None and not auth_session.is_empty():
+        extra_headers = auth_session.headers_dict()
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            context = browser.new_context(extra_http_headers=extra_headers)
+            page = context.new_page()
+            page.set_default_timeout(page_timeout * 1000)
+            _install_capture_hooks(page, fetcher, recorder)
+
+            while queue and pages_visited < max_pages:
+                url = queue.pop(0)
+                if url in visited:
+                    continue
+                visited.add(url)
+                recorder.trigger = f"page_load:{url}"
+                try:
+                    page.goto(url, wait_until="networkidle", timeout=page_timeout * 1000)
+                except Exception:
+                    # Real network failure, our own route.abort() causing a
+                    # failed top-level navigation, or a plain timeout — this
+                    # is a per-page outcome, not a reason to abort the run.
+                    continue
+                pages_visited += 1
+
+                try:
+                    hrefs = page.eval_on_selector_all("a[href]", "els => els.map(e => e.href)")
+                except Exception:
+                    hrefs = []
+                for href in hrefs[:max_links_per_page]:
+                    if href not in visited and fetcher.scope_checker.is_in_scope(href):
+                        queue.append(href)
+        finally:
+            browser.close()
+
+    out_dir = Path(recon_dir) / "browser"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    result = {
+        "target": target,
+        "pages_visited": pages_visited,
+        "requests_captured": len(recorder.calls),
+        "calls": recorder.to_list(),
+    }
+    (out_dir / "api-calls.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return result
+
+
 # ─── CLI ────────────────────────────────────────────────────────────────────
 
 def _split_patterns(values: list[str]) -> list[str]:
@@ -507,7 +806,7 @@ def _split_patterns(values: list[str]) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Browser intelligence layer — source-map recovery + hidden-endpoint discovery."
+        description="Browser intelligence layer — runtime API capture + source-map recovery + hidden-endpoint discovery."
     )
     parser.add_argument("target", help="Target domain (e.g. example.com)")
     parser.add_argument("--recon-dir", default=None, help="default: recon/<target>")
@@ -517,6 +816,17 @@ def main(argv: list[str] | None = None) -> int:
                          help="Excluded domain pattern. Repeat or comma-separate.")
     parser.add_argument("--source-maps", action="store_true", help="Run source-map recovery (#2)")
     parser.add_argument("--hidden-endpoints", action="store_true", help="Run hidden-endpoint discovery (#5)")
+    parser.add_argument("--api-capture", action="store_true",
+                         help="Run runtime API capture (#1) — drives a real headless browser; requires Playwright")
+    parser.add_argument("--entry-url", action="append", default=[],
+                         help="Seed URL for --api-capture's browser walk. Repeatable. "
+                              "Default: recon's live hosts (capped by --max-pages).")
+    parser.add_argument("--max-pages", type=int, default=20,
+                         help="Global cap on pages visited during --api-capture (default: 20)")
+    parser.add_argument("--page-timeout", type=float, default=30.0,
+                         help="Per-page navigation timeout in seconds for --api-capture (default: 30)")
+    parser.add_argument("--max-links-per-page", type=int, default=5,
+                         help="Same-scope links followed per page during --api-capture (default: 5)")
     parser.add_argument("--no-mutate", dest="no_mutate", action="store_true", default=True,
                          help="Block non-idempotent HTTP methods (default: ON)")
     parser.add_argument("--allow-mutate", dest="no_mutate", action="store_false",
@@ -525,22 +835,34 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-requests", type=int, default=DEFAULT_MAX_REQUESTS)
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+    add_auth_cli_args(parser)
     args = parser.parse_args(argv)
 
-    if not args.source_maps and not args.hidden_endpoints:
+    if not args.source_maps and not args.hidden_endpoints and not args.api_capture:
         parser.error(
-            "choose at least one of --source-maps / --hidden-endpoints "
-            "(runtime API capture / route extraction / auth-model analysis are not implemented yet)"
+            "choose at least one of --source-maps / --hidden-endpoints / --api-capture "
+            "(route extraction / auth-model analysis are not implemented yet)"
         )
 
     domains = _split_patterns(args.domain)
-    if args.source_maps and not domains:
-        parser.error("--source-maps sends network requests and requires at least one --domain pattern")
+    if (args.source_maps or args.api_capture) and not domains:
+        parser.error(
+            "--source-maps / --api-capture send network requests and require "
+            "at least one --domain pattern"
+        )
+
+    if args.api_capture:
+        try:
+            require_playwright()
+        except BrowserUnavailable as exc:
+            parser.error(str(exc))
 
     recon_dir = args.recon_dir or os.path.join("recon", args.target)
     result: dict = {"target": args.target, "recon_dir": recon_dir}
 
-    if args.source_maps:
+    checker = None
+    fetcher = None
+    if args.source_maps or args.api_capture:
         checker = ScopeChecker(domains, _split_patterns(args.exclude_domain))
         fetcher = Fetcher(
             checker,
@@ -549,7 +871,26 @@ def main(argv: list[str] | None = None) -> int:
             timeout=args.timeout,
             max_requests=args.max_requests,
         )
+
+    if args.source_maps:
         result["source_maps"] = recover_source_maps_for_target(args.target, recon_dir, fetcher)
+
+    if args.api_capture:
+        entry_urls = args.entry_url or ReconAdapter(recon_dir).get_live_hosts()
+        if not entry_urls:
+            parser.error(
+                "--api-capture needs at least one entry URL — pass --entry-url or "
+                "run recon first so recon/<target>/live/urls.txt has hosts"
+            )
+        auth_session = session_from_args(args)
+        result["api_capture"] = capture_runtime_api(
+            args.target, recon_dir, fetcher,
+            entry_urls=entry_urls,
+            auth_session=auth_session,
+            max_pages=args.max_pages,
+            page_timeout=args.page_timeout,
+            max_links_per_page=args.max_links_per_page,
+        )
 
     if args.hidden_endpoints:
         result["hidden_endpoints"] = discover_hidden_endpoints(args.target, recon_dir)
@@ -561,6 +902,11 @@ def main(argv: list[str] | None = None) -> int:
             sm = result["source_maps"]
             print(f"Source maps: {sm['maps_recovered']}/{sm['bundles_checked']} bundles recovered, "
                   f"{sm['files_written']} files written -> {sm['output_dir']}")
+        if "api_capture" in result:
+            ac = result["api_capture"]
+            print(f"API capture: {ac['pages_visited']} page(s) visited, "
+                  f"{ac['requests_captured']} request(s) captured -> "
+                  f"{recon_dir}/browser/api-calls.json")
         if "hidden_endpoints" in result:
             he = result["hidden_endpoints"]
             print(f"Hidden endpoints: {len(he['never_called'])} never-called path(s) found "

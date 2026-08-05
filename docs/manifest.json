@@ -107,7 +107,8 @@
     {"name": "auth_session.py", "path": "tools/auth_session.py", "description": "Auth-session layer — loads credentials once (env vars, .env, or flags) and plumbs them through a hunt"},
     {"name": "credential_store.py", "path": "tools/credential_store.py", "description": "Secure credential store — loads auth credentials from a gitignored .env file, never persisted elsewhere"},
     {"name": "dashboard.py", "path": "tools/dashboard.py", "description": "Live ANSI TUI dashboard for /recon and /hunt phase progress"},
-    {"name": "recon_adapter.py", "path": "tools/recon_adapter.py", "description": "Canonical recon output normalizer — reads either recon_engine.sh's nested or a flat directory format"}
+    {"name": "recon_adapter.py", "path": "tools/recon_adapter.py", "description": "Canonical recon output normalizer — reads either recon_engine.sh's nested or a flat directory format"},
+    {"name": "browser_recon.py", "path": "tools/browser_recon.py", "description": "Browser intelligence layer — Playwright-optional source-map recovery + hidden-endpoint discovery for SPA targets"}
   ],
   "memory": [
     {"name": "pattern_db.py", "path": "memory/pattern_db.py", "description": "Cross-target pattern learning — successful techniques indexed by vuln class + tech stack (JSONL)"},

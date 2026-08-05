@@ -20,6 +20,7 @@ import itertools
 import ipaddress
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -82,6 +83,70 @@ def expand_cidr(cidr: str, max_hosts: int = MAX_CIDR_HOSTS) -> list[str]:
 
 TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(TOOLS_DIR)
+
+# Domain validation: RFC 1035 + practical bug-bounty allowance. Each label is
+# 1-63 chars of [a-zA-Z0-9-], not starting/ending with hyphen. Underscores are
+# allowed for service hostnames like _spf, _dmarc.
+_DOMAIN_LABEL = r"(?!-)[A-Za-z0-9_-]{1,63}(?<!-)"
+_DOMAIN_RE = re.compile(rf"^{_DOMAIN_LABEL}(\.{_DOMAIN_LABEL})+$")
+
+# Shell metacharacters that have no business in any legitimate target string.
+# Defense in depth: every subprocess call below now builds an argv list with
+# shell=False, so these characters can't reach a shell — but a target like
+# `x"; rm -rf ~; #` should be rejected at the trust boundary regardless of
+# how it's used downstream (hunt.py itself, agent.py, engine.py, or any
+# tools/*.sh script a hunt might invoke).
+_SHELL_METACHARS = re.compile(r"[\s;&|`$<>(){}\\'\"!*?#\n\r]")
+
+
+def validate_target(target: str) -> None:
+    """Raise ValueError if a CLI-supplied target string is unsafe.
+
+    Accepts: FQDN, IPv4/IPv6, CIDR, or a path to an existing readable file.
+    Rejects: anything with shell metacharacters, leading dashes (mistaken for
+    flags), or a file path that resolves outside $HOME / the project dir.
+
+    Call this once at every trust boundary where a target string first
+    enters the process (CLI argparse, an agent tool call) — everything
+    downstream can then assume the value is safe to interpolate into a path
+    or pass as a single argv element.
+    """
+    if not target or len(target) > 253:
+        raise ValueError("target must be 1-253 chars")
+    if target.startswith("-"):
+        raise ValueError("target cannot start with '-' (would be parsed as a flag)")
+    if _SHELL_METACHARS.search(target):
+        raise ValueError("target contains characters not allowed in domain/IP/path")
+
+    # File path? Tighten containment.
+    if os.path.exists(target):
+        real = os.path.realpath(target)
+        home = os.path.realpath(os.path.expanduser("~"))
+        base = os.path.realpath(BASE_DIR)
+        if not (real.startswith(home + os.sep) or real == home
+                or real.startswith(base + os.sep) or real == base):
+            raise ValueError(
+                f"target file {target!r} resolves outside $HOME and the project "
+                "directory; refusing to read it (path traversal guard)"
+            )
+        if os.path.getsize(real) > 10 * 1024 * 1024:
+            raise ValueError(f"target file {target!r} is larger than 10MB")
+        return  # path is OK as-is
+
+    # CIDR / IP?
+    try:
+        ipaddress.ip_network(target, strict=False)
+        return
+    except ValueError:
+        pass
+
+    # Domain?
+    if _DOMAIN_RE.match(target):
+        return
+
+    raise ValueError(
+        f"target {target!r} is not a valid domain, IP, CIDR, or existing readable file"
+    )
 TARGETS_DIR = os.path.join(BASE_DIR, "targets")
 RECON_DIR = os.path.join(BASE_DIR, "recon")
 FINDINGS_DIR = os.path.join(BASE_DIR, "findings")
@@ -208,7 +273,6 @@ def run_recon(domain, quick=False, scope_lock=False):
     """Run recon engine on a domain, single IP, or CIDR range."""
     log("info", f"Running recon on {domain}...")
     script = os.path.join(TOOLS_DIR, "recon_engine.sh")
-    quick_flag = "--quick" if quick else ""
 
     # Detect target type and pass to recon_engine.sh
     target_type = detect_target_type(domain)
@@ -237,22 +301,29 @@ def run_recon(domain, quick=False, scope_lock=False):
                 return False
             log("info", f"Domain list {domain} → {n} host(s) to scan")
 
-    scope_env  = "SCOPE_LOCK=1 " if scope_lock else ""
-    type_env   = f'TARGET_TYPE="{target_type}" '
+    # Pass SCOPE_LOCK / TARGET_TYPE via env rather than splicing them into a
+    # shell command — keeps shell=False clean and avoids any chance of the
+    # values being re-parsed by /bin/sh.
+    child_env = os.environ.copy()
+    if scope_lock:
+        child_env["SCOPE_LOCK"] = "1"
+    child_env["TARGET_TYPE"] = target_type
 
     # Inject auth env vars (if any) so the bash helper picks them up.
-    child_env = os.environ.copy()
     if _AUTH_SESSION is not None:
         _AUTH_SESSION.export_to_env(child_env)
         if not _AUTH_SESSION.is_empty():
             log("info", _AUTH_SESSION.describe())
 
-    # Run with live output
+    argv = ["bash", script, domain]
+    if quick:
+        argv.append("--quick")
+
+    # Run with live output. shell=False — the domain value reaches argv[2]
+    # directly with no shell parsing, so a target like `x"; rm -rf ~; #` is
+    # treated as a single literal arg.
     try:
-        proc = subprocess.Popen(
-            f'{scope_env}{type_env}bash "{script}" "{domain}" {quick_flag}',
-            shell=True, cwd=BASE_DIR, env=child_env,
-        )
+        proc = subprocess.Popen(argv, cwd=BASE_DIR, env=child_env)
         proc.wait(timeout=3600)  # 60 min timeout (CIDR ranges can be large)
         return proc.returncode == 0
     except subprocess.TimeoutExpired:
@@ -285,17 +356,19 @@ def run_vuln_scan(domain, quick=False, full=False):
 
     log("info", f"Running vulnerability scanner on {domain}...")
     script = os.path.join(TOOLS_DIR, "vuln_scanner.sh")
-    quick_flag = "--quick" if quick else ("--full" if full else "")
 
     child_env = os.environ.copy()
     if _AUTH_SESSION is not None:
         _AUTH_SESSION.export_to_env(child_env)
 
+    argv = ["bash", script, recon_dir]
+    if quick:
+        argv.append("--quick")
+    elif full:
+        argv.append("--full")
+
     try:
-        proc = subprocess.Popen(
-            f'bash "{script}" "{recon_dir}" {quick_flag}',
-            shell=True, cwd=BASE_DIR, env=child_env,
-        )
+        proc = subprocess.Popen(argv, cwd=BASE_DIR, env=child_env)
         proc.wait(timeout=1800)
         return proc.returncode == 0
     except subprocess.TimeoutExpired:
@@ -409,17 +482,18 @@ def run_zero_day_fuzzer(domain, deep=False):
     """Run zero-day fuzzer on a target."""
     log("info", f"Running zero-day fuzzer on {domain}...")
     script = os.path.join(TOOLS_DIR, "zero_day_fuzzer.py")
-    deep_flag = "--deep" if deep else ""
+
+    argv = [sys.executable, script, f"https://{domain}"]
 
     # Check if we have recon data with live URLs
     recon_dir = os.path.join(RECON_DIR, domain)
     if os.path.isdir(recon_dir):
-        cmd = f'python3 "{script}" "https://{domain}" --recon-dir "{recon_dir}" {deep_flag}'
-    else:
-        cmd = f'python3 "{script}" "https://{domain}" {deep_flag}'
+        argv.extend(["--recon-dir", recon_dir])
+    if deep:
+        argv.append("--deep")
 
     try:
-        proc = subprocess.Popen(cmd, shell=True, cwd=BASE_DIR)
+        proc = subprocess.Popen(argv, cwd=BASE_DIR)
         proc.wait(timeout=900)
         return proc.returncode == 0
     except subprocess.TimeoutExpired:
@@ -486,6 +560,16 @@ Examples:
                         help="Suppress the startup banner (useful for CI / piped output)")
     add_cli_args(parser)
     args = parser.parse_args(argv)
+
+    # Trust boundary — every user-supplied target string is validated here,
+    # once, before any value reaches a subprocess. Downstream code can assume
+    # the target is a domain, IP, CIDR, or safe file path.
+    if args.target:
+        try:
+            validate_target(args.target)
+        except ValueError as exc:
+            log("err", f"Refusing target {args.target!r}: {exc}")
+            sys.exit(2)
 
     # Build the auth session once. It propagates to every subprocess via
     # BBHUNT_AUTH_HEADERS / BBHUNT_SESSION_ID env vars (set per-call so the

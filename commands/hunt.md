@@ -329,3 +329,14 @@ Do not describe what to do — show the command.
 ## Auto-Memory (runs at session end)
 
 When the hunt session ends, run `/remember` to log a summary to hunt memory so `/pickup` picks it up next time. Runs silently — non-fatal. Keeps memory populated without requiring a manual note.
+
+## Post-recon (automatic in hunt.py)
+
+`hunt.py` runs `lead_board.py ingest` + `eol_check.py` after recon unless `--skip-leads`.
+Add `--graphql` to audit GraphQL URLs discovered in recon, and `--cve-hunt` for a focused nuclei CVE sweep.
+
+```bash
+python3 tools/hunt.py --target target.com --graphql --cve-hunt
+python3 tools/lead_board.py next target.com
+```
+

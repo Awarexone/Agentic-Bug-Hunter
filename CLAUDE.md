@@ -100,6 +100,9 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 - `tools/spray_orchestrator.sh` — password spray with typed-hostname guard + lockout warning + audit log; modes: http-form / oauth / o365 / okta (TREVOR); requires `--with-credential-attack` for TREVOR modes
 - `tools/graphql_audit.sh` — 7-phase GraphQL audit: introspection + schema dump, graphw00f fingerprint, clairvoyance field discovery, batching DoS, alias bomb, gqlmap injection, graphql-cop checklist
 - `tools/lead_board.py` — persistent per-target lead ledger that routes every recon observation to the right `hunt-*` skill and tracks its status so no lead is forgotten (`memory/leads/<target>.jsonl`). `ingest` parses recon output and routes 30+ signal types (IDOR/SSRF/GraphQL/OAuth/SAML/LLM/source-leak/tech-stack/nuclei) to skills; `show` lists untouched-first and flags stale high-priority leads; `next` returns the single top lead; `touch` marks a lead investigating/killed/reported (re-ingest preserves status). See **Critical Rule 6**.
+- `tools/eol_check.py` — EOL / lifecycle intel from endoflife.date (auto-run by `hunt.py` after recon)
+- `tools/waf_encoder.py` · `waf_response_analyzer.py` · `multipart_mutator.py` — WAF bypass + soft-block scoring + upload mutation
+- Full catalogue: **`tools/README.md`** (~50 tools). `hunt.py` auto-ingests leads after recon (`--graphql` / `--cve-hunt` / `--skip-leads` flags).
 
 ### External tool references
 

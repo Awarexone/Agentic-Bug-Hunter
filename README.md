@@ -28,7 +28,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/cli-banner.svg" alt="BUGHUNTER — Bug Bounty Automation Pipeline" width="780"/>
+  <img src="assets/cli-banner.png" alt="BUGHUNTER — Bug Bounty Automation Pipeline" width="900"/>
 </p>
 
 ---

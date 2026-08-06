@@ -122,18 +122,18 @@ def run_cmd(cmd, cwd=None, timeout=600):
         if proc is not None:
             try:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            except Exception:
+            except OSError:
                 proc.kill()
             proc.wait()
-        return False, "Command timed out"
+        return False, f"Command timed out after {timeout}s: {cmd[:120]}"
     except Exception as e:
         if proc is not None:
             try:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            except Exception:
+            except OSError:
                 proc.kill()
             proc.wait()
-        return False, str(e)
+        return False, f"Command failed ({type(e).__name__}): {e}"
 
 
 def check_tools():
@@ -191,16 +191,21 @@ def select_targets(top_n=10):
     print(output)
 
     if not success:
-        log("err", "Target selection failed")
+        log("err", f"Target selection failed: {output[:200]}")
         return []
 
     # Load selected targets
     targets_file = os.path.join(TARGETS_DIR, "selected_targets.json")
     if os.path.exists(targets_file):
-        with open(targets_file) as f:
-            data = json.load(f)
+        try:
+            with open(targets_file) as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            log("err", f"Could not read targets file {targets_file}: {e}")
+            return []
         return data.get("targets", [])
 
+    log("err", f"Targets file not found: {targets_file}")
     return []
 
 

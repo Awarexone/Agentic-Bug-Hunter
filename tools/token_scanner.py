@@ -525,7 +525,22 @@ class TokenScanner:
                 content = file_path.read_text(encoding="utf-8", errors="replace")
                 lines = content.splitlines()
             except OSError as e:
-                print(f"{YELLOW}Warning: cannot read {file_path}: {e}{RESET}")
+                print(
+                    f"{YELLOW}Warning: cannot read {file_path}: {e}{RESET}",
+                    file=sys.stderr,
+                )
+                result.findings.append(
+                    Finding(
+                        risk=RiskLevel.INFO,
+                        category="scanner",
+                        title=f"File read error: {file_path.name}",
+                        description=f"Could not read file: {e}",
+                        file_path=str(file_path),
+                        line_number=0,
+                        code_snippet="",
+                        recommendation="Check file permissions",
+                    )
+                )
                 continue
 
             for category, patterns in self.patterns.items():

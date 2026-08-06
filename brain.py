@@ -18,7 +18,9 @@ API keys (env vars):
   OPENAI_API_KEY      — OpenAI (gpt-4o, o1, etc.)
   XAI_API_KEY         — Grok (grok-2-latest, grok-3, etc.)
   GROQ_API_KEY        — Groq free tier (llama-3.3-70b-versatile)
-  DEEPSEEK_API_KEY    — DeepSeek (deepseek-chat / deepseek-reasoner)
+  DEEPSEEK_API_KEY    — DeepSeek (deepseek-v4-flash / deepseek-v4-pro)
+  DEEPSEEK_THINKING   — set to 1 to run DeepSeek V4 in thinking mode (off by
+                        default; thinking bills extra reasoning tokens)
   GEMINI_API_KEY      — Google Gemini (gemini-2.0-flash, gemini-2.5-pro, etc.)
   MOONSHOT_API_KEY    — Kimi / Moonshot AI (moonshot-v1-128k, etc.)
   MISTRAL_API_KEY     — Mistral AI (mistral-large-latest, codestral-latest, etc.)
@@ -111,7 +113,7 @@ class LLMClient:
         "openai":      "gpt-4o",
         "grok":        "grok-2-latest",
         "groq":        "llama-3.3-70b-versatile",
-        "deepseek":    "deepseek-chat",
+        "deepseek":    "deepseek-v4-flash",
         "gemini":      "gemini-2.0-flash",
         "kimi":        "moonshot-v1-128k",
         "mistral":     "mistral-large-latest",
@@ -120,6 +122,14 @@ class LLMClient:
         "perplexity":  "sonar-pro",
         "openrouter":  "anthropic/claude-sonnet-4.6",
         "ollama":      None,  # resolved dynamically
+    }
+
+    # DeepSeek retired deepseek-chat / deepseek-reasoner on 2026-07-24; both now
+    # 404. Map old names onto the V4 model that replaced them so saved configs
+    # and `--model deepseek-chat` keep working. Value: (new_model, thinking).
+    DEEPSEEK_LEGACY_ALIASES = {
+        "deepseek-chat":     ("deepseek-v4-flash", False),
+        "deepseek-reasoner": ("deepseek-v4-flash", True),
     }
 
     def __init__(self, provider: str | None = None):
@@ -244,7 +254,7 @@ class LLMClient:
                                        "Content-Type": "application/json"})
             self._api_base   = "https://api.deepseek.com/v1"
             self.available   = True
-            self.description = "DeepSeek API (deepseek-chat / deepseek-reasoner)"
+            self.description = "DeepSeek API (deepseek-v4-flash / deepseek-v4-pro)"
 
         elif provider == "gemini":
             key = os.environ.get("GEMINI_API_KEY", "")
@@ -388,6 +398,22 @@ class LLMClient:
         r.raise_for_status()
         return r.json()["content"][0]["text"].strip()
 
+    def _deepseek_model_and_thinking(self, model: str) -> tuple[str, dict]:
+        """Resolve a DeepSeek model name and pin its thinking mode explicitly.
+
+        The V4 models default to thinking ON, which bills extra reasoning
+        tokens. The retired deepseek-chat did not, so stay non-thinking unless
+        asked — set DEEPSEEK_THINKING=1 for reasoning-mode answers.
+        """
+        thinking = False
+        alias    = self.DEEPSEEK_LEGACY_ALIASES.get(model)
+        if alias:
+            model, thinking = alias
+        env = os.environ.get("DEEPSEEK_THINKING")
+        if env is not None:
+            thinking = env.strip().lower() in ("1", "true", "yes", "on", "enabled")
+        return model, {"type": "enabled" if thinking else "disabled"}
+
     def _chat_openai_compat(self, model, system, user, max_tokens, temperature) -> str:
         import json as _json
         base = self._api_base
@@ -395,6 +421,8 @@ class LLMClient:
         body = {"model": m, "max_tokens": max_tokens, "temperature": temperature,
                 "messages": [{"role": "system", "content": system},
                              {"role": "user",   "content": user}]}
+        if self.provider == "deepseek":
+            body["model"], body["thinking"] = self._deepseek_model_and_thinking(m)
         r = self._http.post(f"{base}/chat/completions",
                             data=_json.dumps(body), timeout=120)
         r.raise_for_status()
@@ -416,7 +444,7 @@ class LLMClient:
         elif self.provider == "groq":
             return ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"]
         elif self.provider == "deepseek":
-            return ["deepseek-chat", "deepseek-reasoner"]
+            return ["deepseek-v4-flash", "deepseek-v4-pro"]
         elif self.provider == "gemini":
             return ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
         elif self.provider == "kimi":

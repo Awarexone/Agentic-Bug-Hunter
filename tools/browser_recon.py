@@ -108,6 +108,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -600,6 +601,20 @@ def is_auth_header(name: str) -> bool:
     return (name or "").lower() in _AUTH_HEADER_NAMES
 
 
+def _value_fingerprint(value: str | None) -> str | None:
+    """sha256(value)[:16] hex digest — used by #1 (request_headers_auth_
+    fingerprint), #4 (_classify_cookies/_classify_storage_keys) to let
+    memory/attack_graph.py's cross-host chain detection (Phase 4 batch 2)
+    recognize when the SAME actual secret value is observed on two
+    different hosts, without ever storing/logging/returning the raw value
+    itself anywhere. None for empty/None input — an empty-string hash would
+    make every unset cookie/header/key collide as "the same secret", which
+    is not a real cross-host link."""
+    if not value:
+        return None
+    return hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()[:16]
+
+
 def shape_of(value, _depth: int = 0):
     """Pure: a JSON-decoded value -> its shape (keys + type names), never the
     real values. {"user": "bob", "id": 7} -> {"user": "string", "id": "number"}.
@@ -665,11 +680,16 @@ class ApiCallRecorder:
 
     def on_request(self, request) -> dict:
         headers = dict(getattr(request, "headers", {}) or {})
+        auth_header_names = sorted(h for h in headers if is_auth_header(h))
         entry = {
             "method": request.method,
             "url": request.url,
             "resource_type": getattr(request, "resource_type", None),
-            "request_headers_auth": sorted(h for h in headers if is_auth_header(h)),
+            "request_headers_auth": auth_header_names,
+            "request_headers_auth_fingerprint": {
+                h: fp for h in auth_header_names
+                if (fp := _value_fingerprint(headers.get(h))) is not None
+            },
             "request_body_shape": shape_of_body(
                 getattr(request, "post_data", None), headers.get("content-type", "")
             ),
@@ -716,6 +736,7 @@ class ApiCallRecorder:
             "url": ws.url,
             "resource_type": "websocket",
             "request_headers_auth": [],
+            "request_headers_auth_fingerprint": {},
             "request_body_shape": None,
             "trigger": self.trigger,
             "response_status": None,
@@ -1060,10 +1081,14 @@ _AUTH_LIFECYCLE_ENDPOINT_RE = re.compile(r"(refresh|logout|signout|sign-out|revo
 
 def _classify_storage_keys(page, storage_area: str) -> list[dict]:
     """storage_area: "localStorage" or "sessionStorage". Returns key NAMES +
-    metadata (auth-name heuristic match, JWT-shape check, length) — the
-    VALUE itself is read once inside the browser to compute these two
-    booleans/a length and then discarded; it is never included in the
-    returned dict or written anywhere."""
+    metadata (auth-name heuristic match, JWT-shape check, length, a
+    one-way value_fingerprint) — the VALUE itself is read once inside the
+    browser to compute these signals and then discarded; it is never
+    included in the returned dict or written anywhere. value_fingerprint
+    (sha256(value)[:16], or None for an empty/absent value) exists only so
+    memory/attack_graph.py can recognize the SAME secret value observed on
+    two different hosts (Phase 4 batch 2 cross-host chains) — it is a
+    one-way digest, not reversible to the raw value."""
     try:
         entries = page.evaluate(
             "(area) => { const s = window[area]; const out = []; "
@@ -1081,14 +1106,19 @@ def _classify_storage_keys(page, storage_area: str) -> list[dict]:
             "looks_auth_related": bool(_AUTH_STORAGE_KEY_HINTS_RE.search(key or "")),
             "looks_like_jwt": bool(_JWT_SHAPE_RE.match(value.strip())),
             "value_length": len(value),
+            "value_fingerprint": _value_fingerprint(value),
         })
     return result
 
 
 def _classify_cookies(context) -> list[dict]:
-    """Cookie NAME + flags only — httpOnly/secure/sameSite are exactly the
-    signal a hunter needs (e.g. a session cookie missing httpOnly is an XSS
-    escalation path); the cookie value is never read into this dict."""
+    """Cookie NAME + flags + a one-way value_fingerprint — httpOnly/secure/
+    sameSite are exactly the signal a hunter needs (e.g. a session cookie
+    missing httpOnly is an XSS escalation path); the raw cookie value is
+    never read into this dict. value_fingerprint (sha256(value)[:16], or
+    None for an empty/absent value) exists only so
+    memory/attack_graph.py can recognize the SAME secret value observed on
+    two different hosts (Phase 4 batch 2 cross-host chains)."""
     result = []
     for c in context.cookies():
         result.append({
@@ -1099,6 +1129,7 @@ def _classify_cookies(context) -> list[dict]:
             "secure": c.get("secure"),
             "same_site": c.get("sameSite"),
             "looks_auth_related": bool(_AUTH_STORAGE_KEY_HINTS_RE.search(c.get("name") or "")),
+            "value_fingerprint": _value_fingerprint(c.get("value")),
         })
     return result
 

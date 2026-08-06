@@ -307,6 +307,39 @@ def browser_intel_leads(target: str, recon_dir: str) -> list[dict]:
     return leads
 
 
+# ─── Attack graph -> concrete leads (Phase 4 batch 2) ──────────────────────
+#
+# memory/attack_graph.py builds a typed capability graph from lead-board
+# leads + browser intelligence + Phase 3 tech modifiers, path-searches it,
+# and scores each path — but a graph is not itself an executable plan
+# candidate. attack_graph_leads() is the SAME wrapper pattern as
+# browser_intel_leads() just above: pure, best-effort, never raises on
+# missing/malformed recon data, no new candidate type or scoring path.
+# build_plan() concatenates its output alongside board_leads/bi_leads and
+# scores every lead identically via _score_lead() — see build_plan() below.
+#
+# Imported lazily (function-local, not module-level) because
+# memory/attack_graph.py itself imports `from tools import director` (it
+# reuses skill_to_vuln_class()/_read_browser_json() from this module) — a
+# module-level import here would be circular.
+
+
+def attack_graph_leads(target: str, recon_dir: str, memory_dir: str | None = None) -> list[dict]:
+    """Wraps memory.attack_graph.build_capability_graph() + top_paths()
+    into lead-board-shaped candidates. Never raises on missing/malformed
+    recon data (build_capability_graph()'s own file reads already are
+    best-effort — see its docstring); a target with no recon/leads/browser
+    intelligence yet just yields [], same as browser_intel_leads()."""
+    from memory import attack_graph as ag  # local import: avoid the circular import noted above
+
+    tech_stack = load_tech_stack(target, memory_dir) if memory_dir is not None else []
+    tech_attack_matrix = load_fingerprint_tech_attack_matrix(target, recon_dir)
+    graph = ag.build_capability_graph(
+        target, recon_dir=recon_dir, tech_stack=tech_stack, tech_attack_matrix=tech_attack_matrix,
+    )
+    return ag.top_paths(target, graph)
+
+
 # ─── Risk level (static heuristic tier — NOT a measured value) ─────────────
 
 # Skills whose test plan implies an authenticated session is needed at all.
@@ -641,7 +674,8 @@ class Director:
         board_leads = lead_board.load_ledger(target)
         board_leads = [ld for ld in board_leads if ld.get("status") == "new"]
         bi_leads = browser_intel_leads(target, recon_dir)
-        all_leads = board_leads + bi_leads
+        graph_leads = attack_graph_leads(target, recon_dir, memory_dir)
+        all_leads = board_leads + bi_leads + graph_leads
 
         candidates: list[dict] = []
         for lead in all_leads:
@@ -992,6 +1026,45 @@ class Director:
             lines.append(f"  Produced by browser intelligence: {lead.get('browser_artifact', '?')}")
         elif lead.get("source") in ("chain", "hypothesis"):
             lines.append(f"  Correlated from leads: {lead.get('chain_of', [])} (source={lead['source']})")
+        elif lead.get("source") == "attack-graph":
+            # memory/attack_graph.py's top_paths() (Phase 4) — explain WHY
+            # this multi-leg path exists, not just what vuln class it is:
+            # weakest link, strongest evidence, every leg's assumption, and
+            # what observation would kill it. path_legs (added to
+            # top_paths()'s output shape in batch 2 specifically so this
+            # can render without re-walking the graph) carries the
+            # per-edge confidence/origin/contradiction detail.
+            legs = lead.get("path_legs") or []
+            lines.append(
+                f"  Attack-graph path (memory/attack_graph.py): {len(legs)}-leg path, "
+                f"path_score={lead.get('path_score', '?')}."
+            )
+            if legs:
+                weakest = min(legs, key=lambda leg: leg["confidence"])
+                strongest = max(legs, key=lambda leg: leg["confidence"])
+                weak_line = (
+                    f"  Weakest link: {weakest['from']} -({weakest['edge_type']})-> {weakest['to']} "
+                    f"(confidence {weakest['confidence']}, origin={weakest['origin_source']})"
+                )
+                if weakest.get("contradiction"):
+                    weak_line += f" — CONTRADICTED: {weakest['contradiction']}"
+                lines.append(weak_line)
+                lines.append(
+                    f"  Strongest evidence: {strongest['from']} -({strongest['edge_type']})-> "
+                    f"{strongest['to']} (confidence {strongest['confidence']}, "
+                    f"origin={strongest['origin_source']})"
+                )
+                assumptions = sorted({leg["origin_source"] for leg in legs})
+                lines.append(
+                    f"  Assumptions required (every leg's origin must independently hold): {assumptions}"
+                )
+            if lead.get("chain_of"):
+                lines.append(f"  Built from underlying lead(s): {lead['chain_of']}")
+            lines.append(
+                f"  Stopping condition (what invalidates this path): if any leg's origin artifact "
+                f"is re-checked and no longer holds (e.g. a `grants` leg's target now correctly "
+                f"401/403s), OR: {_stop_condition_for(match['vuln_class'], ev_result['estimated_minutes'])}"
+            )
         lines.append(
             f"  Historical success rate on this tech stack: {components['historical_success_probability']}% "
             f"(sample-backed only if patterns/failed_patterns exist for this target+vuln_class)."

@@ -1,0 +1,172 @@
+# Phase 4 batch 1 — data-driven day-one transcription of
+# tools/lead_board.py's CHAIN_RULES (2-leg) and HYPOTHESIS_RECIPES (3-leg)
+# hardcoded Python tables.
+#
+# IMPORTANT: this file does NOT replace those tables. tools/lead_board.py's
+# CHAIN_RULES / HYPOTHESIS_RECIPES / detect_chains() / detect_hypotheses()
+# keep running exactly as before — tests/test_lead_board.py proves that,
+# unmodified. This YAML is an ADDITIONAL, separate representation of the
+# same day-one rules, loaded and consumed only by memory/attack_graph.py's
+# new graph-search code (Phase 4 batch 1, items 2-4). A regression test
+# (tests/test_attack_graph.py::TestRegressionAgainstLeadBoard) proves this
+# file's content, run through the new YAML-driven detector, reproduces the
+# same chains/hypotheses the old hardcoded tables produce on the same
+# fixture leads.
+#
+# SCHEMA (memory/attack_graph.py's load_chain_rules()):
+#   id: string                          (not required to be unique — see below)
+#   description: string
+#   enabled: bool (default true)
+#   min_confidence: float 0-1 (default 0.5)
+#   impact: string, optional            (only meaningful on hypothesis-shaped
+#                                         rules; mirrors HYPOTHESIS_RECIPES's
+#                                         `impact` field, e.g. "critical")
+#   steps:
+#     - from_type: Credential|Capability|Endpoint|Asset
+#       from_value: string OR list[string]
+#       edge_type: reveals|grants|crosses|impacts
+#       to_type: Credential|Capability|Endpoint|Asset|Impact
+#       to_value: string OR list[string]
+#       confidence: float 0-1
+#
+# TWO DELIBERATE, DISCLOSED EXTENSIONS beyond the literal single-string
+# schema handed down for this batch (see Phase 4 batch 1 report for the
+# reasoning):
+#
+#   1. from_value/to_value accept a YAML list, not only a scalar string.
+#      CHAIN_RULES/HYPOTHESIS_RECIPES's legs are SETS of acceptable skills
+#      (e.g. skills_b = {"hunt-api-misconfig", "hunt-graphql", "hunt-oauth",
+#      "hunt-idor"}) -- a single-string-only field would force exploding
+#      this file into ~22 near-duplicate entries (one per skill-set
+#      cross-product member) to stay faithful. A list is read as
+#      OR-alternatives: "the edge fires if the leg lead's skill is ANY of
+#      these values" -- exactly CHAIN_RULES/HYPOTHESIS_RECIPES's existing
+#      semantics, just not exploded.
+#   2. an optional `impact` field on the rule (not on a step) carries
+#      HYPOTHESIS_RECIPES's per-recipe impact string forward, since the
+#      literal step schema has no field for it and dropping it would lose
+#      information the old table has.
+#
+# RULE SHAPE: N steps chain N+1 legs: leg1 -(step0)-> leg2 -(step1)-> leg3
+# -(step2)-> ... A rule with exactly ONE step is a CHAIN_RULES
+# transcription (2 legs: step0.from_value is leg1, step0.to_value is
+# leg2 -- no impact, matching CHAIN_RULES which never declares one). A
+# rule with exactly THREE steps is a HYPOTHESIS_RECIPES transcription (4
+# legs: 3 skill-legs from leg_skill_sets, chained through step0/step1,
+# plus a terminal Impact leg via step2 -- every HYPOTHESIS_RECIPES entry
+# has exactly 3 skill-legs AND declares an impact, so 3 legs + 1 impact
+# leg = 3 transitions = 3 steps).
+#
+# CONFIDENCE: CHAIN_RULES/HYPOTHESIS_RECIPES never had a numeric confidence
+# concept (chains fire regardless of host, priority is just high/med;
+# hypotheses require same-host or don't fire at all, no partial credit).
+# The per-step `confidence` values below are a NEW judgment call for this
+# batch, not derived from data: 0.6 uniformly for chain-shaped rules (the
+# weaker signal -- fires even cross-host) and 0.75 uniformly for
+# hypothesis-shaped rules (the stronger signal -- same-host gated already).
+# Flagged explicitly in the batch report; a future batch may recalibrate
+# these from report_outcomes.jsonl the same way
+# memory/vuln_intelligence.py's _recalibrated_impact() does for
+# VULN_IMPACT_POTENTIAL.
+
+# ── CHAIN_RULES transcriptions (2-leg, 1 step each) ────────────────────────
+
+- id: secret_plus_api
+  description: "exposed secret + API endpoint -> a leaked credential/key sits near a live API on the same host; check if it authenticates directly instead of assuming read-only exposure"
+  enabled: true
+  min_confidence: 0.5
+  steps:
+    - from_type: Endpoint
+      from_value: hunt-source-leak
+      edge_type: reveals
+      to_type: Endpoint
+      to_value: [hunt-api-misconfig, hunt-graphql, hunt-oauth, hunt-idor]
+      confidence: 0.6
+
+- id: idor_plus_account_surface
+  description: "ID parameter + user-object endpoint -> an object-reference candidate sits near an account/auth surface; likely exposes full user PII, not just a numeric id"
+  enabled: true
+  min_confidence: 0.5
+  steps:
+    - from_type: Endpoint
+      from_value: hunt-idor
+      edge_type: reveals
+      to_type: Endpoint
+      to_value: [hunt-ato, hunt-auth-bypass]
+      confidence: 0.6
+
+- id: cors_plus_sensitive
+  description: "CORS + sensitive endpoint -> permissive CORS sits near an authenticated endpoint; test cross-site credentialed read of session/account data"
+  enabled: true
+  min_confidence: 0.5
+  steps:
+    - from_type: Endpoint
+      from_value: hunt-cors
+      edge_type: crosses
+      to_type: Endpoint
+      to_value: [hunt-ato, hunt-auth-bypass, hunt-oauth]
+      confidence: 0.6
+
+- id: upload_plus_processing
+  description: "upload + dangerous processing -> an upload surface sits near a processing/fetch signal; check ImageMagick/SSRF-via-thumbnail/RCE on re-encode"
+  enabled: true
+  min_confidence: 0.5
+  steps:
+    - from_type: Endpoint
+      from_value: hunt-file-upload
+      edge_type: grants
+      to_type: Endpoint
+      to_value: [hunt-rce, hunt-ssrf]
+      confidence: 0.6
+
+# ── HYPOTHESIS_RECIPES transcriptions (3-leg, 2 steps each) ────────────────
+
+- id: account_takeover_via_leaked_secret
+  description: "Account Takeover (leaked secret -> API -> weak authorization) -- a leaked secret, a live API, and a weak/missing authorization signal all sit on the same host; the secret likely unlocks account-level access, not just read-only data"
+  enabled: true
+  min_confidence: 0.5
+  impact: critical
+  steps:
+    - from_type: Endpoint
+      from_value: hunt-source-leak
+      edge_type: reveals
+      to_type: Endpoint
+      to_value: [hunt-api-misconfig, hunt-graphql, hunt-idor]
+      confidence: 0.75
+    - from_type: Endpoint
+      from_value: [hunt-api-misconfig, hunt-graphql, hunt-idor]
+      edge_type: grants
+      to_type: Endpoint
+      to_value: [hunt-auth-bypass, hunt-ato, hunt-oauth]
+      confidence: 0.75
+    - from_type: Endpoint
+      from_value: [hunt-auth-bypass, hunt-ato, hunt-oauth]
+      edge_type: impacts
+      to_type: Impact
+      to_value: "Account Takeover (leaked secret -> API -> weak authorization)"
+      confidence: 0.75
+
+- id: account_takeover_via_cors_and_idor
+  description: "Account Takeover (permissive CORS -> IDOR -> account surface) -- permissive CORS, an object-reference bug, and an account surface all sit on the same host; cross-site credentialed read of another user's full account data"
+  enabled: true
+  min_confidence: 0.5
+  impact: critical
+  steps:
+    - from_type: Endpoint
+      from_value: hunt-cors
+      edge_type: crosses
+      to_type: Endpoint
+      to_value: hunt-idor
+      confidence: 0.75
+    - from_type: Endpoint
+      from_value: hunt-idor
+      edge_type: reveals
+      to_type: Endpoint
+      to_value: [hunt-ato, hunt-auth-bypass]
+      confidence: 0.75
+    - from_type: Endpoint
+      from_value: [hunt-ato, hunt-auth-bypass]
+      edge_type: impacts
+      to_type: Impact
+      to_value: "Account Takeover (permissive CORS -> IDOR -> account surface)"
+      confidence: 0.75

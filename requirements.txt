@@ -1,5 +1,6 @@
 requests>=2.31.0
 pytest>=8.0.0
+PyYAML>=6.0
 
 # ── Optional dependencies ───────────────────────────────────────────────────
 # Not installed by `pip install -r requirements.txt` on purpose — this repo's

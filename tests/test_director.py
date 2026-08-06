@@ -9,6 +9,7 @@ never fabricates a number. No network access anywhere here.
 """
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -815,3 +816,126 @@ class TestTechAttackMatrixWiring:
         for lid in auth_bypass_lead_ids:
             assert lid in by_lead_without, "same lead must be scored in both plans"
             assert by_lead_with[lid].priority > by_lead_without[lid].priority
+
+
+# Same 3-URL, same-host fixture tests/test_attack_graph.py's own
+# TestRegressionAgainstLeadBoard uses to trigger
+# account_takeover_via_leaked_secret (hunt-source-leak -> hunt-idor ->
+# hunt-auth-bypass, all on t.example) -- guaranteed to produce an Impact
+# node in memory/attack_graph.py's graph, hence at least one
+# source=="attack-graph" candidate out of top_paths().
+HYPOTHESIS_URLS = [
+    "https://t.example/.env",
+    "https://t.example/api/v2/users?id=1001",
+    "https://t.example/login?next=/dashboard",
+]
+
+
+class TestAttackGraphLeads:
+    """Phase 4 batch 2, item 6: memory/attack_graph.py's top_paths() output
+    reaches build_plan() as additional candidates, via the SAME
+    _score_lead()/sort/skip pipeline every other lead goes through -- no
+    second candidate type, no parallel scoring path."""
+
+    def test_attack_graph_leads_pure_function_produces_attack_graph_source(self, isolated, tmp_path):
+        rd = _seed_leads(isolated, "t.example", HYPOTHESIS_URLS)
+        leads = director.attack_graph_leads("t.example", rd, memory_dir=str(tmp_path / "hunt-memory"))
+        assert leads
+        assert all(l["source"] == "attack-graph" for l in leads)
+
+    def test_no_leads_no_recon_yields_empty_list_not_a_crash(self, isolated, tmp_path):
+        leads = director.attack_graph_leads(
+            "empty.example", str(tmp_path / "recon" / "empty.example"),
+            memory_dir=str(tmp_path / "hunt-memory"),
+        )
+        assert leads == []
+
+    def test_malformed_browser_json_does_not_raise(self, isolated, tmp_path):
+        rd = _seed_leads(isolated, "t.example", HYPOTHESIS_URLS)
+        browser_dir = Path(rd) / "browser"
+        browser_dir.mkdir(parents=True, exist_ok=True)
+        (browser_dir / "auth-model.json").write_text("{not json")
+        leads = director.attack_graph_leads("t.example", rd, memory_dir=str(tmp_path / "hunt-memory"))
+        assert isinstance(leads, list)  # must not raise
+
+    def test_leads_never_written_to_persisted_ledger(self, isolated, tmp_path):
+        rd = _seed_leads(isolated, "t.example", HYPOTHESIS_URLS)
+        director.attack_graph_leads("t.example", rd, memory_dir=str(tmp_path / "hunt-memory"))
+        # only the raw ingested leads (+ lead_board's own chain/hypothesis
+        # synthesis) are on the ledger -- attack-graph leads are ephemeral,
+        # recomputed every build_plan() call, same as browser-intel leads.
+        assert all(l.get("source") != "attack-graph" for l in lb.load_ledger("t.example"))
+
+    def test_build_plan_candidates_include_both_board_and_attack_graph_leads(self, isolated, tmp_path):
+        """The actual item-6 proof: build_plan()'s candidate list (built
+        from board_leads + bi_leads + graph_leads, all scored identically
+        by _score_lead()) contains at least one lead-board-sourced
+        candidate AND at least one attack-graph-sourced candidate side by
+        side -- concatenated, not routed through a second pipeline."""
+        rd = _seed_leads(isolated, "t.example", HYPOTHESIS_URLS)
+        d = director.Director(memory_dir=str(tmp_path / "hunt-memory"))
+        d.build_plan("t.example", hours=5, recon_dir=rd)
+        candidates = d._last_plan_context["candidates"]
+        sources = {c["lead"].get("source") for c in candidates}
+        assert "attack-graph" in sources
+        assert sources - {"attack-graph"}, "expected at least one non-attack-graph lead alongside it"
+
+    def test_attack_graph_candidate_scored_by_same_score_lead_formula(self, isolated, tmp_path):
+        """No second scoring formula: an attack-graph candidate's
+        score_result/ev_result must be byte-identical to calling
+        priority_score()/expected_value_per_hour() directly with the same
+        vuln_class -- the exact proof test_no_duplicate_ranking_logic
+        already makes for ordinary leads, repeated here for source==
+        "attack-graph"."""
+        rd = _seed_leads(isolated, "t.example", HYPOTHESIS_URLS)
+        d = director.Director(memory_dir=str(tmp_path / "hunt-memory"))
+        d.build_plan("t.example", hours=5, recon_dir=rd)
+        candidates = d._last_plan_context["candidates"]
+        graph_candidates = [c for c in candidates if c["lead"]["source"] == "attack-graph"]
+        assert graph_candidates
+        for c in graph_candidates:
+            direct = priority_score(vuln_class=c["vuln_class"], tech_stack=[], target="t.example")
+            assert c["score_result"]["score"] == direct["score"]
+
+
+class TestExplainAttackGraphLead:
+    """Phase 4 batch 2: Director.explain()'s source=="attack-graph" case
+    must cover why the path exists, its weakest link, its strongest
+    evidence, assumptions required, and a stopping condition -- extending
+    the SAME explain() method, not a second explain-style function."""
+
+    def _plan_with_attack_graph_candidate(self, isolated, tmp_path):
+        rd = _seed_leads(isolated, "t.example", HYPOTHESIS_URLS)
+        d = director.Director(memory_dir=str(tmp_path / "hunt-memory"))
+        d.build_plan("t.example", hours=5, recon_dir=rd)
+        candidates = d._last_plan_context["candidates"]
+        graph_candidate = next(c for c in candidates if c["lead"]["source"] == "attack-graph")
+        return d, graph_candidate
+
+    def test_explain_covers_all_required_explainability_fields(self, isolated, tmp_path):
+        d, graph_candidate = self._plan_with_attack_graph_candidate(isolated, tmp_path)
+        text = d.explain(graph_candidate["lead"]["id"])
+        assert "Attack-graph path" in text          # why this path exists at all
+        assert "Weakest link:" in text                # weakest leg
+        assert "Strongest evidence:" in text           # strongest leg
+        assert "Assumptions required" in text           # every leg's origin
+        assert "Stopping condition" in text             # what would invalidate it
+
+    def test_explain_weakest_link_matches_min_confidence_leg(self, isolated, tmp_path):
+        d, graph_candidate = self._plan_with_attack_graph_candidate(isolated, tmp_path)
+        lead = graph_candidate["lead"]
+        weakest = min(lead["path_legs"], key=lambda leg: leg["confidence"])
+        text = d.explain(lead["id"])
+        assert str(weakest["confidence"]) in text
+        assert weakest["edge_type"] in text
+
+    def test_explain_unrelated_lead_still_uses_normal_path(self, isolated, tmp_path):
+        """Sanity: the new elif branch must not affect explain() for
+        non-attack-graph leads."""
+        rd = _seed_leads(isolated, "t.example", HYPOTHESIS_URLS)
+        d = director.Director(memory_dir=str(tmp_path / "hunt-memory"))
+        d.build_plan("t.example", hours=5, recon_dir=rd)
+        candidates = d._last_plan_context["candidates"]
+        non_graph = next(c for c in candidates if c["lead"]["source"] != "attack-graph")
+        text = d.explain(non_graph["lead"]["id"])
+        assert "Attack-graph path" not in text

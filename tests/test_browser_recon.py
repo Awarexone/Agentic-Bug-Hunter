@@ -535,6 +535,44 @@ class TestApiCallRecorder:
         assert entry["request_headers_auth"] == ["authorization"]
         assert "super-secret-token" not in json.dumps(entry)
 
+    def test_auth_header_fingerprint_present_and_raw_value_absent(self):
+        rec = br.ApiCallRecorder()
+        req = _FakeRequest("GET", "https://t.example/api/x",
+                            headers={"authorization": "Bearer super-secret-token", "accept": "*/*"})
+        entry = rec.on_request(req)
+        assert "authorization" in entry["request_headers_auth_fingerprint"]
+        fp = entry["request_headers_auth_fingerprint"]["authorization"]
+        assert isinstance(fp, str) and len(fp) == 16
+        assert "super-secret-token" not in json.dumps(entry)
+
+    def test_auth_header_fingerprint_same_value_same_fingerprint(self):
+        rec = br.ApiCallRecorder()
+        req1 = _FakeRequest("GET", "https://t.example/api/x",
+                             headers={"authorization": "Bearer same-token"})
+        req2 = _FakeRequest("GET", "https://t.example/api/y",
+                             headers={"authorization": "Bearer same-token"})
+        e1 = rec.on_request(req1)
+        e2 = rec.on_request(req2)
+        assert e1["request_headers_auth_fingerprint"]["authorization"] == \
+            e2["request_headers_auth_fingerprint"]["authorization"]
+
+    def test_auth_header_fingerprint_different_value_different_fingerprint(self):
+        rec = br.ApiCallRecorder()
+        req1 = _FakeRequest("GET", "https://t.example/api/x",
+                             headers={"authorization": "Bearer token-a"})
+        req2 = _FakeRequest("GET", "https://t.example/api/y",
+                             headers={"authorization": "Bearer token-b"})
+        e1 = rec.on_request(req1)
+        e2 = rec.on_request(req2)
+        assert e1["request_headers_auth_fingerprint"]["authorization"] != \
+            e2["request_headers_auth_fingerprint"]["authorization"]
+
+    def test_auth_header_fingerprint_empty_value_is_absent(self):
+        rec = br.ApiCallRecorder()
+        req = _FakeRequest("GET", "https://t.example/api/x", headers={"authorization": ""})
+        entry = rec.on_request(req)
+        assert "authorization" not in entry["request_headers_auth_fingerprint"]
+
     def test_request_body_shape_captured(self):
         rec = br.ApiCallRecorder()
         req = _FakeRequest("POST", "https://t.example/api/x",
@@ -893,7 +931,13 @@ class TestCaptureRuntimeApiEndToEnd:
         authed_calls = [c for c in result["calls"] if "/api/authed" in c["url"]]
         assert authed_calls
         assert "authorization" in authed_calls[0]["request_headers_auth"]
+        assert "authorization" in authed_calls[0]["request_headers_auth_fingerprint"]
+        assert len(authed_calls[0]["request_headers_auth_fingerprint"]["authorization"]) == 16
         assert "sekrit-token-xyz" not in json.dumps(result)
+        # and the fingerprint survives round-tripping through the actual
+        # written browser/api-calls.json file, still without the raw value
+        written = json.loads((tmp_path / "browser" / "api-calls.json").read_text())
+        assert "sekrit-token-xyz" not in json.dumps(written)
         # and the server actually saw it -- proves the header was really sent,
         # not just recorded as if it would be
         assert authed_calls[0]["response_shape"] is None or True  # response body not JSON-shaped by default path
@@ -1241,6 +1285,30 @@ class TestClassifyStorageKeys:
         result = br._classify_storage_keys(page, "localStorage")
         assert "super-secret-raw-value" not in json.dumps(result)
 
+    def test_value_fingerprint_present_and_raw_value_absent(self):
+        page = _FakeAuthPage({"localStorage": [("auth_token", "super-secret-raw-value.x.y")]})
+        result = br._classify_storage_keys(page, "localStorage")
+        fp = result[0]["value_fingerprint"]
+        assert isinstance(fp, str) and len(fp) == 16
+        assert "super-secret-raw-value" not in json.dumps(result)
+
+    def test_value_fingerprint_empty_value_is_none(self):
+        page = _FakeAuthPage({"localStorage": [("empty_key", "")]})
+        result = br._classify_storage_keys(page, "localStorage")
+        assert result[0]["value_fingerprint"] is None
+
+    def test_value_fingerprint_same_value_same_fingerprint(self):
+        page = _FakeAuthPage({"localStorage": [("a", "shared-value"), ("b", "shared-value")]})
+        result = br._classify_storage_keys(page, "localStorage")
+        by_key = {e["key"]: e for e in result}
+        assert by_key["a"]["value_fingerprint"] == by_key["b"]["value_fingerprint"]
+
+    def test_value_fingerprint_different_value_different_fingerprint(self):
+        page = _FakeAuthPage({"localStorage": [("a", "value-one"), ("b", "value-two")]})
+        result = br._classify_storage_keys(page, "localStorage")
+        by_key = {e["key"]: e for e in result}
+        assert by_key["a"]["value_fingerprint"] != by_key["b"]["value_fingerprint"]
+
     def test_evaluate_failure_returns_empty(self):
         class ExplodingPage:
             def evaluate(self, *a, **k):
@@ -1260,6 +1328,46 @@ class TestClassifyCookies:
         assert result[0]["looks_auth_related"] is True
         assert "raw-secret-cookie-value" not in json.dumps(result)
         assert "value" not in result[0]
+
+    def test_value_fingerprint_present_and_raw_value_absent(self):
+        context = _FakeAuthContext([
+            {"name": "session_id", "value": "raw-secret-cookie-value", "domain": "t.example",
+             "path": "/", "httpOnly": True, "secure": True, "sameSite": "Lax"},
+        ])
+        result = br._classify_cookies(context)
+        fp = result[0]["value_fingerprint"]
+        assert isinstance(fp, str) and len(fp) == 16
+        assert "raw-secret-cookie-value" not in json.dumps(result)
+
+    def test_value_fingerprint_empty_value_is_none(self):
+        context = _FakeAuthContext([
+            {"name": "empty_cookie", "value": "", "domain": "t.example", "path": "/"},
+        ])
+        result = br._classify_cookies(context)
+        assert result[0]["value_fingerprint"] is None
+
+    def test_value_fingerprint_missing_value_key_is_none(self):
+        context = _FakeAuthContext([
+            {"name": "no_value_cookie", "domain": "t.example", "path": "/"},
+        ])
+        result = br._classify_cookies(context)
+        assert result[0]["value_fingerprint"] is None
+
+    def test_value_fingerprint_same_value_same_fingerprint(self):
+        context = _FakeAuthContext([
+            {"name": "a", "value": "shared-secret", "domain": "t.example", "path": "/"},
+            {"name": "b", "value": "shared-secret", "domain": "t.example", "path": "/"},
+        ])
+        result = br._classify_cookies(context)
+        assert result[0]["value_fingerprint"] == result[1]["value_fingerprint"]
+
+    def test_value_fingerprint_different_value_different_fingerprint(self):
+        context = _FakeAuthContext([
+            {"name": "a", "value": "secret-one", "domain": "t.example", "path": "/"},
+            {"name": "b", "value": "secret-two", "domain": "t.example", "path": "/"},
+        ])
+        result = br._classify_cookies(context)
+        assert result[0]["value_fingerprint"] != result[1]["value_fingerprint"]
 
 
 # ─── #4 client-side auth model: real Chromium end to end ───────────────────

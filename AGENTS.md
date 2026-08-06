@@ -135,8 +135,8 @@ This repo is an agent-portable bug bounty plugin for professional hunting across
 - `tools/credential_store.py` — Secure credential store — loads auth credentials from a gitignored .env file, never persisted elsewhere
 - `tools/dashboard.py` — Live ANSI TUI dashboard for /recon and /hunt phase progress
 - `tools/recon_adapter.py` — Canonical recon output normalizer — reads either recon_engine.sh's nested or a flat directory format
-- `tools/browser_recon.py` — Browser intelligence layer — Playwright-optional source-map recovery + hidden-endpoint discovery for SPA targets
-- `tools/director.py` — Research Director — turns lead-board + browser-intelligence leads into an executable, falsifiable, time-boxed plan via priority_score()/expected_value_per_hour(); writes recon/<target>/hunt-plan.md + a hunt-plan.json sidecar for cross-process replan
+- `tools/browser_recon.py` — Browser intelligence layer — Playwright-optional source-map recovery + hidden-endpoint discovery for SPA targets; cookies/storage/auth-header values are never stored, only a one-way value_fingerprint (sha256[:16]) for cross-host credential-sharing detection
+- `tools/director.py` — Research Director — turns lead-board + browser-intelligence + attack-graph leads into an executable, falsifiable, time-boxed plan via priority_score()/expected_value_per_hour(); writes recon/<target>/hunt-plan.md + a hunt-plan.json sidecar for cross-process replan
 - `tools/fingerprint.py` — Target Intelligence (Phase 3) — consolidates Phase 1 browser/*.json + recon_engine.sh's httpx tech-detect output into recon/<target>/fingerprint.json (framework/version/confidence, infra CDN/WAF, api_style, CVEs from tech_attack_matrix.json); syncs tech_stack into memory_dir/targets/<target>.json for director.py's load_tech_stack()
 - `tools/tech_attack_matrix.json` — Static per-framework/version-range vulnerability weight + CVE table (extends mindmap.py's TECH_CHECKS); read by fingerprint.py and optionally passed to priority_score() as a cold-start technology_match floor
 <!-- GENERATED:tools:END -->
@@ -152,6 +152,7 @@ This repo is an agent-portable bug bounty plugin for professional hunting across
 - `memory/schemas.py` — Schema validation for all hunt-memory JSONL entry types (schema_version for migrations)
 - `memory/finding_state.py` — Finding lifecycle state machine — SUSPECTED→TESTING→VALIDATED→CONFIRMED→REPORT_READY (+REJECTED), append-only transition log
 - `memory/finding_score.py` — Ranks raw scanner-output lines using vuln_intelligence.priority_score() as the single scoring formula — not yet wired to brain.py
+- `memory/attack_graph.py` — Typed capability graph (Asset/Endpoint/Credential/Capability/Boundary/Impact nodes) built from lead-board leads + browser intelligence, including cross-host bridging via matching cookie/storage/header value_fingerprint across two hosts; bounded N-leg DFS path search with provenance and contradiction-aware edge confidence; path_score() reuses vuln_intelligence's impact/time tables; top_paths() wired into director.py's build_plan() alongside board/browser-intel leads
 <!-- GENERATED:memory:END -->
 
 ### External tool references

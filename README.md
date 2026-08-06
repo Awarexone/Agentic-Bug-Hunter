@@ -514,6 +514,18 @@ git push origin feature/your-contribution
 
 ---
 
+## Support
+
+If BugHunter helps your hunts, you can fuel more of them:
+
+<p align="center">
+  <a href="https://www.buymeacoffee.com/shuvonsec">
+    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50"/>
+  </a>
+</p>
+
+---
+
 ## Thanks
 
 Thanks to everyone who has contributed to BugHunter. Click any avatar to open their GitHub profile.

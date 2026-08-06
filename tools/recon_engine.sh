@@ -42,8 +42,8 @@ fi
 
 RECON_DIR="${RECON_OUT_DIR:-$BASE_DIR/recon/$TARGET}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-THREADS=20
-RATE_LIMIT=50  # requests per second
+THREADS="${BB_THREADS:-50}"
+RATE_LIMIT="${BB_RATE_LIMIT:-150}"  # requests per second
 
 # shellcheck source=tools/banner.sh
 . "$(dirname "$0")/banner.sh"
@@ -234,7 +234,7 @@ else
 # Subfinder (passive, fast)
 if command -v subfinder &>/dev/null; then
     log_step "Running subfinder..."
-    subfinder -d "$TARGET" -silent -all -o "$RECON_DIR/subdomains/subfinder.txt" 2>/dev/null || true
+    subfinder -d "$TARGET" -silent -all -t 50 -o "$RECON_DIR/subdomains/subfinder.txt" 2>/dev/null || true
     log_done "subfinder: $(wc -l < "$RECON_DIR/subdomains/subfinder.txt" 2>/dev/null || echo 0) subdomains"
 else
     log_warn "subfinder not installed — skipping"
@@ -357,7 +357,7 @@ log_info "Phase 4: URL Collection"
 # GAU - Get All URLs (wayback, commoncrawl, otx, urlscan)
 if command -v gau &>/dev/null; then
     log_step "Running gau (historical URLs)..."
-    echo "$TARGET" | gau --threads 5 --o "$RECON_DIR/urls/gau.txt" 2>/dev/null || \
+    echo "$TARGET" | gau --threads 20 --o "$RECON_DIR/urls/gau.txt" 2>/dev/null || \
     echo "$TARGET" | gau > "$RECON_DIR/urls/gau.txt" 2>/dev/null || true
     log_done "gau: $(wc -l < "$RECON_DIR/urls/gau.txt" 2>/dev/null || echo 0) URLs"
 else
@@ -375,6 +375,7 @@ if command -v katana &>/dev/null && [ -s "$RECON_DIR/live/urls.txt" ]; then
     timeout 300 katana \
         -list "$RECON_DIR/urls/katana_targets.txt" \
         -d 3 -jc -kf all -silent \
+        -c 50 -p 20 \
         ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} \
         -o "$RECON_DIR/urls/katana.txt" 2>/dev/null || true
     log_done "katana: $(wc -l < "$RECON_DIR/urls/katana.txt" 2>/dev/null || echo 0) URLs"
@@ -613,9 +614,16 @@ if command -v nuclei &>/dev/null && [ -s "$RECON_DIR/live/urls.txt" ]; then
     head -"$NUC_LIMIT" "$RECON_DIR/live/urls.txt" > "$NUCLEI_OUT/targets.txt"
     log_step "nuclei on $(wc -l < "$NUCLEI_OUT/targets.txt" | tr -d ' ') hosts (severity=$NUC_SEV, timeout=${NUC_TIMEOUT}s)..."
 
+    NUC_RL="${NUC_RATE_LIMIT:-300}"
+    NUC_C="${NUC_CONCURRENCY:-50}"
+    NUC_BS="${NUC_BULK_SIZE:-50}"
+
     timeout "$NUC_TIMEOUT" nuclei \
         -l "$NUCLEI_OUT/targets.txt" \
         -severity "$NUC_SEV" \
+        -rl "$NUC_RL" \
+        -c "$NUC_C" \
+        -bs "$NUC_BS" \
         -silent \
         -stats \
         ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} \

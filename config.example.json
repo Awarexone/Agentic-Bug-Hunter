@@ -17,7 +17,7 @@
   "_brain_providers": {
     "ollama":      "OLLAMA_HOST=http://localhost:11434  (free, local)",
     "groq":        "GROQ_API_KEY=...  (free tier — llama-3.3-70b)",
-    "deepseek":    "DEEPSEEK_API_KEY=...  (very cheap — deepseek-chat / reasoner)",
+    "deepseek":    "DEEPSEEK_API_KEY=...  (very cheap — deepseek-v4-flash / deepseek-v4-pro)",
     "cerebras":    "CEREBRAS_API_KEY=...  (fastest cloud inference — llama3.3-70b)",
     "gemini":      "GEMINI_API_KEY=...  (Google — gemini-2.0-flash / gemini-2.5-pro)",
     "kimi":        "MOONSHOT_API_KEY=...  (Kimi / Moonshot AI — 128K context)",
@@ -26,7 +26,7 @@
     "perplexity":  "PERPLEXITY_API_KEY=...  (sonar-pro — live web search)",
     "claude":      "ANTHROPIC_API_KEY=...  (claude-sonnet-4-6 / opus-4-8)",
     "openai":      "OPENAI_API_KEY=...  (gpt-4o / o1)",
-    "grok":        "XAI_API_KEY=...  (grok-3 / grok-2-latest)",
+    "grok":        "XAI_API_KEY=...  (grok-4.5 / grok-4.3)",
     "openrouter":  "OPENROUTER_API_KEY=...  (anthropic/claude-sonnet-4.6 / openai/gpt-4o / …)"
   }
 }

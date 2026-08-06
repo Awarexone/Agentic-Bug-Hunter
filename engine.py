@@ -78,8 +78,10 @@ def load_config() -> dict:
     if CONFIG.exists():
         try:
             return json.loads(CONFIG.read_text())
-        except Exception:
-            pass
+        except json.JSONDecodeError as e:
+            warn(f"Corrupted config file {CONFIG}, using defaults: {e}")
+        except OSError as e:
+            warn(f"Could not read config file {CONFIG}: {e}")
     return {}
 
 

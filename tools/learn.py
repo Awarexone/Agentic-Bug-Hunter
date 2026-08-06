@@ -41,6 +41,17 @@ CYAN   = "\033[96m"
 BOLD   = "\033[1m"
 RESET  = "\033[0m"
 
+
+def _escape_graphql_string(s: str) -> str:
+    """Escape a value for safe interpolation inside a GraphQL double-quoted string."""
+    return (s
+            .replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t"))
+
+
 # ─── Tech → npm/pypi/cargo package name mapping ───────────────────────────────
 TECH_TO_PACKAGE = {
     "nextjs":    ("npm", "next"),
@@ -118,10 +129,16 @@ def fetch_url(url: str, headers: dict = None, data: bytes = None, timeout: int =
             body = resp.read().decode("utf-8", errors="replace")
             return json.loads(body)
     except urllib.error.HTTPError as e:
-        print(f"  {YELLOW}HTTP {e.code} for {url}{RESET}")
+        print(f"  {YELLOW}HTTP {e.code} for {url}{RESET}", file=sys.stderr)
+        return None
+    except urllib.error.URLError as e:
+        print(f"  {YELLOW}Network error fetching {url}: {e.reason}{RESET}", file=sys.stderr)
+        return None
+    except json.JSONDecodeError as e:
+        print(f"  {YELLOW}Invalid JSON from {url}: {e}{RESET}", file=sys.stderr)
         return None
     except Exception as e:
-        print(f"  {YELLOW}Error fetching {url}: {e}{RESET}")
+        print(f"  {YELLOW}Error fetching {url} ({type(e).__name__}): {e}{RESET}", file=sys.stderr)
         return None
 
 
@@ -133,7 +150,11 @@ def fetch_github_advisories(tech: str) -> list[dict]:
 
     url = f"https://api.github.com/advisories?ecosystem={ecosystem}&affects={urllib.parse.quote(package)}&per_page=10"
     data = fetch_url(url, headers={"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"})
-    if not data or not isinstance(data, list):
+    if data is None:
+        print(f"  {YELLOW}GitHub Advisory fetch returned no data for {tech}{RESET}", file=sys.stderr)
+        return []
+    if not isinstance(data, list):
+        print(f"  {YELLOW}GitHub Advisory returned unexpected format for {tech}{RESET}", file=sys.stderr)
         return []
 
     results = []
@@ -161,7 +182,8 @@ def fetch_nvd_cves(tech: str) -> list[dict]:
     query = TECH_TO_PACKAGE.get(tech.lower(), (None, tech))[1]
     url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={urllib.parse.quote(query)}&resultsPerPage=5"
     data = fetch_url(url, timeout=15)
-    if not data:
+    if data is None:
+        print(f"  {YELLOW}NVD CVE fetch returned no data for {tech}{RESET}", file=sys.stderr)
         return []
 
     results = []
@@ -200,7 +222,7 @@ def fetch_hackerone_hacktivity(keyword: str, limit: int = 5) -> list[dict]:
             first: {limit},
             order_by: {{ field: popular, direction: DESC }},
             where: {{
-              report: {{ title: {{ _icontains: "{keyword}" }} }},
+              report: {{ title: {{ _icontains: "{_escape_graphql_string(keyword)}" }} }},
               disclosed_at: {{ _is_null: false }}
             }}
           ) {{
@@ -385,7 +407,7 @@ def main():
                 first: 20,
                 order_by: {{ field: popular, direction: DESC }},
                 where: {{
-                  team: {{ handle: {{ _eq: "{args.hackerone_program}" }} }},
+                  team: {{ handle: {{ _eq: "{_escape_graphql_string(args.hackerone_program)}" }} }},
                   disclosed_at: {{ _is_null: false }}
                 }}
               ) {{

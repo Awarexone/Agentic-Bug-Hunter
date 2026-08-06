@@ -41,8 +41,12 @@ import urllib.request
 from datetime import datetime, timezone
 
 SSL_CTX = ssl.create_default_context()
-SSL_CTX.check_hostname = False
-SSL_CTX.verify_mode = ssl.CERT_NONE
+try:
+    import certifi
+    SSL_CTX = ssl.create_default_context(cafile=certifi.where())
+except ImportError:
+    SSL_CTX.check_hostname = False
+    SSL_CTX.verify_mode = ssl.CERT_NONE
 
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Bug-Bounty-Research"
 

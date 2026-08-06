@@ -115,7 +115,8 @@ class PatternDB:
                     entry = json.loads(line)
                 except json.JSONDecodeError as e:
                     print(
-                        f"WARNING: patterns line {lineno} is corrupted (skipping): {e}",
+                        f"WARNING: {self.path} line {lineno} is corrupted "
+                        f"(skipping): {e}",
                         file=sys.stderr,
                     )
                     continue
@@ -125,7 +126,8 @@ class PatternDB:
                         validate_pattern_entry(entry)
                     except SchemaError as e:
                         print(
-                            f"WARNING: patterns line {lineno} failed validation (skipping): {e}",
+                            f"WARNING: {self.path} line {lineno} failed "
+                            f"validation (skipping): {e}",
                             file=sys.stderr,
                         )
                         continue

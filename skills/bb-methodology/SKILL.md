@@ -67,6 +67,7 @@ Before touching any tool:
 
 - **Naming anomaly**: `userId` everywhere but suddenly `user_id` -> different dev, weaker security
 - **Error diff**: Same 403 but different JSON structure -> different backend systems
+- **200 but wrong body length/content**: `200 OK` with tiny response or "just a moment" text → WAF soft block, not a real response. Run `bypass_403.sh` to confirm and get baseline diff.
 - **Environment diff**: Prod vs Dev/Staging -> debug headers, CSP disabled
 - **Version diff**: JS file before/after update -> new endpoints, removed params
 - **Supply chain**: Check framework/library versions for known CVEs
@@ -77,6 +78,25 @@ Before touching any tool:
 - **Asymmetry**: Defender must patch ALL holes. You only need ONE.
 - **Intuition engineering**: Log why something "feels wrong." Verify later. Update mental DB.
 - **Unknown management**: Can't understand something? Add to "investigate later" list. Just-in-Time Learning.
+
+#### 5. AI-Assisted Thinking (model as a second analyst)
+
+Use AI to expand hypotheses, not to declare verdicts. The model is a fast adversarial planner; the browser, proxy, and live requests are the proof layer.
+
+- **Decompose the feature**: ask for actors, assets, entry points, state transitions, and trust boundaries.
+- **Generate sibling paths**: versioned endpoints, mobile routes, legacy APIs, alternate roles, and admin-only variants.
+- **Build a role matrix**: anonymous, user A, user B, stale session, fresh session, admin, service account.
+- **Ask for dev shortcuts**: "Where would a tired developer skip a check or reuse a helper?"
+- **Ask for chains**: "If this bug is real, what bug B and C sit next to it?"
+- **Turn ideas into requests**: every AI suggestion must become a single reproducible HTTP experiment.
+- **Kill weak signals fast**: if AI cannot point to a concrete request, response diff, or cross-account delta, the idea stays as a hypothesis.
+
+High-signal prompts:
+- "Given this endpoint and feature, list the 10 most likely trust-boundary mistakes."
+- "What sibling endpoints, methods, or roles should I test next?"
+- "Which bug class would a rushed implementation likely miss here?"
+- "What does the smallest proof request look like?"
+- "What would make this become a real report instead of a scanner hit?"
 
 ### Amateur vs Pro: 7-Phase Comparison
 
@@ -172,9 +192,20 @@ Google Dorks -> JS file download -> Hidden param discovery -> API mapping
 | Live subdomains with tech stack | Phase 2 (Mapping) |
 | Known software (WordPress, Jira) | Check CVEs + defaults immediately |
 | Cloud resources (S3, Firebase) | Test permissions (read/write/list) |
+| 403 **or 200 + block page** on endpoint | `tools/bypass_403.sh <url>` auto-detects soft blocks (200+block-body). Verdict: bypassed/needs_review/blocked. If all blocked after 5 min, skip |
 | Nothing after 5 min on a host | Skip, try next host (5-minute rule) |
 
 **Command**: `/recon target.com`
+
+**After every recon (mandatory):**
+```bash
+python3 tools/lead_board.py ingest target.com
+python3 tools/lead_board.py show target.com
+python3 tools/lead_board.py next target.com
+# Route in plain language: "GraphQL endpoint → skills/graphql-audit"
+# touch status when you start / kill / report a lead
+```
+(`hunt.py` runs ingest + EOL automatically unless `--skip-leads`.)
 
 ### Phase 2: MAPPING & ANALYSIS
 
@@ -236,7 +267,7 @@ What input are you testing?
 |--------------|-------------|
 | Low-impact behavior (redirect, self-XSS, cookie injection) | Chain it -- find a connector gadget |
 | Confirmed vuln (XSS, IDOR, SQLi) | Phase 4 (Prove and Escalate) |
-| Blocked by WAF/CSP/403 | Bypass techniques, then retry |
+| Blocked by WAF/CSP/403 **or soft-block 200** | `/bypass-403 <url>` → check verdict (not just status) → `tools/waf_encoder.py "<payload>"` → if upload: `tools/multipart_mutator.py` → 5 min, kill |
 | Known software vuln (CVE) | 1-day speed workflow |
 | Nothing after 20 min on this endpoint | Rotate (20-minute rule) |
 
@@ -317,7 +348,7 @@ Run /report
 | Found subdomain but don't know what to test | Phase 2: Map the app, download JS, understand auth |
 | Testing but nothing works | Phase 3: Switch vuln class (20-min rotation rule) |
 | Found a bug but impact is low | Phase 4: Escalation paths or gadget chaining |
-| WAF/CSP/403 blocking my payload | Bypass techniques, then return to current phase |
+| WAF/CSP/403 blocking my payload | `/bypass-403` → fingerprint WAF → `waf_encoder.py` variants → kill if 5 min spent (403 even after `/bypass-403` + WAF fingerprint + `waf_encoder.py` variants) |
 | Been stuck for 45 min on one param | STOP. Rabbit hole. Move to next endpoint. |
 | New API endpoint discovered during testing | Return to Phase 2: map it before attacking |
 | Found one bug | A->B signal: same dev made more mistakes. Hunt 20 min for siblings. |
@@ -338,22 +369,30 @@ Every 20 minutes ask yourself: **"Am I making progress?"**
 | Recon: JS | `jsluice` + `mantra` + `trufflehog --only-verified` | Extract URLs/secrets -> find API keys -> verify keys actually work |
 | Recon: Ports | `naabu` (wide) -> `rustscan` (deep) | Fast top-1000 sweep -> full 65535 on interesting targets |
 | Recon: Scan | `nuclei -tags cve` -> `nuclei -tags takeover` | Known CVEs first -> then takeover (act immediately) |
-| Mapping: Params | `arjun` + `paramspider` + ParamMiner | Brute-force hidden params + mine archives + cache headers |
+| **After recon (ALWAYS)** | `python3 tools/lead_board.py ingest <target>` → `show` → `next` | Route every signal to a `hunt-*` skill; never lose a lead. `touch` when you start/kill/report |
+| After recon: EOL | `python3 tools/eol_check.py --tech "php=7.4,nginx=1.18"` | Flag EOL products from `technologies.txt` fingerprints |
+| Mapping: Params | `arjun` + `paramspider` + ParamMiner / `tools/param_discovery.sh` | Brute-force hidden params + mine archives + cache headers |
+| Mapping: GraphQL | `bash tools/graphql_audit.sh <url>` | Introspection → fingerprint → batching → IDOR → injection |
+| Mapping: CI/CD | `bash tools/cicd_scanner.sh owner/repo` | Workflow injection / secret exfil / runner poisoning |
 | Mapping: JS code | Download -> `jsluice` -> VS Code/Cursor grep | Extract -> static analysis -> AI-assisted taint analysis |
 | Mapping: Dorks | Manual Google Dorks | Custom per-target queries find what automation misses |
 | Discovery: Fuzz | `ffuf -ac` + `cewl` custom wordlist | Auto-calibrate filtering + target-specific words beat generic lists |
 | Discovery: XSS | `kxss` -> `dalfox` | Filter (which params reflect?) -> scan (only reflective params) |
 | Discovery: SQLi | `ghauri` | Modern blind SQLi on ID-like parameters |
 | Discovery: SSRF | `interactsh-client` | Self-hosted OOB listener for blind SSRF/XXE/RCE |
-| Discovery: WAF | `wafw00f` -> `whatwaf` | Identify WAF vendor -> test bypass techniques |
-| Exploit: 403 | `byp4xx` or `nomore403` | 20+ bypass techniques automated |
-| Exploit: Takeover | `subzy` | Checks CNAME against 70+ vulnerable services |
-| Exploit: Cloud | `s3scanner` + `aws` CLI | Scan bucket permissions -> extract metadata credentials |
-| Exploit: Secrets | `trufflehog --only-verified` | Only verified working keys (no false positives) |
+| Discovery: WAF | `wafw00f` → `tools/bypass_403.sh` → `tools/waf_encoder.py` → `waf_response_analyzer.py` | Fingerprint → soft-block aware bypass → encoded variants → score response |
+| Exploit: 403 | `tools/bypass_403.sh` / `byp4xx` | Soft-block (200+block body) aware; verdict: bypassed/needs_review/blocked |
+| Exploit: Upload | `tools/multipart_mutator.py --file shell --field f` | Parser-confusion multipart variants |
+| Exploit: Takeover | `tools/takeover_scanner.sh` / `subzy` | CNAME against vulnerable services |
+| Exploit: Cloud | `tools/cloud_recon.sh` + `aws` CLI | Scan bucket permissions -> extract metadata credentials |
+| Exploit: Secrets | `tools/secrets_hunter.sh` / `trufflehog --only-verified` | Only verified working keys (no false positives) |
+| Orchestrate | `python3 tools/hunt.py --target T` | Recon → lead ingest → EOL → scan (add `--graphql` / `--cve-hunt` as needed) |
 
 ### Session End Checklist
 
+- [ ] `lead_board.py show <target>` — any high-priority leads still `new` / stale?
 - [ ] Save all Burp/Caido project files
 - [ ] Record any "weird but not yet exploitable" behaviors (future gadgets)
 - [ ] Update notes with failed attempts (don't re-test with same techniques)
 - [ ] Log findings with `/remember`
+- [ ] `touch` every lead you killed or reported

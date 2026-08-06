@@ -41,6 +41,16 @@ H1_GRAPHQL = "https://hackerone.com/graphql"
 DEFAULT_TIMEOUT = 15
 
 
+def _escape_graphql_string(s: str) -> str:
+    """Escape a value for safe interpolation inside a GraphQL double-quoted string."""
+    return (s
+            .replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t"))
+
+
 class HackerOneAPIError(Exception):
     """Raised on API failures (rate limit, timeout, bad response)."""
     def __init__(self, message, status_code=None):
@@ -101,12 +111,12 @@ def search_disclosed_reports(
 
     where_clauses = ['disclosed_at: { _is_null: false }']
     if keyword:
-        safe_keyword = keyword.replace('"', '\\"')
+        safe_keyword = _escape_graphql_string(keyword)
         where_clauses.append(
             f'report: {{ title: {{ _icontains: "{safe_keyword}" }} }}'
         )
     if program:
-        safe_program = program.replace('"', '\\"')
+        safe_program = _escape_graphql_string(program)
         where_clauses.append(
             f'team: {{ handle: {{ _eq: "{safe_program}" }} }}'
         )
@@ -170,7 +180,7 @@ def get_program_stats(program: str) -> dict:
     Returns:
         Dict with bounty info, response times, resolved counts.
     """
-    safe_program = program.replace('"', '\\"')
+    safe_program = _escape_graphql_string(program)
     query = f"""{{
       team(handle: "{safe_program}") {{
         name
@@ -218,7 +228,7 @@ def get_program_policy(program: str) -> dict:
     Returns:
         Dict with safe harbor status, response SLAs, excluded vuln classes.
     """
-    safe_program = program.replace('"', '\\"')
+    safe_program = _escape_graphql_string(program)
     query = f"""{{
       team(handle: "{safe_program}") {{
         name

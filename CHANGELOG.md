@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **OpenRouter provider** (`openrouter`) for standalone `bughunter` / `brain.py` — set `OPENROUTER_API_KEY`, choose option 7 in `bughunter setup`, or `BRAIN_PROVIDER=openrouter`. OpenAI-compatible gateway with default model `anthropic/claude-sonnet-4.6` and a short curated model list (same pattern as other cloud providers).
+- **Explicit Ollama model selection** — `bughunter setup` now lists installed local models and persists the selected provider/model pair; `bughunter setup --provider ollama --model <name>` supports non-interactive configuration. `--model` / `BRAIN_MODEL` provide one-off overrides, and explicit choices no longer silently fall back to or race a different model.
+- **Standalone installer updates** — rerunning `install.sh --agent standalone` now refreshes the active managed `bughunter` path instead of allowing an older system installation to shadow a newer user-local link, and verifies the updated symlink target.
+- **SDK-free Ollama fallback** — standalone provider setup and chat now use Ollama's local HTTP API when the Python `ollama` package is unavailable; dependency installation failures are reported instead of silently ignored.
+- **Expanded uninstaller** — `uninstall.sh` now covers standalone and every supported agent harness, with managed-file checks, confirmation, configuration preservation by default, explicit `--purge-config` support, and compatibility with its previous `--claude` / `--opencode` / `--both` flags.
+
+## v4.3.2 — AI Hunt Playbook (Jun 2026)
+
+### Added
+- AI-assisted hunt guidance in `skills/bb-methodology/SKILL.md` and `skills/bug-bounty/SKILL.md`: use the model for feature decomposition, sibling-endpoint diffing, role matrices, and chain planning, while keeping proof requirements anchored to live requests and cross-account deltas.
+- AI-assisted planning signals in `tools/mindmap.py` so generated hunt checklists now surface hypothesis expansion and validation-gate reminders alongside the traditional vuln-class checklist.
+
 ## v4.3.1 — Bug Fixes + Hardening (Jun 2026)
 
 ### Fixed

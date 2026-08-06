@@ -27,6 +27,7 @@ import subprocess
 import sys
 import time
 import hashlib
+import shlex
 from datetime import datetime
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
@@ -75,8 +76,8 @@ def curl_request(url, method="GET", headers=None, data=None, timeout=10):
     if data:
         cmd_parts.extend(["-d", data])
 
-    cmd_parts.append(f'"{url}"')
-    cmd = " ".join(cmd_parts)
+    cmd_parts.append(url)
+    cmd = " ".join(shlex.quote(p) for p in cmd_parts)
 
     success, stdout, stderr = run_cmd(cmd, timeout=timeout + 5)
 
@@ -99,7 +100,7 @@ def curl_request(url, method="GET", headers=None, data=None, timeout=10):
 
 def get_response_signature(status, body):
     """Create a signature for response comparison."""
-    body_hash = hashlib.md5(body.encode()[:1000]).hexdigest()[:8] if body else "empty"
+    body_hash = hashlib.sha256(body.encode()[:1000]).hexdigest()[:8] if body else "empty"
     body_len = len(body) if body else 0
     return f"{status}:{body_len}:{body_hash}"
 

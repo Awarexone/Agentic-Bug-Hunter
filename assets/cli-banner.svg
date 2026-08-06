@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="751" height="398" viewBox="0 0 751 398" role="img" aria-label="BUGHUNTER — Bug Bounty Automation Pipeline">
+  <title>BUGHUNTER CLI Banner</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#07110a"/>
+      <stop offset="100%" stop-color="#030805"/>
+    </linearGradient>
+  </defs>
+  <rect width="100%" height="100%" rx="10" ry="10" fill="url(#bg)"/>
+  <rect x="1.5" y="1.5" width="748" height="395" rx="9" ry="9" fill="none" stroke="#00ff41" stroke-opacity="0.35" stroke-width="1.25"/>
+  <rect x="0" y="0" width="6" height="6" fill="#00ff41" fill-opacity="0.9"/>
+  <rect x="745" y="0" width="6" height="6" fill="#00ff41" fill-opacity="0.9"/>
+  <rect x="0" y="392" width="6" height="6" fill="#00ff41" fill-opacity="0.9"/>
+  <rect x="745" y="392" width="6" height="6" fill="#00ff41" fill-opacity="0.9"/>
+  <text x="56.0" y="54.0" fill="#00ff41" font-family="Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace" font-size="14" letter-spacing="0" xml:space="preserve">██████╗ ██╗   ██╗ ██████╗ ██╗  ██╗██╗   ██╗███╗   ██╗████████╗███████╗██████╗ </text>
+  <text x="56.0" y="71.5" fill="#00f53c" font-family="Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace" font-size="14" letter-spacing="0" xml:space="preserve">██╔══██╗██║   ██║██╔════╝ ██║  ██║██║   ██║████╗  ██║╚══██╔══╝██╔════╝██╔══██╗</text>
+  <text x="56.0" y="89.0" fill="#00eb37" font-family="Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace" font-size="14" letter-spacing="0" xml:space="preserve">██████╔╝██║   ██║██║  ███╗███████║██║   ██║██╔██╗ ██║   ██║   █████╗  ██████╔╝</text>
+  <text x="56.0" y="106.5" fill="#39ff14" font-family="Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace" font-size="14" letter-spacing="0" xml:space="preserve">██╔══██╗██║   ██║██║   ██║██╔══██║██║   ██║██║╚██╗██║   ██║   ██╔══╝  ██╔══██╗</text>
+  <text x="56.0" y="124.0" fill="#00ff55" font-family="Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace" font-size="14" letter-spacing="0" xml:space="preserve">██████╔╝╚██████╔╝╚██████╔╝██║  ██║╚██████╔╝██║ ╚████║   ██║   ███████╗██║  ██║</text>
+  <text x="56.0" y="141.5" fill="#00d94a" font-family="Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace" font-size="14" letter-spacing="0" xml:space="preserve">╚═════╝  ╚═════╝  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   ╚══════╝╚═╝  ╚═╝</text>
+  <text x="56.0" y="167.0" fill="#00c853" fill-opacity="0.85" font-family="Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace" font-size="14" xml:space="preserve">──────────────────────────────────────────────────────────────────────────────</text>
+  <text x="375.5" y="188.5" text-anchor="middle" fill="#39ff14" font-family="Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace" font-size="15" font-weight="700">Bug Bounty Automation Pipeline</text>
+  <text x="375.5" y="210.0" text-anchor="middle" fill="#1aff5c" fill-opacity="0.8" font-family="Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace" font-size="12">bughunter.fun  ·  github.com/shuvonsec/claude-bug-bounty</text>
+  <text x="375.5" y="233.5" text-anchor="middle" fill="#6dff9a" font-family="Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace" font-size="13">▸ target: target.com</text>
+  <text x="375.5" y="265.0" text-anchor="middle" fill="#00ff41" fill-opacity="0.7" font-family="Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace" font-size="12">── Workflow ──</text>
+  <text x="127.1" y="288.5" fill="#00ff41" font-family="Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace" font-size="12.5" xml:space="preserve">1.  Recon     subdomain enum, URL crawl, tech fingerprint, CVE sweep </text>
+  <text x="127.1" y="306.0" fill="#00ff41" font-family="Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace" font-size="12.5" xml:space="preserve">2.  Hunt      XSS · SQLi · SSRF · IDOR · auth bypass · LLM probes    </text>
+  <text x="127.1" y="323.5" fill="#00ff41" font-family="Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace" font-size="12.5" xml:space="preserve">3.  Validate  7-Question Gate · 4-gate checklist · kill weak findings</text>
+  <text x="127.1" y="341.0" fill="#00ff41" font-family="Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace" font-size="12.5" xml:space="preserve">4.  Report    H1/Bugcrowd/Intigriti template · CVSS 3.1 · PoC + repro</text>
+</svg>

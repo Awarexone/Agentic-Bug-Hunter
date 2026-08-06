@@ -46,9 +46,9 @@ print_banner "Parameter Discovery · Hidden HTTP params" "${URL:-$LIST}" \
 if _have arjun; then
   log "arjun discovery..."
   if [ -n "$URL" ]; then
-    arjun -u "$URL" -oJ "$OUT_DIR/arjun.json" 2>/dev/null || true
+    arjun -u "$URL" -t 10 -oJ "$OUT_DIR/arjun.json" 2>/dev/null || true
   else
-    arjun -i "$LIST" -oJ "$OUT_DIR/arjun.json" 2>/dev/null || true
+    arjun -i "$LIST" -t 10 -oJ "$OUT_DIR/arjun.json" 2>/dev/null || true
   fi
   if [ -s "$OUT_DIR/arjun.json" ]; then
     python3 -c "

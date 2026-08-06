@@ -4,7 +4,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 
 ## What's Here
 
-### Skills (9 domains — load with `/bug-bounty`, `/web2-recon`, `/token-scan`, etc.)
+### Skills (10 domains — load with `/bug-bounty`, `/web2-recon`, `/token-scan`, etc.)
 
 | Skill | Domain |
 |---|---|
@@ -18,8 +18,12 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `skills/report-writing/` | H1/Bugcrowd/Intigriti/Immunefi report templates, CVSS 3.1, human tone |
 | `skills/triage-validation/` | 7-Question Gate, 4 gates, never-submit list, conditionally valid table |
 | `skills/credential-attack/` | Password spray methodology — when/why, 4-stage pipeline, mode selection, lockout tactics, legal guardrails, pitfalls learned from live tests |
+| `skills/mobile-pentest/` | Android/iOS app pentest — runtime-first proxy workflow, APK/IPA decompile for hidden endpoints + secrets, deeplink/exported-activity injection, WebView bridge, SSL pinning bypass |
+| `skills/cicd-security/` | CI/CD pipeline hunting — GitHub Actions injection, secret exfil, self-hosted runner poisoning, OIDC abuse, supply chain attacks |
+| `skills/graphql-audit/` | GraphQL hunting — introspection, field suggestions (clairvoyance), batching DoS, IDOR via aliasing, injection, auth bypass, depth bombs |
+| `skills/argus/` | **Argus** (all-seeing scanner suite) — CORS, CRLF/host-header, NoSQL injection, JWT (alg:none/confusion/crack), OOB blind-bug confirmation (interactsh), LLM red-team corpus |
 
-### Commands (21 slash commands)
+### Commands (33 slash commands)
 
 > **Note:** All commands are prefixed to avoid conflicts with Claude Code's built-in commands.
 > `/resume` is a reserved Claude Code command — use `/pickup` to continue a previous hunt.
@@ -53,6 +57,13 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `/osint-employees` | `/osint-employees <target>` — employee names + emails (theHarvester + username-anarchy, opt-in LinkedIn); requires `--with-credential-attack` |
 | `/breach-check` | `/breach-check <wordlist>` — HIBP k-anonymity rank wordlist by real-world breach count |
 | `/spray` | `/spray <url> --mode http-form\|oauth\|o365\|okta --users <f> --passes <f>` — password spray with hard guards (typed-host confirm, lockout warn, audit log) |
+| `/graphql-audit` | `/graphql-audit <url>` — full GraphQL audit: introspection, batching DoS, IDOR, injection, alias bomb, graphw00f fingerprint |
+| `/cors` | `/cors <url>` — CORS misconfig scanner (arbitrary-origin reflection, null-origin, credential exposure, suffix/prefix regex bypass) |
+| `/crlf` | `/crlf <url> [--host-header]` — CRLF / response-splitting + host-header injection (Set-Cookie injection, reset poisoning) |
+| `/nosqli` | `/nosqli --login <url> --user-field <f> --pass-field <f>` — NoSQL injection (operator auth-bypass, $where time-based blind) |
+| `/jwt-scan` | `/jwt-scan <token> [--analyze\|--alg-none\|--confuse\|--crack]` — JWT alg:none, RS256→HS256 confusion, weak-secret crack (offline) |
+| `/oob` | `/oob --payloads <oob-domain>` — out-of-band orchestrator: confirm blind SSRF/XXE/SQLi/RCE/Log4Shell via interactsh correlation |
+| `/llm-redteam` | `/llm-redteam --url <chat-endpoint>` — LLM red-team corpus: prompt-injection, jailbreak, system-prompt leak, exfil, indirect injection |
 
 ### Agents (9 specialized agents)
 
@@ -94,6 +105,17 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 - `tools/osint_employees.sh` — employee names + email patterns for spray prep (theHarvester + username-anarchy, opt-in CrossLinked); requires `--with-credential-attack`
 - `tools/breach_checker.py` — HIBP k-anonymity wordlist enrichment; ranks passwords by breach count (no API key, free)
 - `tools/spray_orchestrator.sh` — password spray with typed-hostname guard + lockout warning + audit log; modes: http-form / oauth / o365 / okta (TREVOR); requires `--with-credential-attack` for TREVOR modes
+- `tools/graphql_audit.sh` — 7-phase GraphQL audit: introspection + schema dump, graphw00f fingerprint, clairvoyance field discovery, batching DoS, alias bomb, gqlmap injection, graphql-cop checklist
+- `tools/lead_board.py` — persistent per-target lead ledger that routes every recon observation to the right `hunt-*` skill and tracks its status so no lead is forgotten (`memory/leads/<target>.jsonl`). `ingest` parses recon output and routes 30+ signal types (IDOR/SSRF/GraphQL/OAuth/SAML/LLM/source-leak/tech-stack/nuclei) to skills; `show` lists untouched-first and flags stale high-priority leads; `next` returns the single top lead; `touch` marks a lead investigating/killed/reported (re-ingest preserves status). See **Critical Rule 6**.
+- `tools/eol_check.py` — EOL / lifecycle intel from endoflife.date (auto-run by `hunt.py` after recon)
+- `tools/waf_encoder.py` · `waf_response_analyzer.py` · `multipart_mutator.py` — WAF bypass + soft-block scoring + upload mutation
+- `tools/cors_scanner.py` — CORS misconfig scanner (origin-reflection / null / credentialed / suffix-prefix regex / scheme-downgrade); pure classifier, no deps
+- `tools/crlf_scanner.py` — CRLF / response-splitting + host-header injection with Set-Cookie canary detection (encoded + UTF-8 bypass variants)
+- `tools/nosqli_scanner.py` — NoSQL injection (operator auth-bypass, bracket-syntax, $where time-based blind) with differential + timing classifier
+- `tools/jwt_scanner.py` — offline JWT toolkit: alg:none forgery, RS256→HS256 confusion, HS256 secret crack, static claim analysis (pure stdlib)
+- `tools/oob_listener.py` — out-of-band orchestrator wrapping interactsh-client; payloads + correlation for blind SSRF/XXE/SQLi/RCE/Log4Shell
+- `tools/llm_redteam.py` — LLM red-team corpus runner (prompt-injection/jailbreak/system-prompt-leak/exfil/indirect/guardrail-bypass) with canary detection
+- Full catalogue: **`tools/README.md`** (~50 tools). `hunt.py` auto-ingests leads after recon (`--graphql` / `--cve-hunt` / `--skip-leads` flags).
 
 ### External tool references
 
@@ -136,3 +158,4 @@ chmod +x install.sh && ./install.sh
 3. Run 7-Question Gate BEFORE writing any report
 4. KILL weak findings fast — N/A hurts your validity ratio
 5. 5-minute rule — nothing after 5 min = move on
+6. **LEAD BOARD — never lose a lead.** After recon, run `lead_board.py ingest <target>` + `show`, and route each finding to its `hunt-*` skill in plain language ("GraphQL endpoint → hunt-graphql"). When starting/killing/reporting a lead, `touch` its status. The hunter focuses on one lead at a time; the board remembers the rest so none is forgotten. Surface stale high-priority leads unprompted.

@@ -34,3 +34,5 @@ venv/
 # Tool output
 *.out
 nmap-output/
+.atlas/
+.forge/

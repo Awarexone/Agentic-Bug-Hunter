@@ -10,19 +10,22 @@ stdlib `http.server`.
     Bound to 127.0.0.1 by default. Override with DEMO_HOST=0.0.0.0 only
     inside a disposable VM / container.
 
-Planted bugs (see demo/README.md for payloads):
-  1. Reflected XSS         /search?q=<script>alert(1)</script>
-  2. Open redirect         /go?url=https://evil.example
-  3. SSRF                  /fetch?url=http://169.254.169.254/latest/meta-data/
-  4. Exposed .env          /.env
-  5. Unauthed admin panel  /admin
-  6. Debug info leak       /api/debug
+Originally planted bugs (now hardened — see security fixes PR):
+  1. Reflected XSS         → fixed: html.escape applied to search query
+  2. Open redirect         → fixed: redirect allowlist enforced
+  3. SSRF                  → fixed: scheme validation + private-IP blocking
+  4. Exposed .env          → fixed: returns 403
+  5. Unauthed admin panel  → fixed: requires Authorization header
+  6. Debug info leak       → fixed: gated behind APP_ENV=development
 """
 
 from __future__ import annotations
 
+import html
+import ipaddress
 import json
 import os
+import socket
 import sys
 import urllib.error
 import urllib.parse
@@ -156,31 +159,31 @@ class DemoHandler(BaseHTTPRequestHandler):
             return self._send(*_text(ROBOTS_TXT))
 
         if path == "/.env":
-            # BUG #4 — sensitive config file exposed
-            return self._send(*_text(FAKE_ENV))
+            # Block access to sensitive config file
+            return self._send(*_text("403 Forbidden", 403))
 
         if path == "/admin":
-            # BUG #5 — admin panel, no authentication
+            # Require auth header for admin access
+            auth = self.headers.get("Authorization", "")
+            if not auth:
+                return self._send(*_text("401 Unauthorized — authentication required", 401))
             return self._send(*_html(
                 "<h1 style='font-family:monospace;color:#ff6b35'>Admin Panel</h1>"
                 "<p style='font-family:monospace'>Welcome, admin. Pending reports: 3.</p>"
             ))
 
         if path == "/api/debug":
-            # BUG #6 — debug endpoint dumps server env + version
-            safe_env = {k: v for k, v in os.environ.items()
-                        if k.startswith(("APP_", "PATH", "HOME", "USER", "SHELL"))}
+            # Debug endpoint disabled in non-development mode
+            if os.environ.get("APP_ENV") != "development":
+                return self._send(*_text("404", 404))
             return self._send(*_json({
                 "version": "1.2.3-dev",
-                "host": HOST,
-                "port": PORT,
-                "env": safe_env,
                 "feature_flags": {"new_search": True, "beta_admin": True},
             }))
 
         if path == "/search":
-            # BUG #1 — reflected XSS, raw {q} interpolation, no escaping
-            q = qs.get("q", [""])[0]
+            # Reflected XSS fix: escape user input before rendering
+            q = html.escape(qs.get("q", [""])[0])
             return self._send(*_html(
                 f"<!doctype html><body style='background:#0b0d10;color:#e6edf3;"
                 f"font-family:monospace;padding:2rem'>"
@@ -190,21 +193,41 @@ class DemoHandler(BaseHTTPRequestHandler):
             ))
 
         if path == "/go":
-            # BUG #2 — open redirect, no allowlist
+            # Open redirect fix: only allow same-origin or allowlisted redirects
+            _ALLOWED_REDIRECT_DOMAINS = {"github.com", "hackerone.com"}
             target = qs.get("url", ["/"])[0]
-            self.send_response(302)
-            self.send_header("Location", target)
-            self.end_headers()
+            parsed_target = urllib.parse.urlparse(target)
+            if parsed_target.scheme in ("", "https") and (
+                not parsed_target.netloc
+                or parsed_target.netloc in _ALLOWED_REDIRECT_DOMAINS
+            ):
+                self.send_response(302)
+                self.send_header("Location", target)
+                self.end_headers()
+            else:
+                return self._send(*_text("Redirect blocked: destination not in allowlist", 403))
             return
 
         if path == "/fetch":
-            # BUG #3 — SSRF, server fetches any URL on behalf of the client
+            # SSRF fix: validate scheme and block internal/private IPs
             target = qs.get("url", [""])[0]
             if not target:
                 return self._send(*_text("Usage: /fetch?url=https://example.com", 400))
+            parsed_fetch = urllib.parse.urlparse(target)
+            if parsed_fetch.scheme not in ("http", "https"):
+                return self._send(*_text("Only http/https URLs are allowed", 400))
+            try:
+                hostname = parsed_fetch.hostname or ""
+                resolved = socket.getaddrinfo(hostname, None)
+                for _, _, _, _, addr in resolved:
+                    ip = ipaddress.ip_address(addr[0])
+                    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                        return self._send(*_text("Fetch blocked: target resolves to a private/internal IP", 403))
+            except (socket.gaierror, ValueError) as e:
+                return self._send(*_text(f"DNS resolution failed: {e}", 400))
             try:
                 req = urllib.request.Request(target, headers={"User-Agent": "shuvonsec/1.0"})
-                with urllib.request.urlopen(req, timeout=4) as resp:  # noqa: S310 — intentional
+                with urllib.request.urlopen(req, timeout=4) as resp:  # noqa: S310
                     body = resp.read(8192)
                     ctype = resp.headers.get("Content-Type", "text/plain")
                 return self._send(200, body, {"Content-Type": ctype})

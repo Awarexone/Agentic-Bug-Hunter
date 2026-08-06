@@ -98,8 +98,13 @@ def check_batch(passwords: list[str], concurrent: int) -> dict[str, int]:
                 bucket = future.result()
                 for pwd, suffix in prefix_groups[prefix]:
                     results[pwd] = bucket.get(suffix, 0)
-            except Exception:
+            except Exception as e:
                 # Mark unknowns as -1 so they can be filtered or reviewed
+                print(
+                    f"\r    [!] Prefix {prefix} failed ({type(e).__name__}): {e}",
+                    file=sys.stderr,
+                    flush=True,
+                )
                 for pwd, _ in prefix_groups[prefix]:
                     results[pwd] = -1
 

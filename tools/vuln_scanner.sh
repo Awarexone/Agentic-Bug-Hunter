@@ -318,8 +318,7 @@ PYEOF
             timeout "$DAL_MAX_TIME" dalfox pipe \
             --silence \
             --no-color \
-            --worker 5 \
-            --delay 100 \
+            --worker 20 \
             --timeout 10 \
             ${BB_AUTH_ARGS[@]+"${BB_AUTH_ARGS[@]}"} \
             --output "$FINDINGS_DIR/xss/dalfox_results.txt" 2>/dev/null || true

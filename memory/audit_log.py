@@ -97,7 +97,8 @@ class AuditLog:
                     entries.append(entry)
                 except json.JSONDecodeError as e:
                     print(
-                        f"WARNING: audit line {lineno} is corrupted (skipping): {e}",
+                        f"WARNING: {self.path} line {lineno} is corrupted "
+                        f"(skipping): {e}",
                         file=sys.stderr,
                     )
         return entries

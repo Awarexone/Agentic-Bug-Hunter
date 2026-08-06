@@ -69,6 +69,9 @@ log "nuclei CVE sweep on $TARGET ${YEAR:+(year=$YEAR)}..."
 nuclei "${INPUT_ARG[@]}" \
   "${TEMPLATE_FILTER[@]}" \
   -severity high,critical \
+  -rl "${NUC_RATE_LIMIT:-300}" \
+  -c "${NUC_CONCURRENCY:-50}" \
+  -bs "${NUC_BULK_SIZE:-50}" \
   -silent -stats \
   -jsonl -o "$OUT_DIR/nuclei_cve.jsonl" 2>/dev/null || true
 

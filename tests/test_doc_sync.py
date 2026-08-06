@@ -218,7 +218,7 @@ class TestSpecificDriftRegression:
     lead_board.py entirely."""
 
     def test_agent_count_is_current(self, manifest):
-        assert len(manifest["agents"]) == 13
+        assert len(manifest["agents"]) == 14
 
     def test_skill_count_is_current(self, manifest):
         assert len(manifest["skills"]) == 13

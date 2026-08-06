@@ -91,9 +91,10 @@ bughunter v "finding"        # short alias for validate
 |:---|:---|:---|:---|:---|
 | **Ollama** | 100% free · runs locally | Full — stays on your machine | Fast | `ollama pull qwen2.5:14b` |
 | **Groq** | Free tier available | Cloud | Very fast | [console.groq.com](https://console.groq.com) → get API key |
-| **DeepSeek** | Very cheap ($0.001/1K tokens) | Cloud | Fast | [platform.deepseek.com](https://platform.deepseek.com) |
+| **DeepSeek** | Very cheap (v4-flash / v4-pro) | Cloud | Fast | [platform.deepseek.com](https://platform.deepseek.com) |
 | Claude API | Paid | Cloud | Fast | [console.anthropic.com](https://console.anthropic.com) |
 | OpenAI | Paid | Cloud | Fast | [platform.openai.com](https://platform.openai.com) |
+| **Grok (xAI)** | Paid | Cloud | Fast | [console.x.ai](https://console.x.ai) → `grok-4.5` |
 | **OpenRouter** | Subscription / pay-as-you-go | Cloud | Fast | [openrouter.ai/keys](https://openrouter.ai/keys) → get API key |
 
 BugHunter auto-detects providers in this order: **Ollama → Groq → DeepSeek → … → OpenRouter → Claude → OpenAI**
@@ -208,6 +209,18 @@ Verify /recon /hunt /validate /report are available.
 | `/scan-cves <host>` | Focused nuclei high/critical sweep + optional log4j-scan |
 | `/bypass-403 <url>` | Header · method · encoding tricks against 403/401 |
 
+
+### Scanners (Web + LLM)
+
+| Command | What It Does |
+|:---|:---|
+| `/cors <url>` | CORS misconfig — origin reflection · null · credentialed |
+| `/crlf <url>` | CRLF / response-splitting + host-header injection |
+| `/nosqli <url>` | NoSQL injection (operator bypass · `$where` timing) |
+| `/jwt-scan <token>` | Offline JWT toolkit — alg:none · RS256→HS256 · secret crack |
+| `/oob <target>` | Out-of-band listener (interactsh) for blind SSRF/XXE/SQLi |
+| `/llm-redteam <endpoint>` | LLM red-team corpus — prompt injection · jailbreak · exfil |
+
 ### Smart Contract (Web3)
 
 | Command | What It Does |
@@ -233,7 +246,7 @@ Verify /recon /hunt /validate /report are available.
 ## What It Finds
 
 <details>
-<summary><b>20 Web2 Vulnerability Classes</b></summary>
+<summary><b>26 Web2 Vulnerability Classes</b></summary>
 <br>
 
 | Vulnerability | Typical Payout |
@@ -258,6 +271,12 @@ Verify /recon /hunt /validate /report are available.
 | Cache Poisoning | $1K – $10K |
 | MFA / 2FA Bypass | $1K – $10K |
 | SAML / SSO Attack | $2K – $20K |
+| Error Disclosure / Debug Endpoints | $200 – $5K |
+| CSS Injection | $500 – $5K |
+| LFI → RCE | $1K – $15K |
+| Insecure Deserialization | $5K – $30K |
+| Dependency Confusion / Supply Chain | $1K – $20K |
+| Padding Oracle / Crypto Misuse | $2K – $20K |
 
 </details>
 
@@ -332,13 +351,14 @@ claude-bug-bounty/
 │   ├── bug-bounty/            # Master workflow — all vuln classes, LLM testing, chains
 │   ├── bb-methodology/        # Hunting mindset · 5-phase workflow · session discipline
 │   ├── web2-recon/            # Subdomain enum · live host discovery · URL crawl
-│   ├── web2-vuln-classes/     # 21 bug classes with bypass tables
+│   ├── web2-vuln-classes/     # 26 bug classes with bypass tables
 │   ├── security-arsenal/      # Payloads · bypass tables · gf patterns
 │   ├── triage-validation/     # 7-Question Gate · 4 gates · never-submit list
 │   ├── report-writing/        # Templates for H1 · Bugcrowd · Intigriti · Immunefi
 │   ├── web3-audit/            # Smart contract bugs · Foundry PoC · 10 bug classes
 │   ├── meme-coin-audit/       # Rug pull detection · LP attacks · bonding curve
-│   └── credential-attack/     # Password spray methodology · legal guardrails
+│   ├── credential-attack/     # Password spray methodology · legal guardrails
+│   └── client-reverse/        # Request-signing / anti-bot token reversal
 │
 ├── commands/                  # 26 slash commands (/recon /hunt /validate /report …)
 ├── agents/                    # 9 specialized AI agents (recon, validator, reporter …)

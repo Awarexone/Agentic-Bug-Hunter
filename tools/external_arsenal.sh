@@ -83,6 +83,11 @@ ARSENAL_TOOLS=(
   "cupp|cred|pipx install cupp|github.com/Mebus/cupp"
   "trevorspray|cred|pipx install trevorspray|github.com/blacklanternsecurity/TREVORspray"
   "kerbrute|cred|GOBIN=\$HOME/go/bin go install github.com/ropnop/kerbrute@latest|github.com/ropnop/kerbrute"
+  # ── GraphQL ─────────────────────────────────────────────────────────────
+  "graphw00f|graphql|pip install graphw00f|github.com/dolevf/graphw00f"
+  "clairvoyance|graphql|pip install clairvoyance|github.com/nikitastupin/clairvoyance"
+  "gqlmap|graphql|pip install gqlmap|github.com/nicola-inchingolo/gqlmap"
+  "graphql-cop|graphql|pip install graphql-cop|github.com/dolevf/graphql-cop"
   # ── JWT / auth ──────────────────────────────────────────────────────────
   "jwt_tool|jwt|pipx install jwt-tool|github.com/ticarpi/jwt_tool"
   # ── Bug bounty scope tooling ────────────────────────────────────────────
@@ -104,6 +109,9 @@ ARSENAL_TOOLS=(
   "qsreplace|filter|GOBIN=\$HOME/go/bin go install github.com/tomnomnom/qsreplace@latest|github.com/tomnomnom/qsreplace"
   "anew|filter|GOBIN=\$HOME/go/bin go install github.com/tomnomnom/anew@latest|github.com/tomnomnom/anew"
   "interactsh-client|oob|GOBIN=\$HOME/go/bin go install github.com/projectdiscovery/interactsh/cmd/interactsh-client@latest|github.com/projectdiscovery/interactsh"
+  # ── AI Coding Assistants ────────────────────────────────────────────────
+  "kimchi|ai|curl -fsSL https://kimchi.dev/install.sh -o kimchi_install.sh && sh kimchi_install.sh|kimchi.dev"
+  "freebuff|ai|npm install -g freebuff|freebuff.com"
 )
 
 # `_have <tool>` — true when the binary is on PATH. Source this file from other

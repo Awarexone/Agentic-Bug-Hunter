@@ -999,14 +999,25 @@ class ReActAgent:
             raise RuntimeError("Ollama Python package not installed: pip install ollama")
 
         self.client = _ollama_lib.Client(host=OLLAMA_HOST)
-        self.model  = model or self._pick_tool_capable_model()
+        requested_model = model or os.environ.get("BRAIN_MODEL") or None
+        self.model  = requested_model or self._pick_tool_capable_model()
         if not self.model:
             raise RuntimeError("No Ollama model available. Pull one: ollama pull qwen2.5:32b")
 
-        # Build race roster: primary model + baron-llm if available and different
+        if requested_model:
+            available = [m.model for m in self.client.list().models]
+            if requested_model not in available:
+                raise RuntimeError(
+                    f"Requested Ollama model '{requested_model}' is not installed. "
+                    f"Run: ollama pull {requested_model}"
+                )
+
+        # Respect an explicit choice exclusively; only auto-race in automatic mode.
         try:
             available = [m.model for m in self.client.list().models]
-            if "baron-llm:latest" in available and "baron-llm:latest" != self.model:
+            if requested_model:
+                self._race_models = [self.model]
+            elif "baron-llm:latest" in available and "baron-llm:latest" != self.model:
                 self._race_models = [self.model, "baron-llm:latest"]
             else:
                 self._race_models = [self.model]
@@ -1432,6 +1443,7 @@ def run_agent_hunt(
     Called by hunt.py when --agent flag is passed.
     """
     h = _h()
+    model = model or os.environ.get("BRAIN_MODEL") or None
 
     # ── Resolve session ───────────────────────────────────────────────────
     session_id, recon_dir = h._activate_recon_session(

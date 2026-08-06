@@ -84,8 +84,8 @@ Recon needs: `subfinder`, `dnsx`, `httpx` (ProjectDiscovery — not the Python C
 
 ## 5-Minute Kill Signal
 
-If after running this pipeline:
-- All hosts return 403 or static pages
+If after running this pipeline you see:
+- All hosts return 403 even after `tools/bypass_403.sh` + wafw00f bypass, or return only static marketing pages
 - No API endpoints visible
 - No interesting parameters in URLs
 - nuclei returns 0 medium/high findings

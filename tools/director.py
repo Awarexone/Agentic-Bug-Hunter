@@ -46,6 +46,7 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from tools import lead_board  # noqa: E402
+from tools import fingerprint  # noqa: E402
 from memory.finding_score import normalize_vuln_class  # noqa: E402
 from memory.pattern_db import PatternDB  # noqa: E402
 from memory.vuln_intelligence import (  # noqa: E402
@@ -142,6 +143,29 @@ def load_tech_stack(target: str, memory_dir: str) -> list[str]:
         return []
     stack = data.get("tech_stack", [])
     return stack if isinstance(stack, list) else []
+
+
+def load_fingerprint_tech_attack_matrix(target: str, recon_dir: str,
+                                         matrix_path: str | None = None) -> dict | None:
+    """tools/tech_attack_matrix.json, gated on recon/<target>/fingerprint.json
+    (tools/fingerprint.py's Phase 3 output) actually existing for THIS
+    target. fingerprint.json's presence is the gate, not the matrix file's
+    — a target that never ran Phase 3 fingerprinting gets None back here,
+    which priority_score()/expected_value_per_hour() treat identically to
+    the parameter never existing (their `if tech_attack_matrix else 20`
+    branch), so behavior for a not-yet-fingerprinted target is byte-
+    identical to before this wiring existed. A present-but-malformed
+    fingerprint.json is treated the same as absent — best-effort, no
+    crash, same convention _read_browser_json()/load_tech_stack() already
+    use in this module."""
+    fp_path = Path(recon_dir) / "fingerprint.json"
+    if not fp_path.exists():
+        return None
+    try:
+        json.loads(fp_path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+    return fingerprint.load_tech_attack_matrix(matrix_path or fingerprint.DEFAULT_MATRIX_PATH)
 
 
 # ─── Memory loading (mirrors memory/finding_score.py's _memory_lists()) ────
@@ -608,6 +632,7 @@ class Director:
 
         mem = load_memory(memory_dir)
         tech_stack = load_tech_stack(target, memory_dir)
+        tech_attack_matrix = load_fingerprint_tech_attack_matrix(target, recon_dir)
         calibration = hypothesis_calibration(
             [h for h in mem["hypotheses"] if h.get("target") == target],
             journal_entries=mem["journal"], report_outcomes=mem["report_outcomes"],
@@ -620,7 +645,7 @@ class Director:
 
         candidates: list[dict] = []
         for lead in all_leads:
-            candidates.append(self._score_lead(lead, target, tech_stack, mem))
+            candidates.append(self._score_lead(lead, target, tech_stack, mem, tech_attack_matrix))
 
         # Highest EV/hour first (ties broken by priority score) — this is
         # "maximize expected value per hour", the Director's stated goal,
@@ -708,19 +733,20 @@ class Director:
                                     "recon_dir": recon_dir, "candidates": candidates}
         return plan
 
-    def _score_lead(self, lead: dict, target: str, tech_stack: list[str], mem: dict) -> dict:
+    def _score_lead(self, lead: dict, target: str, tech_stack: list[str], mem: dict,
+                     tech_attack_matrix: dict | None = None) -> dict:
         vuln_class = skill_to_vuln_class(lead["skill"])
         score_result = priority_score(
             vuln_class=vuln_class, tech_stack=tech_stack, target=target,
             technique=None, patterns=mem["patterns"], failed_patterns=mem["failed_patterns"],
             chains=mem["chains"], chain_detected=(lead.get("source") == "hypothesis"),
-            report_outcomes=mem["report_outcomes"],
+            report_outcomes=mem["report_outcomes"], tech_attack_matrix=tech_attack_matrix,
         )
         ev_result = expected_value_per_hour(
             vuln_class=vuln_class, tech_stack=tech_stack, target=target,
             technique=None, patterns=mem["patterns"], failed_patterns=mem["failed_patterns"],
             chains=mem["chains"], chain_detected=(lead.get("source") == "hypothesis"),
-            report_outcomes=mem["report_outcomes"],
+            report_outcomes=mem["report_outcomes"], tech_attack_matrix=tech_attack_matrix,
         )
         dup_check = duplicate_or_noise_check(
             target=target, vuln_class=vuln_class, endpoint=lead.get("evidence", ""),

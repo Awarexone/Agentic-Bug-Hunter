@@ -719,3 +719,99 @@ def test_build_plan_rejects_non_positive_hours(isolated, tmp_path):
     d = director.Director(memory_dir=str(tmp_path / "hunt-memory"))
     with pytest.raises(ValueError):
         d.build_plan("t.example", hours=0)
+
+
+class TestTechAttackMatrixWiring:
+    """Phase 3 follow-up: tools/tech_attack_matrix.json's static weights
+    actually reach priority_score()/expected_value_per_hour() through
+    build_plan(), gated on recon/<target>/fingerprint.json existing for
+    THIS target — not merely on the matrix file existing on disk."""
+
+    def test_no_fingerprint_json_gate_closed(self, tmp_path):
+        recon_dir = tmp_path / "recon" / "t.example"
+        recon_dir.mkdir(parents=True)
+        assert director.load_fingerprint_tech_attack_matrix("t.example", str(recon_dir)) is None
+
+    def test_malformed_fingerprint_json_gate_closed(self, tmp_path):
+        recon_dir = tmp_path / "recon" / "t.example"
+        recon_dir.mkdir(parents=True)
+        (recon_dir / "fingerprint.json").write_text("{not json")
+        assert director.load_fingerprint_tech_attack_matrix("t.example", str(recon_dir)) is None
+
+    def test_fingerprint_present_opens_gate_and_loads_real_matrix(self, tmp_path):
+        recon_dir = tmp_path / "recon" / "t.example"
+        recon_dir.mkdir(parents=True)
+        (recon_dir / "fingerprint.json").write_text(json.dumps({"target": "t.example", "framework": "nextjs"}))
+        matrix = director.load_fingerprint_tech_attack_matrix("t.example", str(recon_dir))
+        assert matrix is not None
+        assert "nextjs" in matrix
+
+    def test_build_plan_byte_identical_when_fingerprint_absent(self, isolated, tmp_path):
+        """No recon/<target>/fingerprint.json anywhere -> every attack's
+        priority must still equal calling priority_score() directly with
+        tech_attack_matrix omitted, same proof test_no_duplicate_ranking_logic
+        already makes, now explicitly re-checked after wiring the parameter
+        through build_plan()."""
+        _seed_leads(isolated, "t.example", REALISTIC_URLS)
+        recon_dir = str(isolated / "recon" / "t.example")
+        d = director.Director(memory_dir=str(tmp_path / "hunt-memory"))
+        plan = d.build_plan("t.example", hours=3, recon_dir=recon_dir)
+        assert plan.attacks, "need at least one attack to prove anything"
+        for a in plan.attacks:
+            direct = priority_score(vuln_class=a.vuln_class, tech_stack=[], target="t.example")
+            assert a.priority == direct["score"]
+
+    def test_fingerprint_present_but_framework_unmatched_in_matrix_no_crash(self, isolated, tmp_path):
+        recon_dir = isolated / "recon" / "t.example"
+        (recon_dir / "urls").mkdir(parents=True)
+        (recon_dir / "urls" / "all.txt").write_text("https://t.example/admin\n")
+        lb.ingest("t.example", str(recon_dir))
+        (recon_dir / "fingerprint.json").write_text(json.dumps({
+            "target": "t.example", "framework": "some-made-up-framework-xyz",
+        }))
+        mem_dir = tmp_path / "hunt-memory"
+        (mem_dir / "targets").mkdir(parents=True)
+        (mem_dir / "targets" / "t.example.json").write_text(
+            json.dumps({"tech_stack": ["some-made-up-framework-xyz"]})
+        )
+        d = director.Director(memory_dir=str(mem_dir))
+        plan = d.build_plan("t.example", hours=3, recon_dir=str(recon_dir))
+        assert plan.attacks, "need at least one attack to prove anything"
+        for a in plan.attacks:
+            assert 0 <= a.priority <= 100  # no crash, no fabricated out-of-range score
+
+    def test_nextjs_cve_weight_raises_priority_over_no_fingerprint(self, isolated, tmp_path):
+        """The actual proof the wiring does something (not just that it
+        doesn't crash): an identical hunt-auth-bypass lead, identical
+        tech_stack (["nextjs"]) and identical (empty) memory -- the ONLY
+        difference between the two build_plan() calls is whether
+        recon/<target>/fingerprint.json exists. With it present,
+        CVE-2025-29927's weight (90) replaces the historical-data-absent
+        floor (20) for the matching "auth-bypass" vuln_class in
+        _matrix_technology_match(), which must raise the final blended
+        priority_score()."""
+        recon_dir = isolated / "recon" / "t.example"
+        (recon_dir / "urls").mkdir(parents=True)
+        (recon_dir / "urls" / "all.txt").write_text("https://t.example/admin\n")
+        lb.ingest("t.example", str(recon_dir))
+
+        mem_dir = tmp_path / "hunt-memory"
+        (mem_dir / "targets").mkdir(parents=True)
+        (mem_dir / "targets" / "t.example.json").write_text(json.dumps({"tech_stack": ["nextjs"]}))
+
+        d_without = director.Director(memory_dir=str(mem_dir))
+        plan_without = d_without.build_plan("t.example", hours=3, recon_dir=str(recon_dir))
+
+        (recon_dir / "fingerprint.json").write_text(json.dumps({
+            "target": "t.example", "framework": "nextjs", "version": "12.0.0",
+        }))
+        d_with = director.Director(memory_dir=str(mem_dir))
+        plan_with = d_with.build_plan("t.example", hours=3, recon_dir=str(recon_dir))
+
+        by_lead_without = {a.lead_id: a for a in plan_without.attacks}
+        by_lead_with = {a.lead_id: a for a in plan_with.attacks}
+        auth_bypass_lead_ids = [lid for lid, a in by_lead_with.items() if a.vuln_class == "auth-bypass"]
+        assert auth_bypass_lead_ids, "need at least one auth-bypass lead to prove anything"
+        for lid in auth_bypass_lead_ids:
+            assert lid in by_lead_without, "same lead must be scored in both plans"
+            assert by_lead_with[lid].priority > by_lead_without[lid].priority

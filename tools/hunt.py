@@ -11,8 +11,10 @@ Usage:
     python3 hunt.py --scan-only --target <domain>   # Only run vuln scanner (requires prior recon)
     python3 hunt.py --status                # Show current progress
     python3 hunt.py --setup-wordlists       # Download common wordlists
-    python3 hunt.py --cve-hunt --target <domain>   # Run CVE hunter
+    python3 hunt.py --cve-hunt --target <domain>   # Focused nuclei CVE sweep
     python3 hunt.py --zero-day --target <domain>   # Run zero-day fuzzer
+    python3 hunt.py --graphql --target <domain>    # Auto GraphQL audit when endpoints found
+    python3 hunt.py --skip-leads --target <domain> # Skip lead_board ingest + EOL after recon
 """
 
 import argparse
@@ -20,6 +22,7 @@ import itertools
 import ipaddress
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -122,33 +125,56 @@ def run_cmd(cmd, cwd=None, timeout=600):
         if proc is not None:
             try:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            except Exception:
+            except OSError:
                 proc.kill()
             proc.wait()
-        return False, "Command timed out"
+        return False, f"Command timed out after {timeout}s: {cmd[:120]}"
     except Exception as e:
         if proc is not None:
             try:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            except Exception:
+            except OSError:
                 proc.kill()
             proc.wait()
-        return False, str(e)
+        return False, f"Command failed ({type(e).__name__}): {e}"
 
 
 def check_tools():
-    """Check which tools are installed."""
-    tools = ["subfinder", "httpx", "nuclei", "ffuf", "nmap", "amass", "gau", "dalfox", "subjack"]
-    installed = []
-    missing = []
+    """Check which tools are installed.
 
+    Prefers ``external_arsenal.sh`` (full ~50-tool registry). Falls back to a
+    short core list if the arsenal script is missing or fails.
+    """
+    arsenal = os.path.join(TOOLS_DIR, "external_arsenal.sh")
+    if os.path.isfile(arsenal):
+        # Parse `tool|category|...` rows and probe each binary.
+        installed, missing = [], []
+        try:
+            with open(arsenal, encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line.startswith('"') or "|" not in line:
+                        continue
+                    # "name|category|hint|url"
+                    inner = line.strip(' ",')
+                    name = inner.split("|", 1)[0].strip()
+                    if not name or name.startswith("#"):
+                        continue
+                    success, _ = run_cmd(f"command -v {name}")
+                    (installed if success else missing).append(name)
+            if installed or missing:
+                return installed, missing
+        except OSError:
+            pass
+
+    tools = [
+        "subfinder", "httpx", "nuclei", "ffuf", "nmap", "amass", "gau",
+        "dalfox", "subjack", "katana", "arjun", "trufflehog", "gitleaks",
+    ]
+    installed, missing = [], []
     for tool in tools:
         success, _ = run_cmd(f"command -v {tool}")
-        if success:
-            installed.append(tool)
-        else:
-            missing.append(tool)
-
+        (installed if success else missing).append(tool)
     return installed, missing
 
 
@@ -191,16 +217,21 @@ def select_targets(top_n=10):
     print(output)
 
     if not success:
-        log("err", "Target selection failed")
+        log("err", f"Target selection failed: {output[:200]}")
         return []
 
     # Load selected targets
     targets_file = os.path.join(TARGETS_DIR, "selected_targets.json")
     if os.path.exists(targets_file):
-        with open(targets_file) as f:
-            data = json.load(f)
+        try:
+            with open(targets_file) as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            log("err", f"Could not read targets file {targets_file}: {e}")
+            return []
         return data.get("targets", [])
 
+    log("err", f"Targets file not found: {targets_file}")
     return []
 
 
@@ -274,6 +305,169 @@ def check_cicd_results(domain):
                     content = sf.read()
                 if "Total findings: 0" not in content:
                     log("warn", f"CI/CD findings detected — review: {summary_path}")
+
+
+def ingest_lead_board(domain):
+    """Parse recon into the persistent lead ledger and print the top lead."""
+    script = os.path.join(TOOLS_DIR, "lead_board.py")
+    if not os.path.isfile(script):
+        log("warn", "lead_board.py missing — skip lead ingest")
+        return False
+
+    recon_dir = os.path.join(RECON_DIR, domain)
+    if not os.path.isdir(recon_dir):
+        log("warn", f"No recon dir for {domain} — skip lead ingest")
+        return False
+
+    log("info", f"Ingesting lead board for {domain}...")
+    ok, out = run_cmd(
+        f'python3 "{script}" ingest "{domain}" --recon-dir "{recon_dir}"',
+        timeout=120,
+    )
+    if out.strip():
+        print(out.rstrip())
+    if not ok:
+        log("warn", f"lead_board ingest returned non-zero for {domain}")
+        return False
+
+    ok2, out2 = run_cmd(f'python3 "{script}" next "{domain}"', timeout=30)
+    if out2.strip():
+        log("info", "Top untouched lead:")
+        print(out2.rstrip())
+    return ok2
+
+
+def _tech_pairs_from_recon(domain):
+    """Best-effort product=version pairs from recon/technologies.txt."""
+    candidates = [
+        os.path.join(RECON_DIR, domain, "technologies.txt"),
+        os.path.join(RECON_DIR, f"{domain}-technologies.txt"),
+    ]
+    lines = []
+    for path in candidates:
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                lines.extend(ln.strip() for ln in fh if ln.strip())
+        except OSError:
+            continue
+
+    pairs = []
+    seen = set()
+    for raw in lines:
+        # Accept "php=7.4", "php:7.4", "PHP/7.4", "nginx 1.18.0"
+        m = re.match(
+            r"(?i)^([a-z][a-z0-9_.+-]+)\s*[=:/]\s*([0-9][0-9a-zA-Z._+-]*)",
+            raw,
+        )
+        if not m:
+            m = re.match(
+                r"(?i)^([a-z][a-z0-9_.+-]+)\s+([0-9][0-9a-zA-Z._+-]*)",
+                raw,
+            )
+        if not m:
+            continue
+        product, version = m.group(1).lower(), m.group(2)
+        key = f"{product}={version}"
+        if key not in seen:
+            seen.add(key)
+            pairs.append(key)
+    return pairs
+
+
+def run_eol_check(domain):
+    """Run EOL lifecycle intel against fingerprint pairs from recon."""
+    script = os.path.join(TOOLS_DIR, "eol_check.py")
+    if not os.path.isfile(script):
+        return False
+    pairs = _tech_pairs_from_recon(domain)
+    if not pairs:
+        log("info", "No product=version fingerprints for EOL check")
+        return False
+
+    tech = ",".join(pairs[:20])
+    log("info", f"EOL check: {tech}")
+    ok, out = run_cmd(f'python3 "{script}" --tech "{tech}"', timeout=60)
+    if out.strip():
+        print(out.rstrip())
+    return ok
+
+
+def run_graphql_audit(domain):
+    """Run graphql_audit.sh against any GraphQL URLs found in recon."""
+    script = os.path.join(TOOLS_DIR, "graphql_audit.sh")
+    if not os.path.isfile(script):
+        log("warn", "graphql_audit.sh missing")
+        return False
+
+    recon_dir = os.path.join(RECON_DIR, domain)
+    gql_files = [
+        os.path.join(recon_dir, "urls", "graphql.txt"),
+        os.path.join(recon_dir, "graphql.txt"),
+    ]
+    urls = []
+    for path in gql_files:
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    u = line.strip()
+                    if u.startswith("http"):
+                        urls.append(u)
+        except OSError:
+            continue
+
+    # Also grep all-urls for /graphql paths
+    for path in (
+        os.path.join(recon_dir, "urls", "all.txt"),
+        os.path.join(recon_dir, "all-urls.txt"),
+    ):
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    if re.search(r"/graphql|/gql|/graphiql", line, re.I):
+                        u = line.strip().split()[0]
+                        if u.startswith("http"):
+                            urls.append(u)
+        except OSError:
+            continue
+
+    # dedupe preserve order
+    seen, uniq = set(), []
+    for u in urls:
+        if u not in seen:
+            seen.add(u)
+            uniq.append(u)
+    urls = uniq[:5]
+
+    if not urls:
+        log("info", "No GraphQL endpoints found — skip graphql audit")
+        return False
+
+    child_env = os.environ.copy()
+    if _AUTH_SESSION is not None:
+        _AUTH_SESSION.export_to_env(child_env)
+
+    any_ok = False
+    for url in urls:
+        log("info", f"GraphQL audit: {url}")
+        out_dir = os.path.join(FINDINGS_DIR, domain, "graphql")
+        os.makedirs(out_dir, exist_ok=True)
+        try:
+            proc = subprocess.Popen(
+                f'bash "{script}" "{url}" --output-dir "{out_dir}"',
+                shell=True, cwd=BASE_DIR, env=child_env,
+            )
+            proc.wait(timeout=600)
+            any_ok = any_ok or proc.returncode == 0
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            log("err", f"GraphQL audit timed out for {url}")
+    return any_ok
 
 
 def run_vuln_scan(domain, quick=False):
@@ -381,6 +575,7 @@ def print_dashboard(results):
         status_icon = f"{GREEN}OK{NC}" if r["success"] else f"{RED}FAIL{NC}"
         print(f"  [{status_icon}] {r['domain']}")
         print(f"       Recon: {'Done' if r.get('recon') else 'Skipped'} | "
+              f"Leads: {'Done' if r.get('leads') else '—'} | "
               f"Scan: {'Done' if r.get('scan') else 'Skipped'} | "
               f"Reports: {r.get('reports', 0)}")
         total_findings += r.get("findings", 0)
@@ -400,9 +595,28 @@ def print_dashboard(results):
 
 
 def run_cve_hunt(domain):
-    """Run CVE hunter on a target."""
-    log("warn", "cve_hunter.py has been removed. Use /intel in Claude Code for CVE intelligence.")
-    return False
+    """Run focused nuclei CVE sweep via cve_scan.sh."""
+    script = os.path.join(TOOLS_DIR, "cve_scan.sh")
+    if not os.path.isfile(script):
+        log("warn", "cve_scan.sh missing — use /intel for CVE intelligence")
+        return False
+
+    log("info", f"Running CVE sweep on {domain}...")
+    child_env = os.environ.copy()
+    if _AUTH_SESSION is not None:
+        _AUTH_SESSION.export_to_env(child_env)
+
+    try:
+        proc = subprocess.Popen(
+            f'bash "{script}" "{domain}"',
+            shell=True, cwd=BASE_DIR, env=child_env,
+        )
+        proc.wait(timeout=900)
+        return proc.returncode == 0
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        log("err", f"CVE sweep timed out for {domain}")
+        return False
 
 
 def run_zero_day_fuzzer(domain, deep=False):
@@ -428,19 +642,44 @@ def run_zero_day_fuzzer(domain, deep=False):
         return False
 
 
-def hunt_target(domain, quick=False, recon_only=False, scan_only=False, cve_hunt=False, zero_day=False):
+def hunt_target(
+    domain,
+    quick=False,
+    recon_only=False,
+    scan_only=False,
+    cve_hunt=False,
+    zero_day=False,
+    skip_leads=False,
+    graphql=False,
+):
     """Run the full hunt pipeline on a single target."""
-    result = {"domain": domain, "success": True, "recon": False, "scan": False, "reports": 0}
+    result = {
+        "domain": domain,
+        "success": True,
+        "recon": False,
+        "scan": False,
+        "leads": False,
+        "reports": 0,
+    }
 
     if not scan_only:
         result["recon"] = run_recon(domain, quick=quick)
         if not result["recon"]:
             log("warn", f"Recon had issues for {domain}, continuing anyway...")
 
+        # Post-recon enrichment: never lose a lead + flag EOL tech.
+        if not skip_leads and os.path.isdir(os.path.join(RECON_DIR, domain)):
+            result["leads"] = ingest_lead_board(domain)
+            run_eol_check(domain)
+
     if recon_only:
         return result
 
     check_cicd_results(domain)
+
+    if graphql:
+        run_graphql_audit(domain)
+
     result["scan"] = run_vuln_scan(domain, quick=quick)
 
     # CVE hunting (only when explicitly requested)
@@ -469,6 +708,8 @@ Examples:
   python3 hunt.py --quick --target example.com  Quick scan
   python3 hunt.py --status                   Show progress
   python3 hunt.py --setup-wordlists          Download wordlists
+  python3 hunt.py --graphql --target example.com  Audit GraphQL endpoints from recon
+  python3 hunt.py --cve-hunt --target example.com Focused nuclei CVE sweep
         """
     )
     parser.add_argument("--target", type=str, help="Target: FQDN, IP, or CIDR (e.g. example.com, 192.168.1.1, 10.0.0.0/24)")
@@ -478,8 +719,12 @@ Examples:
     parser.add_argument("--report-only", action="store_true", help="Only generate reports")
     parser.add_argument("--status", action="store_true", help="Show pipeline status")
     parser.add_argument("--setup-wordlists", action="store_true", help="Download wordlists")
-    parser.add_argument("--cve-hunt", action="store_true", help="Run CVE hunter")
+    parser.add_argument("--cve-hunt", action="store_true", help="Run focused nuclei CVE sweep (cve_scan.sh)")
     parser.add_argument("--zero-day", action="store_true", help="Run zero-day fuzzer")
+    parser.add_argument("--graphql", action="store_true",
+                        help="Run graphql_audit.sh on GraphQL URLs found in recon")
+    parser.add_argument("--skip-leads", action="store_true",
+                        help="Skip lead_board ingest + EOL check after recon")
     parser.add_argument("--select-targets", action="store_true", help="Only run target selection")
     parser.add_argument("--top", type=int, default=10, help="Number of targets to select")
     parser.add_argument("--no-banner", action="store_true",
@@ -504,7 +749,8 @@ Examples:
             target=args.target or "(target selector)",
             steps=[
                 ("Recon",    "subdomain enum, URL crawl, tech fingerprint, CVE sweep"),
-                ("Hunt",     "XSS · SQLi · SSRF · IDOR · auth bypass · LLM probes"),
+                ("Leads",    "lead_board ingest → route signals to hunt-* skills"),
+                ("Hunt",     "XSS · SQLi · SSRF · IDOR · auth bypass · GraphQL · LLM"),
                 ("Validate", "7-Question Gate · 4-gate checklist · kill weak findings"),
                 ("Report",   "H1/Bugcrowd/Intigriti template · CVSS 3.1 · PoC + repro"),
             ],
@@ -538,8 +784,8 @@ Examples:
     installed, missing = check_tools()
     log("info", f"Tools: {len(installed)}/{len(installed)+len(missing)} installed")
     if missing:
-        log("warn", f"Missing tools: {', '.join(missing)}")
-        log("warn", "Run: bash tools/install_tools.sh")
+        log("warn", f"Missing tools: {', '.join(missing[:12])}{'…' if len(missing) > 12 else ''}")
+        log("warn", "Run: bash tools/external_arsenal.sh  (or --install-hint <tool>)")
 
     # Target selection only
     if args.select_targets:
@@ -571,7 +817,9 @@ Examples:
             recon_only=args.recon_only,
             scan_only=args.scan_only,
             cve_hunt=args.cve_hunt,
-            zero_day=args.zero_day
+            zero_day=args.zero_day,
+            skip_leads=args.skip_leads,
+            graphql=args.graphql,
         )
         print_dashboard([result])
         return
@@ -603,7 +851,12 @@ Examples:
         log("info", f"  Domain: {primary_domain}")
         log("info", f"  Program: {target.get('url', 'N/A')}")
 
-        result = hunt_target(primary_domain, quick=args.quick)
+        result = hunt_target(
+            primary_domain,
+            quick=args.quick,
+            skip_leads=args.skip_leads,
+            graphql=args.graphql,
+        )
         results.append(result)
 
     print_dashboard(results)

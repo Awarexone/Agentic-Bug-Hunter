@@ -4,25 +4,34 @@ from __future__ import annotations
 """
 Brain — Multi-Provider LLM Reasoning Layer for Bug Bounty & VAPT
 Supports: Ollama (local), Claude, OpenAI, Grok, Groq, DeepSeek,
-          Gemini, Kimi (Moonshot), Mistral, Together AI, Cerebras, Perplexity
+          Gemini, Kimi (Moonshot), Mistral, Together AI, Cerebras, Perplexity,
+          OpenRouter
 
 Provider selection (in order of precedence):
   1. BRAIN_PROVIDER env var  (ollama | claude | openai | grok | groq | deepseek |
-                               gemini | kimi | mistral | together | cerebras | perplexity)
+                               gemini | kimi | mistral | together | cerebras |
+                               perplexity | openrouter)
   2. Auto-detect: uses first provider whose API key / server is available
+
+Model selection:
+  BRAIN_MODEL env var forces one model. For Ollama, an unavailable explicit
+  model fails clearly instead of silently falling back to another local model.
 
 API keys (env vars):
   ANTHROPIC_API_KEY   — Claude (claude-opus-4-8, claude-sonnet-4-6, etc.)
   OPENAI_API_KEY      — OpenAI (gpt-4o, o1, etc.)
-  XAI_API_KEY         — Grok (grok-2-latest, grok-3, etc.)
+  XAI_API_KEY         — Grok (grok-4.5, grok-4.3, etc.)
   GROQ_API_KEY        — Groq free tier (llama-3.3-70b-versatile)
-  DEEPSEEK_API_KEY    — DeepSeek (deepseek-chat / deepseek-reasoner)
+  DEEPSEEK_API_KEY    — DeepSeek (deepseek-v4-flash / deepseek-v4-pro)
+  DEEPSEEK_THINKING   — set to 1 to run DeepSeek V4 in thinking mode (off by
+                        default; thinking bills extra reasoning tokens)
   GEMINI_API_KEY      — Google Gemini (gemini-2.0-flash, gemini-2.5-pro, etc.)
   MOONSHOT_API_KEY    — Kimi / Moonshot AI (moonshot-v1-128k, etc.)
   MISTRAL_API_KEY     — Mistral AI (mistral-large-latest, codestral-latest, etc.)
   TOGETHER_API_KEY    — Together AI (Llama, Qwen, etc. in cloud)
   CEREBRAS_API_KEY    — Cerebras (fastest inference — llama3.3-70b)
   PERPLEXITY_API_KEY  — Perplexity (sonar-pro — live web search)
+  OPENROUTER_API_KEY  — OpenRouter (multi-model gateway — anthropic/claude-sonnet-4.6, etc.)
   OLLAMA_HOST         — Ollama base URL (default: http://localhost:11434)
 
 Default model priority (uses first available):
@@ -67,6 +76,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
 
 try:
     import ollama as _ollama_lib
@@ -75,6 +85,75 @@ except ImportError:
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+
+
+if _ollama_lib is None:
+    class _OllamaModel:
+        def __init__(self, model: str):
+            self.model = model
+
+
+    class _OllamaListResponse:
+        def __init__(self, models: list[str]):
+            self.models = [_OllamaModel(model) for model in models]
+
+
+    class _OllamaHTTPClient:
+        """Small Ollama SDK-compatible fallback using only the standard library."""
+
+        def __init__(self, host: str = OLLAMA_HOST):
+            self.host = host.rstrip("/")
+
+        def _request(self, path: str, payload: dict | None = None) -> dict:
+            data = json.dumps(payload).encode() if payload is not None else None
+            request = Request(
+                f"{self.host}{path}",
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST" if payload is not None else "GET",
+            )
+            with urlopen(request, timeout=120) as response:
+                return json.loads(response.read().decode())
+
+        def list(self) -> _OllamaListResponse:
+            result = self._request("/api/tags")
+            names = [
+                item.get("name") or item.get("model")
+                for item in result.get("models", [])
+            ]
+            return _OllamaListResponse([name for name in names if name])
+
+        def chat(self, *, model: str, messages: list[dict],
+                 options: dict | None = None, stream: bool = False):
+            payload = {
+                "model": model,
+                "messages": messages,
+                "options": options or {},
+                "stream": stream,
+            }
+            if not stream:
+                return self._request("/api/chat", payload)
+
+            def _chunks():
+                request = Request(
+                    f"{self.host}/api/chat",
+                    data=json.dumps(payload).encode(),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urlopen(request, timeout=120) as response:
+                    for line in response:
+                        if line.strip():
+                            yield json.loads(line.decode())
+
+            return _chunks()
+
+
+    class _OllamaHTTPModule:
+        Client = _OllamaHTTPClient
+
+
+    _ollama_lib = _OllamaHTTPModule()
 
 # ── Multi-provider LLM client ──────────────────────────────────────────────────
 # Wraps Ollama, Claude, OpenAI, Grok behind a single .chat() interface.
@@ -99,27 +178,45 @@ class LLMClient:
     PROVIDER_PRIORITY = [
         "ollama", "groq", "deepseek", "cerebras",
         "gemini", "kimi", "mistral", "together",
-        "perplexity", "claude", "openai", "grok",
+        "perplexity", "openrouter", "claude", "openai", "grok",
     ]
 
     # Default models per provider
     DEFAULT_MODELS = {
         "claude":      "claude-sonnet-4-6",
         "openai":      "gpt-4o",
-        "grok":        "grok-2-latest",
+        "grok":        "grok-4.5",
         "groq":        "llama-3.3-70b-versatile",
-        "deepseek":    "deepseek-chat",
+        "deepseek":    "deepseek-v4-flash",
         "gemini":      "gemini-2.0-flash",
         "kimi":        "moonshot-v1-128k",
         "mistral":     "mistral-large-latest",
         "together":    "meta-llama/Llama-3.3-70B-Instruct-Turbo",
         "cerebras":    "llama3.3-70b",
         "perplexity":  "sonar-pro",
+        "openrouter":  "anthropic/claude-sonnet-4.6",
         "ollama":      None,  # resolved dynamically
     }
 
-    def __init__(self, provider: str | None = None):
+# DeepSeek retired deepseek-chat / deepseek-reasoner on 2026-07-24; both now
+    # 404. Map old names onto the V4 model that replaced them so saved configs
+    # and `--model deepseek-chat` keep working. Value: (new_model, thinking).
+    DEEPSEEK_LEGACY_ALIASES = {
+        "deepseek-chat":     ("deepseek-v4-flash", False),
+        "deepseek-reasoner": ("deepseek-v4-flash", True),
+    }
+
+    # xAI retired grok-2 / grok-3; grok-2-latest returns HTTP 400.
+    GROK_LEGACY_ALIASES = {
+        "grok-2-latest": "grok-4.5",
+        "grok-2":        "grok-4.5",
+        "grok-3":        "grok-4.3",
+        "grok-3-mini":   "grok-4.3",
+    }
+
+    def __init__(self, provider: str | None = None, model: str | None = None):
         self.provider    = (provider or os.environ.get("BRAIN_PROVIDER", "")).lower()
+        self.model       = model or os.environ.get("BRAIN_MODEL") or None
         self._ollama     = None
         self._http       = None   # requests session for OpenAI-compatible APIs
         self.available   = False
@@ -143,6 +240,7 @@ class LLMClient:
         "together":    "TOGETHER_API_KEY",
         "cerebras":    "CEREBRAS_API_KEY",
         "perplexity":  "PERPLEXITY_API_KEY",
+        "openrouter":  "OPENROUTER_API_KEY",
     }
 
     def _auto_detect(self) -> str:
@@ -157,8 +255,11 @@ class LLMClient:
                 self._init_provider(p)
                 if self.available:
                     return p
-            except Exception:
-                pass
+            except Exception as e:
+                print(
+                    f"{YELLOW}[Brain] provider {p!r} init failed: {e}{NC}",
+                    file=sys.stderr,
+                )
         return "ollama"
 
     def _init_provider(self, provider: str) -> None:
@@ -171,8 +272,12 @@ class LLMClient:
                 self._ollama.list()
                 self.available   = True
                 self.description = f"Ollama @ {OLLAMA_HOST}"
-            except Exception:
-                pass
+            except Exception as e:
+                print(
+                    f"{YELLOW}[Brain] Ollama connection failed "
+                    f"({OLLAMA_HOST}): {e}{NC}",
+                    file=sys.stderr,
+                )
 
         elif provider == "claude":
             key = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -239,7 +344,7 @@ class LLMClient:
                                        "Content-Type": "application/json"})
             self._api_base   = "https://api.deepseek.com/v1"
             self.available   = True
-            self.description = "DeepSeek API (deepseek-chat / deepseek-reasoner)"
+            self.description = "DeepSeek API (deepseek-v4-flash / deepseek-v4-pro)"
 
         elif provider == "gemini":
             key = os.environ.get("GEMINI_API_KEY", "")
@@ -313,11 +418,29 @@ class LLMClient:
             self.available   = True
             self.description = "Perplexity AI (sonar-pro — live web search)"
 
+        elif provider == "openrouter":
+            key = os.environ.get("OPENROUTER_API_KEY", "")
+            if not key:
+                return
+            import requests
+            self._http = requests.Session()
+            # HTTP-Referer + X-Title are optional OpenRouter attribution headers
+            self._http.headers.update({
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://github.com/shuvonsec/claude-bug-bounty",
+                "X-Title": "BugHunter",
+            })
+            self._api_base   = "https://openrouter.ai/api/v1"
+            self.available   = True
+            self.description = "OpenRouter (multi-model gateway)"
+
     def chat(self, model: str | None, system: str, user: str,
              max_tokens: int = 4000, temperature: float = 0.1) -> str:
         """Send a chat request; return the assistant reply as a string."""
         if not self.available:
             return ""
+        model = model or self.model
         try:
             if self.provider == "ollama":
                 return self._chat_ollama(model, system, user, max_tokens, temperature)
@@ -326,14 +449,23 @@ class LLMClient:
             elif self.provider in (
                 "openai", "grok", "groq", "deepseek",
                 "gemini", "kimi", "mistral", "together", "cerebras", "perplexity",
+                "openrouter",
             ):
                 return self._chat_openai_compat(model, system, user, max_tokens, temperature)
         except Exception as e:
-            print(f"{YELLOW}[Brain/{self.provider}] chat error: {e}{NC}", flush=True)
+            print(
+                f"{YELLOW}[Brain/{self.provider}] chat error "
+                f"({type(e).__name__}): {e}{NC}",
+                file=sys.stderr,
+                flush=True,
+            )
             return ""
         return ""
 
     def _chat_ollama(self, model, system, user, max_tokens, temperature) -> str:
+        if not model:
+            available = self.list_models()
+            model = available[0] if available else "qwen2.5:14b"
         resp = self._ollama.chat(
             model=model,
             messages=[{"role": "system", "content": system},
@@ -362,13 +494,33 @@ class LLMClient:
         r.raise_for_status()
         return r.json()["content"][0]["text"].strip()
 
+    def _deepseek_model_and_thinking(self, model: str) -> tuple[str, dict]:
+        """Resolve a DeepSeek model name and pin its thinking mode explicitly.
+
+        The V4 models default to thinking ON, which bills extra reasoning
+        tokens. The retired deepseek-chat did not, so stay non-thinking unless
+        asked — set DEEPSEEK_THINKING=1 for reasoning-mode answers.
+        """
+        thinking = False
+        alias    = self.DEEPSEEK_LEGACY_ALIASES.get(model)
+        if alias:
+            model, thinking = alias
+        env = os.environ.get("DEEPSEEK_THINKING")
+        if env is not None:
+            thinking = env.strip().lower() in ("1", "true", "yes", "on", "enabled")
+        return model, {"type": "enabled" if thinking else "disabled"}
+
     def _chat_openai_compat(self, model, system, user, max_tokens, temperature) -> str:
         import json as _json
         base = self._api_base
         m    = model or self.DEFAULT_MODELS[self.provider]
+        if self.provider == "grok":
+            m = self.GROK_LEGACY_ALIASES.get(m, m)
         body = {"model": m, "max_tokens": max_tokens, "temperature": temperature,
                 "messages": [{"role": "system", "content": system},
                              {"role": "user",   "content": user}]}
+        if self.provider == "deepseek":
+            body["model"], body["thinking"] = self._deepseek_model_and_thinking(m)
         r = self._http.post(f"{base}/chat/completions",
                             data=_json.dumps(body), timeout=120)
         r.raise_for_status()
@@ -379,18 +531,22 @@ class LLMClient:
         if self.provider == "ollama" and self._ollama:
             try:
                 return [m.model for m in self._ollama.list().models]
-            except Exception:
+            except Exception as e:
+                print(
+                    f"{YELLOW}[Brain] Could not list Ollama models: {e}{NC}",
+                    file=sys.stderr,
+                )
                 return []
         elif self.provider == "claude":
             return ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"]
         elif self.provider == "openai":
             return ["gpt-4o", "gpt-4o-mini", "o1", "o3-mini"]
         elif self.provider == "grok":
-            return ["grok-2-latest", "grok-3-mini", "grok-3"]
+            return ["grok-4.5", "grok-4.3", "grok-build-0.1"]
         elif self.provider == "groq":
             return ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"]
         elif self.provider == "deepseek":
-            return ["deepseek-chat", "deepseek-reasoner"]
+            return ["deepseek-v4-flash", "deepseek-v4-pro"]
         elif self.provider == "gemini":
             return ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
         elif self.provider == "kimi":
@@ -408,6 +564,16 @@ class LLMClient:
             return ["llama3.3-70b", "llama3.1-8b"]
         elif self.provider == "perplexity":
             return ["sonar-pro", "sonar", "sonar-reasoning-pro", "sonar-reasoning"]
+        elif self.provider == "openrouter":
+            return [
+                "anthropic/claude-sonnet-4.6",
+                "anthropic/claude-opus-4",
+                "openai/gpt-4o",
+                "openai/gpt-4o-mini",
+                "google/gemini-2.0-flash-001",
+                "meta-llama/llama-3.3-70b-instruct",
+                "openrouter/auto",
+            ]
         return []
 
 # Model preference order — first available wins
@@ -504,7 +670,11 @@ def _get_available_models() -> list[str]:
         result = client.list()
         # ollama SDK returns a ListResponse with .models list of Model objects
         return [m.model for m in result.models]
-    except Exception:
+    except Exception as e:
+        print(
+            f"{YELLOW}[Brain] Could not list Ollama models: {e}{NC}",
+            file=sys.stderr,
+        )
         return []
 
 
@@ -522,6 +692,8 @@ def _pick_model(preferred: str = None) -> str | None:
         matches = [m for m in available if m.startswith(preferred)]
         if matches:
             return matches[0]
+        # An explicit request must never silently switch to another model.
+        return None
 
     for candidate in MODEL_PRIORITY:
         if candidate in available:
@@ -555,7 +727,8 @@ class Brain:
     """
 
     def __init__(self, model: str = None, provider: str | None = None):
-        self._llm = LLMClient(provider or os.environ.get("BRAIN_PROVIDER"))
+        model = model or os.environ.get("BRAIN_MODEL") or None
+        self._llm = LLMClient(provider or os.environ.get("BRAIN_PROVIDER"), model=model)
 
         if not self._llm.available:
             print(f"{YELLOW}[!] No LLM provider available. Set BRAIN_PROVIDER and API key, or start Ollama.{NC}")
@@ -568,11 +741,17 @@ class Brain:
         if self._llm.provider == "ollama":
             self.model = _pick_model(model)
             if not self.model:
-                print(f"{YELLOW}[!] No models found in Ollama. Pull one: ollama pull qwen2.5:14b{NC}")
+                if model:
+                    print(f"{YELLOW}[!] Requested Ollama model '{model}' is not installed. "
+                          f"Run: ollama pull {model}{NC}")
+                else:
+                    print(f"{YELLOW}[!] No models found in Ollama. Pull one: ollama pull qwen2.5:14b{NC}")
                 self.enabled = False
                 return
             self.client = self._llm._ollama  # backward compat for code that uses self.client
-            self.triage_model = _pick_triage_model() or self.model
+            # An explicit model choice applies to every task, including triage.
+            # This avoids silently switching to a second local model.
+            self.triage_model = self.model if model else (_pick_triage_model() or self.model)
         else:
             self.model        = model or LLMClient.DEFAULT_MODELS.get(self._llm.provider)
             self.triage_model = self.model

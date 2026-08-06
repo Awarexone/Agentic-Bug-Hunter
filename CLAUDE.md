@@ -106,12 +106,16 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 - `tools/breach_checker.py` — HIBP k-anonymity wordlist enrichment; ranks passwords by breach count (no API key, free)
 - `tools/spray_orchestrator.sh` — password spray with typed-hostname guard + lockout warning + audit log; modes: http-form / oauth / o365 / okta (TREVOR); requires `--with-credential-attack` for TREVOR modes
 - `tools/graphql_audit.sh` — 7-phase GraphQL audit: introspection + schema dump, graphw00f fingerprint, clairvoyance field discovery, batching DoS, alias bomb, gqlmap injection, graphql-cop checklist
+- `tools/lead_board.py` — persistent per-target lead ledger that routes every recon observation to the right `hunt-*` skill and tracks its status so no lead is forgotten (`memory/leads/<target>.jsonl`). `ingest` parses recon output and routes 30+ signal types (IDOR/SSRF/GraphQL/OAuth/SAML/LLM/source-leak/tech-stack/nuclei) to skills; `show` lists untouched-first and flags stale high-priority leads; `next` returns the single top lead; `touch` marks a lead investigating/killed/reported (re-ingest preserves status). See **Critical Rule 6**.
+- `tools/eol_check.py` — EOL / lifecycle intel from endoflife.date (auto-run by `hunt.py` after recon)
+- `tools/waf_encoder.py` · `waf_response_analyzer.py` · `multipart_mutator.py` — WAF bypass + soft-block scoring + upload mutation
 - `tools/cors_scanner.py` — CORS misconfig scanner (origin-reflection / null / credentialed / suffix-prefix regex / scheme-downgrade); pure classifier, no deps
 - `tools/crlf_scanner.py` — CRLF / response-splitting + host-header injection with Set-Cookie canary detection (encoded + UTF-8 bypass variants)
 - `tools/nosqli_scanner.py` — NoSQL injection (operator auth-bypass, bracket-syntax, $where time-based blind) with differential + timing classifier
 - `tools/jwt_scanner.py` — offline JWT toolkit: alg:none forgery, RS256→HS256 confusion, HS256 secret crack, static claim analysis (pure stdlib)
 - `tools/oob_listener.py` — out-of-band orchestrator wrapping interactsh-client; payloads + correlation for blind SSRF/XXE/SQLi/RCE/Log4Shell
 - `tools/llm_redteam.py` — LLM red-team corpus runner (prompt-injection/jailbreak/system-prompt-leak/exfil/indirect/guardrail-bypass) with canary detection
+- Full catalogue: **`tools/README.md`** (~50 tools). `hunt.py` auto-ingests leads after recon (`--graphql` / `--cve-hunt` / `--skip-leads` flags).
 
 ### External tool references
 
@@ -154,3 +158,4 @@ chmod +x install.sh && ./install.sh
 3. Run 7-Question Gate BEFORE writing any report
 4. KILL weak findings fast — N/A hurts your validity ratio
 5. 5-minute rule — nothing after 5 min = move on
+6. **LEAD BOARD — never lose a lead.** After recon, run `lead_board.py ingest <target>` + `show`, and route each finding to its `hunt-*` skill in plain language ("GraphQL endpoint → hunt-graphql"). When starting/killing/reporting a lead, `touch` its status. The hunter focuses on one lead at a time; the board remembers the rest so none is forgotten. Surface stale high-priority leads unprompted.

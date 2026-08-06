@@ -50,7 +50,11 @@ class ScopeChecker:
 
         try:
             parsed = urlparse(normalized)
-        except Exception:
+        except ValueError as e:
+            print(
+                f"WARNING: scope checker could not parse URL {url!r}: {e}",
+                file=sys.stderr,
+            )
             return False
 
         hostname = parsed.hostname

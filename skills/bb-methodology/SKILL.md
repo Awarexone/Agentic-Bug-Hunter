@@ -197,6 +197,16 @@ Google Dorks -> JS file download -> Hidden param discovery -> API mapping
 
 **Command**: `/recon target.com`
 
+**After every recon (mandatory):**
+```bash
+python3 tools/lead_board.py ingest target.com
+python3 tools/lead_board.py show target.com
+python3 tools/lead_board.py next target.com
+# Route in plain language: "GraphQL endpoint → skills/graphql-audit"
+# touch status when you start / kill / report a lead
+```
+(`hunt.py` runs ingest + EOL automatically unless `--skip-leads`.)
+
 ### Phase 2: MAPPING & ANALYSIS
 
 **Goal**: Understand the app like its developer does.
@@ -359,22 +369,30 @@ Every 20 minutes ask yourself: **"Am I making progress?"**
 | Recon: JS | `jsluice` + `mantra` + `trufflehog --only-verified` | Extract URLs/secrets -> find API keys -> verify keys actually work |
 | Recon: Ports | `naabu` (wide) -> `rustscan` (deep) | Fast top-1000 sweep -> full 65535 on interesting targets |
 | Recon: Scan | `nuclei -tags cve` -> `nuclei -tags takeover` | Known CVEs first -> then takeover (act immediately) |
-| Mapping: Params | `arjun` + `paramspider` + ParamMiner | Brute-force hidden params + mine archives + cache headers |
+| **After recon (ALWAYS)** | `python3 tools/lead_board.py ingest <target>` → `show` → `next` | Route every signal to a `hunt-*` skill; never lose a lead. `touch` when you start/kill/report |
+| After recon: EOL | `python3 tools/eol_check.py --tech "php=7.4,nginx=1.18"` | Flag EOL products from `technologies.txt` fingerprints |
+| Mapping: Params | `arjun` + `paramspider` + ParamMiner / `tools/param_discovery.sh` | Brute-force hidden params + mine archives + cache headers |
+| Mapping: GraphQL | `bash tools/graphql_audit.sh <url>` | Introspection → fingerprint → batching → IDOR → injection |
+| Mapping: CI/CD | `bash tools/cicd_scanner.sh owner/repo` | Workflow injection / secret exfil / runner poisoning |
 | Mapping: JS code | Download -> `jsluice` -> VS Code/Cursor grep | Extract -> static analysis -> AI-assisted taint analysis |
 | Mapping: Dorks | Manual Google Dorks | Custom per-target queries find what automation misses |
 | Discovery: Fuzz | `ffuf -ac` + `cewl` custom wordlist | Auto-calibrate filtering + target-specific words beat generic lists |
 | Discovery: XSS | `kxss` -> `dalfox` | Filter (which params reflect?) -> scan (only reflective params) |
 | Discovery: SQLi | `ghauri` | Modern blind SQLi on ID-like parameters |
 | Discovery: SSRF | `interactsh-client` | Self-hosted OOB listener for blind SSRF/XXE/RCE |
-| Discovery: WAF | `wafw00f` -> `whatwaf` | Identify WAF vendor -> test bypass techniques |
-| Exploit: 403 | `byp4xx` or `nomore403` | 20+ bypass techniques automated |
-| Exploit: Takeover | `subzy` | Checks CNAME against 70+ vulnerable services |
-| Exploit: Cloud | `s3scanner` + `aws` CLI | Scan bucket permissions -> extract metadata credentials |
-| Exploit: Secrets | `trufflehog --only-verified` | Only verified working keys (no false positives) |
+| Discovery: WAF | `wafw00f` → `tools/bypass_403.sh` → `tools/waf_encoder.py` → `waf_response_analyzer.py` | Fingerprint → soft-block aware bypass → encoded variants → score response |
+| Exploit: 403 | `tools/bypass_403.sh` / `byp4xx` | Soft-block (200+block body) aware; verdict: bypassed/needs_review/blocked |
+| Exploit: Upload | `tools/multipart_mutator.py --file shell --field f` | Parser-confusion multipart variants |
+| Exploit: Takeover | `tools/takeover_scanner.sh` / `subzy` | CNAME against vulnerable services |
+| Exploit: Cloud | `tools/cloud_recon.sh` + `aws` CLI | Scan bucket permissions -> extract metadata credentials |
+| Exploit: Secrets | `tools/secrets_hunter.sh` / `trufflehog --only-verified` | Only verified working keys (no false positives) |
+| Orchestrate | `python3 tools/hunt.py --target T` | Recon → lead ingest → EOL → scan (add `--graphql` / `--cve-hunt` as needed) |
 
 ### Session End Checklist
 
+- [ ] `lead_board.py show <target>` — any high-priority leads still `new` / stale?
 - [ ] Save all Burp/Caido project files
 - [ ] Record any "weird but not yet exploitable" behaviors (future gadgets)
 - [ ] Update notes with failed attempts (don't re-test with same techniques)
 - [ ] Log findings with `/remember`
+- [ ] `touch` every lead you killed or reported

@@ -5,7 +5,7 @@
 # Usage: ./recon_engine.sh <target-domain> [--quick]
 # =============================================================================
 
-set -uo pipefail
+set -o pipefail
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -19,6 +19,7 @@ log_warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
 log_info()  { echo -e "${CYAN}[*]${NC} $1"; }
 log_step()  { echo -e "    ${CYAN}[>]${NC} $1"; }
 log_done()  { echo -e "    ${GREEN}[✓]${NC} $1"; }
+log_vuln()  { echo -e "    ${RED}[VULN]${NC} $1"; }
 
 TARGET="${1:?Usage: $0 <target> [--quick]  (target = FQDN, IP, CIDR, or path to a file of domains/hosts)}"
 QUICK_MODE="${2:-}"

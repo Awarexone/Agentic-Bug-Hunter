@@ -172,8 +172,11 @@ class LLMClient:
                 self._init_provider(p)
                 if self.available:
                     return p
-            except Exception:
-                pass
+            except Exception as e:
+                print(
+                    f"{YELLOW}[Brain] provider {p!r} init failed: {e}{NC}",
+                    file=sys.stderr,
+                )
         return "ollama"
 
     def _init_provider(self, provider: str) -> None:
@@ -186,8 +189,12 @@ class LLMClient:
                 self._ollama.list()
                 self.available   = True
                 self.description = f"Ollama @ {OLLAMA_HOST}"
-            except Exception:
-                pass
+            except Exception as e:
+                print(
+                    f"{YELLOW}[Brain] Ollama connection failed "
+                    f"({OLLAMA_HOST}): {e}{NC}",
+                    file=sys.stderr,
+                )
 
         elif provider == "claude":
             key = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -362,7 +369,12 @@ class LLMClient:
             ):
                 return self._chat_openai_compat(model, system, user, max_tokens, temperature)
         except Exception as e:
-            print(f"{YELLOW}[Brain/{self.provider}] chat error: {e}{NC}", flush=True)
+            print(
+                f"{YELLOW}[Brain/{self.provider}] chat error "
+                f"({type(e).__name__}): {e}{NC}",
+                file=sys.stderr,
+                flush=True,
+            )
             return ""
         return ""
 
@@ -433,7 +445,11 @@ class LLMClient:
         if self.provider == "ollama" and self._ollama:
             try:
                 return [m.model for m in self._ollama.list().models]
-            except Exception:
+            except Exception as e:
+                print(
+                    f"{YELLOW}[Brain] Could not list Ollama models: {e}{NC}",
+                    file=sys.stderr,
+                )
                 return []
         elif self.provider == "claude":
             return ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"]
@@ -568,7 +584,11 @@ def _get_available_models() -> list[str]:
         result = client.list()
         # ollama SDK returns a ListResponse with .models list of Model objects
         return [m.model for m in result.models]
-    except Exception:
+    except Exception as e:
+        print(
+            f"{YELLOW}[Brain] Could not list Ollama models: {e}{NC}",
+            file=sys.stderr,
+        )
         return []
 
 

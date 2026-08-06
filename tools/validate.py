@@ -131,6 +131,18 @@ def severity_from_score(score: float) -> str:
     return "CRITICAL"
 
 
+# ─── GraphQL string escaping ──────────────────────────────────────────────────
+
+def _escape_graphql_string(s: str) -> str:
+    """Escape a value for safe interpolation inside a GraphQL double-quoted string."""
+    return (s
+            .replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t"))
+
+
 # ─── HackerOne dup check ──────────────────────────────────────────────────────
 
 def check_h1_dups(program_handle: str, vuln_keyword: str) -> list[dict]:
@@ -144,8 +156,8 @@ def check_h1_dups(program_handle: str, vuln_keyword: str) -> list[dict]:
             first: 10,
             order_by: {{ field: popular, direction: DESC }},
             where: {{
-              team: {{ handle: {{ _eq: "{program_handle}" }} }},
-              report: {{ title: {{ _icontains: "{vuln_keyword}" }} }}
+              team: {{ handle: {{ _eq: "{_escape_graphql_string(program_handle)}" }} }},
+              report: {{ title: {{ _icontains: "{_escape_graphql_string(vuln_keyword)}" }} }}
             }}
           ) {{
             nodes {{
@@ -177,7 +189,11 @@ def check_h1_dups(program_handle: str, vuln_keyword: str) -> list[dict]:
             if r:
                 results.append(r)
         return results
-    except Exception:
+    except Exception as exc:
+        print(
+            f"  {YELLOW}HackerOne duplicate check failed: {exc}{RESET}",
+            file=sys.stderr,
+        )
         return []
 
 
@@ -220,8 +236,17 @@ def load_json_file(path: str) -> dict:
             return json.load(fh)
     except FileNotFoundError:
         return {}
-    except Exception as exc:
-        print(f"  {YELLOW}Could not read JSON file {path}: {exc}{RESET}")
+    except json.JSONDecodeError as exc:
+        print(
+            f"  {YELLOW}Malformed JSON in {path}: {exc}{RESET}",
+            file=sys.stderr,
+        )
+        return {}
+    except OSError as exc:
+        print(
+            f"  {YELLOW}Could not read file {path}: {exc}{RESET}",
+            file=sys.stderr,
+        )
         return {}
 
 
@@ -333,7 +358,7 @@ def gate2_in_scope(program_handle: str) -> tuple[bool, dict]:
         print(f"\n  {DIM}Checking HackerOne scope for '{program_handle}'...{RESET}")
         try:
             query = {
-                "query": f'{{ team(handle: "{program_handle}") {{ policy_scopes(archived: false) {{ edges {{ node {{ asset_type asset_identifier eligible_for_bounty }} }} }} }} }}'
+                "query": f'{{ team(handle: "{_escape_graphql_string(program_handle)}") {{ policy_scopes(archived: false) {{ edges {{ node {{ asset_type asset_identifier eligible_for_bounty }} }} }} }} }}'
             }
             req = urllib.request.Request(
                 "https://hackerone.com/graphql",
@@ -349,8 +374,11 @@ def gate2_in_scope(program_handle: str) -> tuple[bool, dict]:
                     node = edge.get("node", {})
                     bounty = " (eligible)" if node.get("eligible_for_bounty") else ""
                     print(f"    • [{node.get('asset_type','?')}] {node.get('asset_identifier','?')}{bounty}")
-        except Exception:
-            print(f"  {YELLOW}Could not fetch scope (network error){RESET}")
+        except Exception as exc:
+            print(
+                f"  {YELLOW}Could not fetch scope: {type(exc).__name__}: {exc}{RESET}",
+                file=sys.stderr,
+            )
 
     passed = asset_in_scope and not_excluded and version_ok
     notes: dict = {

@@ -1,0 +1,159 @@
+{
+  "graphql": {
+    "version_ranges": [
+      {
+        "range": "*",
+        "vulns": [
+          {"class": "idor", "weight": 80, "cve": null, "citation": "GraphQL IDOR — swap internalId in queries/mutations"},
+          {"class": "info-disclosure", "weight": 50, "cve": null, "citation": "Introspection enabled — schema leakage, hidden fields/types"},
+          {"class": "misconfig", "weight": 50, "cve": null, "citation": "Batch/alias abuse — bypasses per-request rate limiting"}
+        ]
+      }
+    ]
+  },
+  "nextjs": {
+    "version_ranges": [
+      {
+        "range": "*",
+        "vulns": [
+          {"class": "ssrf", "weight": 50, "cve": null, "citation": "SSRF in getServerSideProps — user-controlled fetch URL"},
+          {"class": "cors", "weight": 50, "cve": null, "citation": "Server Actions CSRF — missing token check on server actions"}
+        ]
+      },
+      {
+        "range": ">=11.1.4,<13.5.9",
+        "vulns": [
+          {"class": "auth-bypass", "weight": 90, "cve": "CVE-2025-29927", "citation": "Next.js middleware authorization bypass via x-middleware-subrequest header"}
+        ]
+      },
+      {
+        "range": ">=14.0.0,<14.2.25",
+        "vulns": [
+          {"class": "auth-bypass", "weight": 90, "cve": "CVE-2025-29927", "citation": "Next.js middleware authorization bypass via x-middleware-subrequest header"}
+        ]
+      },
+      {
+        "range": ">=15.0.0,<15.2.3",
+        "vulns": [
+          {"class": "auth-bypass", "weight": 90, "cve": "CVE-2025-29927", "citation": "Next.js middleware authorization bypass via x-middleware-subrequest header"}
+        ]
+      }
+    ]
+  },
+  "solidity": {
+    "version_ranges": [
+      {
+        "range": "*",
+        "vulns": [
+          {"class": "reentrancy", "weight": 80, "cve": null, "citation": "Reentrancy — check all ETH transfer calls"},
+          {"class": "auth-bypass", "weight": 80, "cve": null, "citation": "Access control — onlyOwner missing on privileged functions"},
+          {"class": "race-condition", "weight": 50, "cve": null, "citation": "Front-running — state-dependent transaction ordering"}
+        ]
+      }
+    ]
+  },
+  "jwt": {
+    "version_ranges": [
+      {
+        "range": "*",
+        "vulns": [
+          {"class": "auth-bypass", "weight": 80, "cve": null, "citation": "alg:none attack — remove signature entirely"},
+          {"class": "auth-bypass", "weight": 80, "cve": null, "citation": "Weak secret — brute force with hashcat/jwt-cracker"}
+        ]
+      }
+    ]
+  },
+  "oauth": {
+    "version_ranges": [
+      {
+        "range": "*",
+        "vulns": [
+          {"class": "open-redirect", "weight": 80, "cve": null, "citation": "Open redirect in redirect_uri — steal auth code"},
+          {"class": "cors", "weight": 80, "cve": null, "citation": "CSRF on OAuth flow — missing state parameter check"}
+        ]
+      }
+    ]
+  },
+  "hasura": {
+    "version_ranges": [
+      {
+        "range": "*",
+        "vulns": [
+          {"class": "auth-bypass", "weight": 80, "cve": null, "citation": "JWT claim forgery — x-hasura-role: admin in JWT payload"},
+          {"class": "ssrf", "weight": 50, "cve": null, "citation": "Action handler SSRF — Hasura action webhook URL configurable"}
+        ]
+      }
+    ]
+  },
+  "aws": {
+    "version_ranges": [
+      {
+        "range": "*",
+        "vulns": [
+          {"class": "ssrf", "weight": 80, "cve": null, "citation": "SSRF to IMDSv1 — 169.254.169.254/latest/meta-data/iam/security-credentials"},
+          {"class": "misconfig", "weight": 50, "cve": null, "citation": "S3 bucket misconfiguration — public read/write"}
+        ]
+      }
+    ]
+  },
+  "react": {
+    "version_ranges": [
+      {
+        "range": "*",
+        "vulns": [
+          {"class": "xss", "weight": 50, "cve": null, "citation": "dangerouslySetInnerHTML with user input — DOM XSS"}
+        ]
+      }
+    ]
+  },
+  "django": {
+    "version_ranges": [
+      {
+        "range": "*",
+        "vulns": [
+          {"class": "info-disclosure", "weight": 50, "cve": null, "citation": "DEBUG=True in production leaks stack traces and settings"}
+        ]
+      }
+    ]
+  },
+  "laravel": {
+    "version_ranges": [
+      {
+        "range": "*",
+        "vulns": [
+          {"class": "rce", "weight": 50, "cve": null, "citation": "APP_DEBUG=true exposes .env and Ignition RCE surface on older Laravel/Ignition combos"}
+        ]
+      }
+    ]
+  },
+  "rails": {
+    "version_ranges": [
+      {
+        "range": "*",
+        "vulns": [
+          {"class": "rce", "weight": 50, "cve": null, "citation": "Unsafe deserialization history in Rails/ActiveSupport — check gem versions"}
+        ]
+      }
+    ]
+  },
+  "express": {
+    "version_ranges": [
+      {
+        "range": "*",
+        "vulns": [
+          {"class": "misconfig", "weight": 25, "cve": null, "citation": "Default error handler leaks stack traces when NODE_ENV != production"}
+        ]
+      }
+    ]
+  },
+  "wordpress": {
+    "version_ranges": [
+      {
+        "range": "*",
+        "vulns": [
+          {"class": "misconfig", "weight": 50, "cve": null, "citation": "Core itself is rarely directly vulnerable — risk concentrated in themes/plugins; enumerate via wp-json/wp/v2/plugins or readme.txt version disclosure"}
+        ]
+      }
+    ]
+  }
+}

@@ -566,6 +566,37 @@ def _recalibrated_impact(vuln_class: str, static_prior: float, report_outcomes: 
     }
 
 
+def _matrix_technology_match(vuln_class: str, tech_stack: list[str], tech_attack_matrix: dict) -> float:
+    """Cold-start floor for `technology_match` (priority_score()'s `else`
+    branch below) when no patterns/failed_patterns experience exists yet
+    for this tech_stack+vuln_class pair. Looks up every tag in tech_stack
+    against tech_attack_matrix.json's static weights (tools/fingerprint.py's
+    Phase 3 output, or any caller-supplied equivalent — this function takes
+    a plain dict, no import of fingerprint.py), taking the highest matching
+    weight across ALL of that tag's version_ranges since tech_stack here is
+    a bare list of tag strings with no per-tag version to filter by.
+
+    Same shape as VULN_IMPACT_POTENTIAL/_recalibrated_impact() above: a
+    static prior that only ever replaces the existing hardcoded floor (20),
+    never the real-experience branch above it. A caller that omits
+    tech_attack_matrix (the default) or whose tags/class aren't in it sees
+    the exact same 20 this function always returned before this parameter
+    existed — additive, not a behavior change.
+    """
+    best = 20
+    vuln_class_lower = vuln_class.lower()
+    matrix = tech_attack_matrix or {}
+    for tag in tech_stack or []:
+        entry = matrix.get(tag) or matrix.get(tag.lower())
+        if not entry:
+            continue
+        for vr in entry.get("version_ranges", []):
+            for vuln in vr.get("vulns", []):
+                if vuln.get("class", "").lower() == vuln_class_lower:
+                    best = max(best, vuln.get("weight", 0))
+    return best
+
+
 def priority_score(
     vuln_class: str,
     tech_stack: list[str],
@@ -577,6 +608,7 @@ def priority_score(
     chain_detected: bool = False,
     impact_override: float | None = None,
     report_outcomes: list[dict] | None = None,
+    tech_attack_matrix: dict | None = None,
 ) -> dict:
     """The autopilot decision-engine formula:
 
@@ -592,6 +624,12 @@ def priority_score(
     This is the single source of truth for "which endpoint/vuln-class goes
     first" — both recon-ranker and autopilot call this (via the CLI) instead
     of each re-deriving their own formula.
+
+    tech_attack_matrix (optional, default None): tools/tech_attack_matrix.json
+    already loaded as a dict. Only ever consulted when there's no real
+    patterns/failed_patterns experience for this tech_stack+vuln_class pair
+    yet — see _matrix_technology_match() above. Omitting it reproduces the
+    exact behavior this function had before the parameter existed.
     """
     patterns = patterns or []
     failed_patterns = failed_patterns or []
@@ -620,7 +658,10 @@ def priority_score(
         # No data either way: neutral on success probability, floor on tech
         # match confidence — mirrors recon-ranker's "heuristic-only" convention.
         historical_success = 50
-        technology_match = 20
+        technology_match = (
+            _matrix_technology_match(vuln_class, tech_stack, tech_attack_matrix)
+            if tech_attack_matrix else 20
+        )
 
     matching_chains = [c for c in chains if _tech_overlap(tech_stack, c.get("tech_stack", []))]
     if chain_detected:
@@ -682,6 +723,7 @@ def expected_value_per_hour(
     impact_override: float | None = None,
     report_outcomes: list[dict] | None = None,
     estimated_minutes: float | None = None,
+    tech_attack_matrix: dict | None = None,
 ) -> dict:
     """Expected-value-per-hour: which candidate pays off *fastest*, not just highest.
 
@@ -691,12 +733,16 @@ def expected_value_per_hour(
     the same historical_success_probability heuristic otherwise) and time
     cost. Two P1s with the same score can have very different EV/hr once
     one takes 45 minutes to test and the other takes 15.
+
+    tech_attack_matrix: passed straight through to priority_score() — see
+    its docstring. Default None reproduces prior behavior exactly.
     """
     report_outcomes = report_outcomes or []
     score_result = priority_score(
         vuln_class, tech_stack, target, technique,
         patterns, failed_patterns, chains, chain_detected, impact_override,
         report_outcomes=report_outcomes,
+        tech_attack_matrix=tech_attack_matrix,
     )
 
     outcomes_for_class = [o for o in report_outcomes if o.get("vuln_class") == vuln_class]

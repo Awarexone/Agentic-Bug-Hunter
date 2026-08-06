@@ -137,6 +137,8 @@ This repo is an agent-portable bug bounty plugin for professional hunting across
 - `tools/recon_adapter.py` — Canonical recon output normalizer — reads either recon_engine.sh's nested or a flat directory format
 - `tools/browser_recon.py` — Browser intelligence layer — Playwright-optional source-map recovery + hidden-endpoint discovery for SPA targets
 - `tools/director.py` — Research Director — turns lead-board + browser-intelligence leads into an executable, falsifiable, time-boxed plan via priority_score()/expected_value_per_hour(); writes recon/<target>/hunt-plan.md + a hunt-plan.json sidecar for cross-process replan
+- `tools/fingerprint.py` — Target Intelligence (Phase 3) — consolidates Phase 1 browser/*.json + recon_engine.sh's httpx tech-detect output into recon/<target>/fingerprint.json (framework/version/confidence, infra CDN/WAF, api_style, CVEs from tech_attack_matrix.json); syncs tech_stack into memory_dir/targets/<target>.json for director.py's load_tech_stack()
+- `tools/tech_attack_matrix.json` — Static per-framework/version-range vulnerability weight + CVE table (extends mindmap.py's TECH_CHECKS); read by fingerprint.py and optionally passed to priority_score() as a cold-start technology_match floor
 <!-- GENERATED:tools:END -->
 
 ### Hunt Memory (in `memory/`)

@@ -43,6 +43,8 @@ table during the hunt.
 3. Boolean: `' AND 1=1--` vs `' AND 1=2--` and diff response.
 4. Stacked: `;DROP TABLE` (rarely works but disclosed often as severe even when not).
 5. Use `ghauri` or `sqlmap` with `--level=5 --risk=3` for confirmed time-based.
+6. **Prove it's real & readable (don't stop at error/sleep):** match the DBMS first (`.asp`→MSSQL `WAITFOR`, `.php`→MySQL `SLEEP`, Java/Python→PG `pg_sleep` / Oracle `dbms_pipe`). Then `ORDER BY N` for column count → `UNION SELECT` a displayable col → read ONE value (`@@version`/`version()`/`current_user`, then a sensitive row via `GROUP_CONCAT`/`STRING_AGG`/`LISTAGG`). Reading a sensitive table = valid finding; submit on data, never a 500-only screenshot.
+   - *Escalation (conditional, often out of BBP scope):* only if the DB user is sysadmin/superuser AND host exec is in scope → `xp_cmdshell` / `COPY…FROM PROGRAM` / `INTO OUTFILE`. Note the potential in impact, don't run it.
 
 ### CSRF
 1. Find any state-changing request (POST/PUT/DELETE) without an Authorization header.

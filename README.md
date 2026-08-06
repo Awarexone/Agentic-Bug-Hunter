@@ -1,11 +1,22 @@
 <p align="center">
-  <img src="logo.png" alt="BugHunter" width="220"/>
+  <img src="logo.png" alt="BugHunter" width="160"/>
 </p>
 
 <h1 align="center">BugHunter</h1>
 
 <p align="center">
-  <b>AI-powered bug bounty hunting — recon to report, in your terminal.</b>
+  <b>AI-powered bug bounty hunting — recon to report, in your terminal.</b><br>
+  <a href="#standalone-mode--no-subscription-required">Free Setup</a>
+  ·
+  <a href="#quick-start">Quick Start</a>
+  ·
+  <a href="#commands">Commands</a>
+  ·
+  <a href="#what-it-finds">What It Finds</a>
+  ·
+  <a href="#installation">Install</a>
+  ·
+  <a href="FAQ.md">FAQ</a>
 </p>
 
 <p align="center">
@@ -16,28 +27,8 @@
   <a href="https://github.com/shuvonsec/claude-bug-bounty/stargazers"><img src="https://img.shields.io/github/stars/shuvonsec/claude-bug-bounty?style=flat-square&color=yellow" alt="GitHub Stars"></a>
 </p>
 
-<p align="center">
-  <a href="#standalone-mode--no-subscription-required"><b>Free Setup</b></a>
-  &nbsp;·&nbsp;
-  <a href="#quick-start"><b>Quick Start</b></a>
-  &nbsp;·&nbsp;
-  <a href="#commands"><b>Commands</b></a>
-  &nbsp;·&nbsp;
-  <a href="#what-it-finds"><b>What It Finds</b></a>
-  &nbsp;·&nbsp;
-  <a href="#installation"><b>Install</b></a>
-  &nbsp;·&nbsp;
-  <a href="FAQ.md"><b>FAQ</b></a>
-</p>
-
----
-
-<p align="center">
-  <sub>What you see when you launch <code>bughunter</code></sub>
-</p>
-
-```
-██████╗ ██╗   ██╗ ██████╗ ██╗  ██╗██╗   ██╗███╗   ██╗████████╗███████╗██████╗
+```text
+██████╗ ██╗   ██╗ ██████╗ ██╗  ██╗██╗   ██╗███╗   ██╗████████╗███████╗██████╗ 
 ██╔══██╗██║   ██║██╔════╝ ██║  ██║██║   ██║████╗  ██║╚══██╔══╝██╔════╝██╔══██╗
 ██████╔╝██║   ██║██║  ███╗███████║██║   ██║██╔██╗ ██║   ██║   █████╗  ██████╔╝
 ██╔══██╗██║   ██║██║   ██║██╔══██║██║   ██║██║╚██╗██║   ██║   ██╔══╝  ██╔══██╗
@@ -341,16 +332,6 @@ Nine specialists, each built for one job:
 
 Every tool in the pipeline is gated on whether it's installed — missing tools are skipped, not errors. Auth headers set once carry through httpx · katana · ffuf · nuclei · dalfox automatically.
 
-<p align="center">
-  <a href="https://www.star-history.com/?repos=shuvonsec%2Fclaude-bug-bounty&type=date&legend=top-left">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=shuvonsec/claude-bug-bounty&type=date&theme=dark&legend=top-left" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=shuvonsec/claude-bug-bounty&type=date&legend=top-left" />
-      <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=shuvonsec/claude-bug-bounty&type=date&legend=top-left" width="600" />
-    </picture>
-  </a>
-</p>
-
 ---
 
 ## Project Structure
@@ -514,51 +495,58 @@ git push origin feature/your-contribution
 
 ---
 
+## Star History
+
+<p align="center">
+  <a href="https://www.star-history.com/?repos=shuvonsec%2Fclaude-bug-bounty&type=date&legend=top-left">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=shuvonsec/claude-bug-bounty&type=date&theme=dark&legend=top-left" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=shuvonsec/claude-bug-bounty&type=date&legend=top-left" />
+      <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=shuvonsec/claude-bug-bounty&type=date&legend=top-left" width="560" />
+    </picture>
+  </a>
+</p>
+
+---
+
 ## Thanks
 
 Thanks to everyone who has contributed to BugHunter. Click any avatar to open their GitHub profile.
 
 <p align="center">
-  <a href="https://github.com/shuvonsec"><img src="https://github.com/shuvonsec.png?size=96" width="64" height="64" alt="shuvonsec" title="shuvonsec"/></a>
-  <a href="https://github.com/shuv0n"><img src="https://github.com/shuv0n.png?size=96" width="64" height="64" alt="shuv0n" title="shuv0n"/></a>
-  <a href="https://github.com/letztek"><img src="https://github.com/letztek.png?size=96" width="64" height="64" alt="letztek" title="letztek"/></a>
-  <a href="https://github.com/bertolikimberly"><img src="https://github.com/bertolikimberly.png?size=96" width="64" height="64" alt="bertolikimberly" title="bertolikimberly"/></a>
-  <a href="https://github.com/venkatas"><img src="https://github.com/venkatas.png?size=96" width="64" height="64" alt="venkatas" title="venkatas"/></a>
-  <a href="https://github.com/adityaax"><img src="https://github.com/adityaax.png?size=96" width="64" height="64" alt="adityaax" title="adityaax"/></a>
-  <a href="https://github.com/BeargleIndustries"><img src="https://github.com/BeargleIndustries.png?size=96" width="64" height="64" alt="BeargleIndustries" title="BeargleIndustries"/></a>
-  <a href="https://github.com/ultra-supara"><img src="https://github.com/ultra-supara.png?size=96" width="64" height="64" alt="ultra-supara" title="ultra-supara"/></a>
-  <a href="https://github.com/AurisDSP"><img src="https://github.com/AurisDSP.png?size=96" width="64" height="64" alt="AurisDSP" title="AurisDSP"/></a>
-  <a href="https://github.com/Edneam"><img src="https://github.com/Edneam.png?size=96" width="64" height="64" alt="Edneam" title="Edneam"/></a>
-  <a href="https://github.com/depapp"><img src="https://github.com/depapp.png?size=96" width="64" height="64" alt="depapp" title="depapp"/></a>
-  <a href="https://github.com/Realgagenichols"><img src="https://github.com/Realgagenichols.png?size=96" width="64" height="64" alt="Realgagenichols" title="Realgagenichols"/></a>
-  <a href="https://github.com/thuvh"><img src="https://github.com/thuvh.png?size=96" width="64" height="64" alt="thuvh" title="thuvh"/></a>
-  <a href="https://github.com/onlybugs05"><img src="https://github.com/onlybugs05.png?size=96" width="64" height="64" alt="onlybugs05" title="onlybugs05"/></a>
-  <a href="https://github.com/savioruz"><img src="https://github.com/savioruz.png?size=96" width="64" height="64" alt="savioruz" title="savioruz"/></a>
-  <a href="https://github.com/Paebak"><img src="https://github.com/Paebak.png?size=96" width="64" height="64" alt="Paebak" title="Paebak"/></a>
-  <a href="https://github.com/nurazhardotcom"><img src="https://github.com/nurazhardotcom.png?size=96" width="64" height="64" alt="nurazhardotcom" title="nurazhardotcom"/></a>
-  <a href="https://github.com/SeekAndExploit"><img src="https://github.com/SeekAndExploit.png?size=96" width="64" height="64" alt="SeekAndExploit" title="SeekAndExploit"/></a>
-  <a href="https://github.com/Shawanga"><img src="https://github.com/Shawanga.png?size=96" width="64" height="64" alt="Shawanga" title="Shawanga"/></a>
-  <a href="https://github.com/zeze-zeze"><img src="https://github.com/zeze-zeze.png?size=96" width="64" height="64" alt="zeze-zeze" title="zeze-zeze"/></a>
-  <a href="https://github.com/grave0x"><img src="https://github.com/grave0x.png?size=96" width="64" height="64" alt="grave0x" title="grave0x"/></a>
-  <a href="https://github.com/kevinaimonster"><img src="https://github.com/kevinaimonster.png?size=96" width="64" height="64" alt="kevinaimonster" title="kevinaimonster"/></a>
+  <a href="https://github.com/shuvonsec"><img src="https://github.com/shuvonsec.png?size=96" width="48" height="48" alt="shuvonsec" title="shuvonsec"/></a>&nbsp;
+  <a href="https://github.com/shuv0n"><img src="https://github.com/shuv0n.png?size=96" width="48" height="48" alt="shuv0n" title="shuv0n"/></a>&nbsp;
+  <a href="https://github.com/letztek"><img src="https://github.com/letztek.png?size=96" width="48" height="48" alt="letztek" title="letztek"/></a>&nbsp;
+  <a href="https://github.com/bertolikimberly"><img src="https://github.com/bertolikimberly.png?size=96" width="48" height="48" alt="bertolikimberly" title="bertolikimberly"/></a>&nbsp;
+  <a href="https://github.com/venkatas"><img src="https://github.com/venkatas.png?size=96" width="48" height="48" alt="venkatas" title="venkatas"/></a>&nbsp;
+  <a href="https://github.com/adityaax"><img src="https://github.com/adityaax.png?size=96" width="48" height="48" alt="adityaax" title="adityaax"/></a>&nbsp;
+  <a href="https://github.com/BeargleIndustries"><img src="https://github.com/BeargleIndustries.png?size=96" width="48" height="48" alt="BeargleIndustries" title="BeargleIndustries"/></a>&nbsp;
+  <a href="https://github.com/ultra-supara"><img src="https://github.com/ultra-supara.png?size=96" width="48" height="48" alt="ultra-supara" title="ultra-supara"/></a>&nbsp;
+  <a href="https://github.com/AurisDSP"><img src="https://github.com/AurisDSP.png?size=96" width="48" height="48" alt="AurisDSP" title="AurisDSP"/></a>&nbsp;
+  <a href="https://github.com/Edneam"><img src="https://github.com/Edneam.png?size=96" width="48" height="48" alt="Edneam" title="Edneam"/></a>&nbsp;
+  <a href="https://github.com/depapp"><img src="https://github.com/depapp.png?size=96" width="48" height="48" alt="depapp" title="depapp"/></a>&nbsp;
+  <a href="https://github.com/Realgagenichols"><img src="https://github.com/Realgagenichols.png?size=96" width="48" height="48" alt="Realgagenichols" title="Realgagenichols"/></a>&nbsp;
+  <a href="https://github.com/thuvh"><img src="https://github.com/thuvh.png?size=96" width="48" height="48" alt="thuvh" title="thuvh"/></a>&nbsp;
+  <a href="https://github.com/onlybugs05"><img src="https://github.com/onlybugs05.png?size=96" width="48" height="48" alt="onlybugs05" title="onlybugs05"/></a>&nbsp;
+  <a href="https://github.com/savioruz"><img src="https://github.com/savioruz.png?size=96" width="48" height="48" alt="savioruz" title="savioruz"/></a>&nbsp;
+  <a href="https://github.com/Paebak"><img src="https://github.com/Paebak.png?size=96" width="48" height="48" alt="Paebak" title="Paebak"/></a>&nbsp;
+  <a href="https://github.com/nurazhardotcom"><img src="https://github.com/nurazhardotcom.png?size=96" width="48" height="48" alt="nurazhardotcom" title="nurazhardotcom"/></a>&nbsp;
+  <a href="https://github.com/SeekAndExploit"><img src="https://github.com/SeekAndExploit.png?size=96" width="48" height="48" alt="SeekAndExploit" title="SeekAndExploit"/></a>&nbsp;
+  <a href="https://github.com/Shawanga"><img src="https://github.com/Shawanga.png?size=96" width="48" height="48" alt="Shawanga" title="Shawanga"/></a>&nbsp;
+  <a href="https://github.com/zeze-zeze"><img src="https://github.com/zeze-zeze.png?size=96" width="48" height="48" alt="zeze-zeze" title="zeze-zeze"/></a>&nbsp;
+  <a href="https://github.com/grave0x"><img src="https://github.com/grave0x.png?size=96" width="48" height="48" alt="grave0x" title="grave0x"/></a>&nbsp;
+  <a href="https://github.com/kevinaimonster"><img src="https://github.com/kevinaimonster.png?size=96" width="48" height="48" alt="kevinaimonster" title="kevinaimonster"/></a>
 </p>
 
 ---
 
-<div align="center">
-
-<img src="logo.png" alt="BugHunter" width="72"/>
-
-<br><br>
-
-[GitHub](https://github.com/shuvonsec) · [Twitter](https://x.com/shuvonsec) · [shuvonsec@gmail.com](mailto:shuvonsec@gmail.com)
-
-<br>
-
-**Built by bug hunters, for bug hunters.**
-
-<br>
-
-<sub>MIT License · For authorized security testing only. Always test within an approved bug bounty program scope.</sub>
-
-</div>
+<p align="center">
+  <img src="logo.png" alt="BugHunter" width="48"/><br>
+  <a href="https://github.com/shuvonsec">GitHub</a>
+  ·
+  <a href="https://x.com/shuvonsec">Twitter</a>
+  ·
+  <a href="mailto:shuvonsec@gmail.com">shuvonsec@gmail.com</a><br>
+  <b>Built by bug hunters, for bug hunters.</b><br>
+  <sub>MIT License · For authorized security testing only. Always test within an approved bug bounty program scope.</sub>
+</p>

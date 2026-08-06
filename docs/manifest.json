@@ -58,7 +58,8 @@
     {"name": "autopilot", "path": "agents/autopilot.md", "description": "Autonomous hunt loop (scope→recon→rank→hunt→validate→report), decision-engine-driven priority scoring, experiment-tracked stop/pivot decisions"},
     {"name": "recon-ranker", "path": "agents/recon-ranker.md", "description": "Scored, confidence-rated attack surface ranking from recon output + hypotheses + the intelligence briefing + lead-board chains, plus Expected Value per Hour per candidate"},
     {"name": "token-auditor", "path": "agents/token-auditor.md", "description": "Fast meme coin/token rug pull and security analysis"},
-    {"name": "credential-hunter", "path": "agents/credential-hunter.md", "description": "Orchestrates wordlist-gen + osint-employees + breach-check; HARD STOPS at spray for human go/no-go"}
+    {"name": "credential-hunter", "path": "agents/credential-hunter.md", "description": "Orchestrates wordlist-gen + osint-employees + breach-check; HARD STOPS at spray for human go/no-go"},
+    {"name": "research-director", "path": "agents/research-director.md", "description": "Turns the lead board + browser intelligence into an executable, time-boxed research plan with EV/hour ordering, mandatory falsifiers, dependency-aware scheduling, and an explicit SKIPPED negative-space section"}
   ],
   "tools": [
     {"name": "hunt.py", "path": "tools/hunt.py", "description": "Master hunt orchestrator — chains target selection, recon, scanning, and reporting"},
@@ -108,7 +109,8 @@
     {"name": "credential_store.py", "path": "tools/credential_store.py", "description": "Secure credential store — loads auth credentials from a gitignored .env file, never persisted elsewhere"},
     {"name": "dashboard.py", "path": "tools/dashboard.py", "description": "Live ANSI TUI dashboard for /recon and /hunt phase progress"},
     {"name": "recon_adapter.py", "path": "tools/recon_adapter.py", "description": "Canonical recon output normalizer — reads either recon_engine.sh's nested or a flat directory format"},
-    {"name": "browser_recon.py", "path": "tools/browser_recon.py", "description": "Browser intelligence layer — Playwright-optional source-map recovery + hidden-endpoint discovery for SPA targets"}
+    {"name": "browser_recon.py", "path": "tools/browser_recon.py", "description": "Browser intelligence layer — Playwright-optional source-map recovery + hidden-endpoint discovery for SPA targets"},
+    {"name": "director.py", "path": "tools/director.py", "description": "Research Director — turns lead-board + browser-intelligence leads into an executable, falsifiable, time-boxed plan via priority_score()/expected_value_per_hour(); writes recon/<target>/hunt-plan.md + a hunt-plan.json sidecar for cross-process replan"}
   ],
   "memory": [
     {"name": "pattern_db.py", "path": "memory/pattern_db.py", "description": "Cross-target pattern learning — successful techniques indexed by vuln class + tech stack (JSONL)"},

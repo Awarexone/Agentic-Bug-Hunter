@@ -77,6 +77,7 @@ This repo is an agent-portable bug bounty plugin for professional hunting across
 - `recon-ranker` — Scored, confidence-rated attack surface ranking from recon output + hypotheses + the intelligence briefing + lead-board chains, plus Expected Value per Hour per candidate
 - `token-auditor` — Fast meme coin/token rug pull and security analysis
 - `credential-hunter` — Orchestrates wordlist-gen + osint-employees + breach-check; HARD STOPS at spray for human go/no-go
+- `research-director` — Turns the lead board + browser intelligence into an executable, time-boxed research plan with EV/hour ordering, mandatory falsifiers, dependency-aware scheduling, and an explicit SKIPPED negative-space section
 <!-- GENERATED:agents:END -->
 
 ### Rules (always active)
@@ -135,6 +136,7 @@ This repo is an agent-portable bug bounty plugin for professional hunting across
 - `tools/dashboard.py` — Live ANSI TUI dashboard for /recon and /hunt phase progress
 - `tools/recon_adapter.py` — Canonical recon output normalizer — reads either recon_engine.sh's nested or a flat directory format
 - `tools/browser_recon.py` — Browser intelligence layer — Playwright-optional source-map recovery + hidden-endpoint discovery for SPA targets
+- `tools/director.py` — Research Director — turns lead-board + browser-intelligence leads into an executable, falsifiable, time-boxed plan via priority_score()/expected_value_per_hour(); writes recon/<target>/hunt-plan.md + a hunt-plan.json sidecar for cross-process replan
 <!-- GENERATED:tools:END -->
 
 ### Hunt Memory (in `memory/`)

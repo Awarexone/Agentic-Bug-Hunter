@@ -20,9 +20,11 @@ Model selection:
 API keys (env vars):
   ANTHROPIC_API_KEY   — Claude (claude-opus-4-8, claude-sonnet-4-6, etc.)
   OPENAI_API_KEY      — OpenAI (gpt-4o, o1, etc.)
-  XAI_API_KEY         — Grok (grok-2-latest, grok-3, etc.)
+  XAI_API_KEY         — Grok (grok-4.5, grok-4.3, etc.)
   GROQ_API_KEY        — Groq free tier (llama-3.3-70b-versatile)
-  DEEPSEEK_API_KEY    — DeepSeek (deepseek-chat / deepseek-reasoner)
+  DEEPSEEK_API_KEY    — DeepSeek (deepseek-v4-flash / deepseek-v4-pro)
+  DEEPSEEK_THINKING   — set to 1 to run DeepSeek V4 in thinking mode (off by
+                        default; thinking bills extra reasoning tokens)
   GEMINI_API_KEY      — Google Gemini (gemini-2.0-flash, gemini-2.5-pro, etc.)
   MOONSHOT_API_KEY    — Kimi / Moonshot AI (moonshot-v1-128k, etc.)
   MISTRAL_API_KEY     — Mistral AI (mistral-large-latest, codestral-latest, etc.)
@@ -183,9 +185,9 @@ class LLMClient:
     DEFAULT_MODELS = {
         "claude":      "claude-sonnet-4-6",
         "openai":      "gpt-4o",
-        "grok":        "grok-2-latest",
+        "grok":        "grok-4.5",
         "groq":        "llama-3.3-70b-versatile",
-        "deepseek":    "deepseek-chat",
+        "deepseek":    "deepseek-v4-flash",
         "gemini":      "gemini-2.0-flash",
         "kimi":        "moonshot-v1-128k",
         "mistral":     "mistral-large-latest",
@@ -194,6 +196,22 @@ class LLMClient:
         "perplexity":  "sonar-pro",
         "openrouter":  "anthropic/claude-sonnet-4.6",
         "ollama":      None,  # resolved dynamically
+    }
+
+# DeepSeek retired deepseek-chat / deepseek-reasoner on 2026-07-24; both now
+    # 404. Map old names onto the V4 model that replaced them so saved configs
+    # and `--model deepseek-chat` keep working. Value: (new_model, thinking).
+    DEEPSEEK_LEGACY_ALIASES = {
+        "deepseek-chat":     ("deepseek-v4-flash", False),
+        "deepseek-reasoner": ("deepseek-v4-flash", True),
+    }
+
+    # xAI retired grok-2 / grok-3; grok-2-latest returns HTTP 400.
+    GROK_LEGACY_ALIASES = {
+        "grok-2-latest": "grok-4.5",
+        "grok-2":        "grok-4.5",
+        "grok-3":        "grok-4.3",
+        "grok-3-mini":   "grok-4.3",
     }
 
     def __init__(self, provider: str | None = None, model: str | None = None):
@@ -237,8 +255,11 @@ class LLMClient:
                 self._init_provider(p)
                 if self.available:
                     return p
-            except Exception:
-                pass
+            except Exception as e:
+                print(
+                    f"{YELLOW}[Brain] provider {p!r} init failed: {e}{NC}",
+                    file=sys.stderr,
+                )
         return "ollama"
 
     def _init_provider(self, provider: str) -> None:
@@ -251,8 +272,12 @@ class LLMClient:
                 self._ollama.list()
                 self.available   = True
                 self.description = f"Ollama @ {OLLAMA_HOST}"
-            except Exception:
-                pass
+            except Exception as e:
+                print(
+                    f"{YELLOW}[Brain] Ollama connection failed "
+                    f"({OLLAMA_HOST}): {e}{NC}",
+                    file=sys.stderr,
+                )
 
         elif provider == "claude":
             key = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -319,7 +344,7 @@ class LLMClient:
                                        "Content-Type": "application/json"})
             self._api_base   = "https://api.deepseek.com/v1"
             self.available   = True
-            self.description = "DeepSeek API (deepseek-chat / deepseek-reasoner)"
+            self.description = "DeepSeek API (deepseek-v4-flash / deepseek-v4-pro)"
 
         elif provider == "gemini":
             key = os.environ.get("GEMINI_API_KEY", "")
@@ -428,7 +453,12 @@ class LLMClient:
             ):
                 return self._chat_openai_compat(model, system, user, max_tokens, temperature)
         except Exception as e:
-            print(f"{YELLOW}[Brain/{self.provider}] chat error: {e}{NC}", flush=True)
+            print(
+                f"{YELLOW}[Brain/{self.provider}] chat error "
+                f"({type(e).__name__}): {e}{NC}",
+                file=sys.stderr,
+                flush=True,
+            )
             return ""
         return ""
 
@@ -464,13 +494,33 @@ class LLMClient:
         r.raise_for_status()
         return r.json()["content"][0]["text"].strip()
 
+    def _deepseek_model_and_thinking(self, model: str) -> tuple[str, dict]:
+        """Resolve a DeepSeek model name and pin its thinking mode explicitly.
+
+        The V4 models default to thinking ON, which bills extra reasoning
+        tokens. The retired deepseek-chat did not, so stay non-thinking unless
+        asked — set DEEPSEEK_THINKING=1 for reasoning-mode answers.
+        """
+        thinking = False
+        alias    = self.DEEPSEEK_LEGACY_ALIASES.get(model)
+        if alias:
+            model, thinking = alias
+        env = os.environ.get("DEEPSEEK_THINKING")
+        if env is not None:
+            thinking = env.strip().lower() in ("1", "true", "yes", "on", "enabled")
+        return model, {"type": "enabled" if thinking else "disabled"}
+
     def _chat_openai_compat(self, model, system, user, max_tokens, temperature) -> str:
         import json as _json
         base = self._api_base
         m    = model or self.DEFAULT_MODELS[self.provider]
+        if self.provider == "grok":
+            m = self.GROK_LEGACY_ALIASES.get(m, m)
         body = {"model": m, "max_tokens": max_tokens, "temperature": temperature,
                 "messages": [{"role": "system", "content": system},
                              {"role": "user",   "content": user}]}
+        if self.provider == "deepseek":
+            body["model"], body["thinking"] = self._deepseek_model_and_thinking(m)
         r = self._http.post(f"{base}/chat/completions",
                             data=_json.dumps(body), timeout=120)
         r.raise_for_status()
@@ -481,18 +531,22 @@ class LLMClient:
         if self.provider == "ollama" and self._ollama:
             try:
                 return [m.model for m in self._ollama.list().models]
-            except Exception:
+            except Exception as e:
+                print(
+                    f"{YELLOW}[Brain] Could not list Ollama models: {e}{NC}",
+                    file=sys.stderr,
+                )
                 return []
         elif self.provider == "claude":
             return ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"]
         elif self.provider == "openai":
             return ["gpt-4o", "gpt-4o-mini", "o1", "o3-mini"]
         elif self.provider == "grok":
-            return ["grok-2-latest", "grok-3-mini", "grok-3"]
+            return ["grok-4.5", "grok-4.3", "grok-build-0.1"]
         elif self.provider == "groq":
             return ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"]
         elif self.provider == "deepseek":
-            return ["deepseek-chat", "deepseek-reasoner"]
+            return ["deepseek-v4-flash", "deepseek-v4-pro"]
         elif self.provider == "gemini":
             return ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
         elif self.provider == "kimi":
@@ -616,7 +670,11 @@ def _get_available_models() -> list[str]:
         result = client.list()
         # ollama SDK returns a ListResponse with .models list of Model objects
         return [m.model for m in result.models]
-    except Exception:
+    except Exception as e:
+        print(
+            f"{YELLOW}[Brain] Could not list Ollama models: {e}{NC}",
+            file=sys.stderr,
+        )
         return []
 
 

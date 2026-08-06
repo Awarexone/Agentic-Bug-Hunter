@@ -79,8 +79,16 @@ def load_memory_context(memory_dir: str, target: str) -> dict:
                 context["tech_stack"] = profile.get("tech_stack", [])
                 context["last_hunted"] = profile.get("last_hunted")
                 context["hunt_sessions"] = profile.get("hunt_sessions", 0)
-            except (json.JSONDecodeError, OSError):
-                pass
+            except json.JSONDecodeError as e:
+                print(
+                    f"WARNING: corrupted target profile {target_path}: {e}",
+                    file=sys.stderr,
+                )
+            except OSError as e:
+                print(
+                    f"WARNING: could not read target profile {target_path}: {e}",
+                    file=sys.stderr,
+                )
 
     # Load journal entries for this target to find tested CVEs
     journal_path = os.path.join(memory_dir, "journal.jsonl")
@@ -98,10 +106,17 @@ def load_memory_context(memory_dir: str, target: str) -> dict:
                             for tag in entry.get("tags", []):
                                 if tag.upper().startswith("CVE-"):
                                     context["tested_cves"].append(tag.upper())
-                    except json.JSONDecodeError:
+                    except json.JSONDecodeError as e:
+                        print(
+                            f"WARNING: corrupted journal line in {journal_path}: {e}",
+                            file=sys.stderr,
+                        )
                         continue
-        except OSError:
-            pass
+        except OSError as e:
+            print(
+                f"WARNING: could not read journal {journal_path}: {e}",
+                file=sys.stderr,
+            )
 
     # Load patterns
     patterns_path = os.path.join(memory_dir, "patterns.jsonl")
@@ -115,10 +130,17 @@ def load_memory_context(memory_dir: str, target: str) -> dict:
                     try:
                         pattern = json.loads(line)
                         context["patterns"].append(pattern)
-                    except json.JSONDecodeError:
+                    except json.JSONDecodeError as e:
+                        print(
+                            f"WARNING: corrupted patterns line in {patterns_path}: {e}",
+                            file=sys.stderr,
+                        )
                         continue
-        except OSError:
-            pass
+        except OSError as e:
+            print(
+                f"WARNING: could not read patterns {patterns_path}: {e}",
+                file=sys.stderr,
+            )
 
     return context
 

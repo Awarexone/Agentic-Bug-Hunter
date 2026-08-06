@@ -39,18 +39,27 @@ def rotate(path: Path, keep: int = DEFAULT_KEEP) -> int:
     # Drop the oldest: path.{keep} is removed if present
     oldest = path.with_suffix(path.suffix + f".{keep}")
     if oldest.exists():
-        oldest.unlink()
+        try:
+            oldest.unlink()
+        except OSError as e:
+            raise OSError(f"Failed to remove oldest backup {oldest}: {e}") from e
 
     # Shift path.{i} → path.{i+1} for i from keep-1 down to 1
     for i in range(keep - 1, 0, -1):
         src = path.with_suffix(path.suffix + f".{i}")
         dst = path.with_suffix(path.suffix + f".{i + 1}")
         if src.exists():
-            os.replace(str(src), str(dst))
+            try:
+                os.replace(str(src), str(dst))
+            except OSError as e:
+                raise OSError(f"Failed to shift backup {src} → {dst}: {e}") from e
 
     # Move the live file to .1
     first_backup = path.with_suffix(path.suffix + ".1")
-    os.replace(str(path), str(first_backup))
+    try:
+        os.replace(str(path), str(first_backup))
+    except OSError as e:
+        raise OSError(f"Failed to rotate {path} → {first_backup}: {e}") from e
     return 1
 
 

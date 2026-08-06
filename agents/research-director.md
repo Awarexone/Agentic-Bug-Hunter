@@ -64,6 +64,8 @@ python3 tools/director.py confidence <target> --hours <N> --memory-dir hunt-memo
 
 Passes through `memory.vuln_intelligence.hypothesis_calibration()`. If a target has no resolved hypothesis outcomes yet, this returns `"No calibration data available."` — report that sentence verbatim, don't estimate a number in its place. Once calibration data exists, an attack's `calibrated_confidence` reflects the *actual* hit rate of hypotheses in its confidence bucket, not the stated confidence.
 
+The same discipline applies one level earlier, to `confidence` itself (not just `calibrated_confidence`): it's `None` with `confidence_note: "no informative signal yet — technology_match floor"` whenever `tech_vuln_affinity()` has no matching pattern/failed-pattern data for that vuln_class on this tech stack. `technology_match`'s heuristic floor (20) is a real number `priority_score()` produces either way, but on cold start it's not backed by anything — reporting it as "confidence: 20" would look like real signal when it's actually "we know nothing yet." Don't narrate a `None` confidence as "low confidence" — those are different claims; say there's no signal, not that the signal is weak.
+
 ## Explaining a Ranking
 
 ```bash
@@ -74,22 +76,29 @@ Answers "why THIS lead, specifically" — the evidence that triggered it, which 
 
 ## Replanning
 
-When results come in mid-hunt, don't regenerate a plan from scratch — that silently discards `IN_PROGRESS` work and forgets what already completed. Feed results back in:
+When results come in mid-hunt, don't regenerate a plan from scratch — that silently discards `IN_PROGRESS` work and forgets what already completed. Feed results back in instead.
 
-```python
-from tools.director import Director
-d = Director(memory_dir="hunt-memory")
-plan = d.replan(plan, {
-    "completed": ["atk-xxxxxx"],
-    "in_progress": ["atk-yyyyyy"],
-    "failed": [],
-    "abandoned": [],
-    "revive": [],  # only attack IDs explicitly worth reviving from ABANDONED
-    "notes": {"atk-xxxxxx": "confirmed, filing report"},
-})
+`build-plan --write` now also writes a `recon/<target>/hunt-plan.json` sidecar alongside `hunt-plan.md` — the machine-readable state `replan` needs. `hunt-plan.md` stays what the hunter reads; `hunt-plan.json` is what you (or a later session, in a different process) reload from. Use the CLI when you're a fresh invocation with no in-process `Plan` object to work from — which is the normal case, since you're re-invoked per turn:
+
+```bash
+python3 tools/director.py replan --plan-file recon/<target>/hunt-plan.json --results-file results.json --write
 ```
 
-`replan()` guarantees: `IN_PROGRESS` attacks are never silently reset, `COMPLETED`/`FAILED` never get un-done without new evidence, dependents unlock automatically once every prerequisite attack completes, and the remaining time budget is re-checked (an attack that no longer fits gets moved to `SKIPPED` with `TIME_CONSTRAINT`, not silently dropped).
+where `results.json` is:
+```json
+{
+  "completed": ["atk-xxxxxx"],
+  "in_progress": ["atk-yyyyyy"],
+  "failed": [],
+  "abandoned": [],
+  "revive": [],
+  "notes": {"atk-xxxxxx": "confirmed, filing report"}
+}
+```
+
+`replan` overwrites the same `--plan-file` in place (so the next `replan` call picks up where this one left off) and, with `--write`, regenerates `hunt-plan.md` too. If you're doing this from Python directly instead (e.g. inside a longer script), the equivalent is `director.load_plan(path)` → `Director().replan(plan, results)` → `director.save_plan(plan, path)`.
+
+`replan()` guarantees: `IN_PROGRESS` attacks are never silently reset, `COMPLETED`/`FAILED` never get un-done without new evidence, dependents unlock automatically once every prerequisite attack completes, and the remaining time budget is re-checked (an attack that no longer fits gets moved to `SKIPPED` with `TIME_CONSTRAINT`, not silently dropped). This all holds whether it runs in-process or reloaded from `--plan-file` in a completely separate invocation — that separation is the whole reason the JSON sidecar exists.
 
 ## Checkpoints
 

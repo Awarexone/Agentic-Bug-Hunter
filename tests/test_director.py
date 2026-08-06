@@ -25,8 +25,10 @@ from memory.schemas import (
     make_failed_pattern_entry,
     make_hypothesis_entry,
     make_journal_entry,
+    make_pattern_entry,
     make_report_outcome_entry,
 )
+from memory.pattern_db import PatternDB
 from memory.vuln_intelligence import FailedPatternDB, HypothesisDB, ReportOutcomeDB, priority_score
 
 
@@ -453,6 +455,41 @@ class TestConfidence:
         for a in plan.attacks:
             assert a.calibrated_confidence is None
             assert a.calibration_note == "No calibration data available."
+            # Cold start: no patterns/failed_patterns exist for any vuln_class
+            # on this tech stack, so confidence must be None (not the 20.0
+            # technology_match floor masquerading as a real number).
+            assert a.confidence is None
+            assert a.confidence_note == "no informative signal yet — technology_match floor"
+
+    def test_confidence_is_a_real_number_once_affinity_data_exists(self, isolated, tmp_path):
+        mem_dir = tmp_path / "hunt-memory"
+        rd = _seed_leads(isolated, "t.example", REALISTIC_URLS)
+        leads = lb.load_ledger("t.example")
+        idor_lead = next(l for l in leads if l["skill"] == "hunt-idor")
+
+        # A real pattern for idor+this tech stack -> tech_vuln_affinity()
+        # now has a matching entry with wins+losses > 0.
+        PatternDB(mem_dir / "patterns.jsonl").save(make_pattern_entry(
+            target="other-target.example", vuln_class="idor", technique="numeric_id_swap",
+            tech_stack=["express", "postgresql"], endpoint="/api/v1/orders/{id}",
+        ))
+        (mem_dir / "targets").mkdir(parents=True, exist_ok=True)
+        (mem_dir / "targets" / "t.example.json").write_text(json.dumps({"tech_stack": ["express", "postgresql"]}))
+
+        d = director.Director(memory_dir=str(mem_dir))
+        plan = d.build_plan("t.example", hours=3, recon_dir=rd)
+        idor_attack = next(a for a in plan.attacks if a.lead_id == idor_lead["id"])
+        assert idor_attack.confidence is not None
+        assert isinstance(idor_attack.confidence, float)
+        assert idor_attack.confidence_note == "technology_match component from tech_vuln_affinity() (memory-backed)"
+
+        # A different vuln_class with no matching pattern on this tech
+        # stack must still be None -- proves this is per-vuln_class, not
+        # a global "any memory exists" toggle.
+        ssrf_lead = next(l for l in leads if l["skill"] == "hunt-ssrf")
+        ssrf_attack = next((a for a in plan.attacks if a.lead_id == ssrf_lead["id"]), None)
+        if ssrf_attack is not None:
+            assert ssrf_attack.confidence is None
 
     def test_confidence_passes_through_hypothesis_calibration(self, isolated, tmp_path):
         mem_dir = tmp_path / "hunt-memory"
@@ -531,6 +568,132 @@ class TestRenderAndWrite:
         assert out_path.endswith("hunt-plan.md")
         import os
         assert os.path.exists(out_path)
+
+
+class TestPlanPersistence:
+    """save_plan()/load_plan() — the JSON sidecar that makes replan() usable
+    across separate process invocations, not just an in-process object."""
+
+    def test_save_then_load_round_trips_to_an_equal_plan(self, isolated, tmp_path):
+        rd = _seed_leads(isolated, "t.example", REALISTIC_URLS)
+        d = director.Director(memory_dir=str(tmp_path / "hunt-memory"))
+        plan = d.build_plan("t.example", hours=3, recon_dir=rd)
+        assert plan.attacks, "need at least one attack to prove anything"
+
+        plan_file = str(tmp_path / "hunt-plan.json")
+        director.save_plan(plan, plan_file)
+        reloaded = director.load_plan(plan_file)
+
+        assert reloaded == plan  # dataclass equality: every field, every attack
+
+    def test_round_trip_preserves_none_confidence(self, isolated, tmp_path):
+        rd = _seed_leads(isolated, "t.example", REALISTIC_URLS)
+        d = director.Director(memory_dir=str(tmp_path / "hunt-memory"))
+        plan = d.build_plan("t.example", hours=3, recon_dir=rd)
+        plan_file = str(tmp_path / "hunt-plan.json")
+        director.save_plan(plan, plan_file)
+        reloaded = director.load_plan(plan_file)
+        for a in reloaded.attacks:
+            assert a.confidence is None
+            assert a.confidence_note == "no informative signal yet — technology_match floor"
+
+    def test_load_plan_missing_file_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            director.load_plan(str(tmp_path / "does-not-exist.json"))
+
+    def test_save_plan_creates_parent_directories(self, isolated, tmp_path):
+        rd = _seed_leads(isolated, "t.example", REALISTIC_URLS)
+        d = director.Director(memory_dir=str(tmp_path / "hunt-memory"))
+        plan = d.build_plan("t.example", hours=3, recon_dir=rd)
+        nested = str(tmp_path / "a" / "b" / "c" / "hunt-plan.json")
+        path = director.save_plan(plan, nested)
+        assert path == nested
+        import os
+        assert os.path.exists(nested)
+
+    def test_replan_across_a_fresh_load_preserves_in_progress_and_completed(self, isolated, tmp_path):
+        """The actual scenario this exists for: build a plan, persist it,
+        throw away the in-process Plan object entirely, reload from disk,
+        and replan from there — same guarantees as in-process replan()."""
+        rd = _seed_leads(isolated, "t.example", REALISTIC_URLS)
+        d = director.Director(memory_dir=str(tmp_path / "hunt-memory"))
+        plan = d.build_plan("t.example", hours=3, recon_dir=rd)
+        completed_id = plan.attacks[0].id
+        in_progress_id = plan.attacks[1].id
+        plan_file = str(tmp_path / "hunt-plan.json")
+        director.save_plan(plan, plan_file)
+
+        del plan  # simulate a fresh process: no in-memory Plan survives
+
+        reloaded = director.load_plan(plan_file)
+        d2 = director.Director(memory_dir=str(tmp_path / "hunt-memory"))
+        updated = d2.replan(reloaded, {"completed": [completed_id], "in_progress": [in_progress_id]})
+
+        assert next(a for a in updated.attacks if a.id == completed_id).state == "COMPLETED"
+        assert next(a for a in updated.attacks if a.id == in_progress_id).state == "IN_PROGRESS"
+
+
+class TestPlanFileCLI:
+    """CLI wiring: build-plan --write emits the JSON sidecar; replan
+    --plan-file loads from it instead of requiring an in-process object."""
+
+    def test_build_plan_write_emits_json_sidecar(self, isolated, tmp_path):
+        rd = _seed_leads(isolated, "t.example", REALISTIC_URLS)
+        exit_code = director.main([
+            "build-plan", "t.example", "--hours", "3",
+            "--memory-dir", str(tmp_path / "hunt-memory"),
+            "--recon-dir", rd, "--write",
+        ])
+        assert exit_code == 0
+        import os
+        assert os.path.exists(os.path.join(rd, "hunt-plan.md"))
+        assert os.path.exists(os.path.join(rd, "hunt-plan.json"))
+
+    def test_build_plan_plan_file_override(self, isolated, tmp_path):
+        rd = _seed_leads(isolated, "t.example", REALISTIC_URLS)
+        override = str(tmp_path / "custom-name.json")
+        director.main([
+            "build-plan", "t.example", "--hours", "3",
+            "--memory-dir", str(tmp_path / "hunt-memory"),
+            "--recon-dir", rd, "--write", "--plan-file", override,
+        ])
+        import os
+        assert os.path.exists(override)
+
+    def test_replan_cli_loads_from_plan_file_only(self, isolated, tmp_path, capsys):
+        rd = _seed_leads(isolated, "t.example", REALISTIC_URLS)
+        plan_file = str(tmp_path / "hunt-plan.json")
+        director.main([
+            "build-plan", "t.example", "--hours", "3",
+            "--memory-dir", str(tmp_path / "hunt-memory"),
+            "--recon-dir", rd, "--write", "--plan-file", plan_file,
+        ])
+        capsys.readouterr()  # discard build-plan's stdout
+
+        saved = director.load_plan(plan_file)
+        target_attack_id = saved.attacks[0].id
+        results_file = tmp_path / "results.json"
+        results_file.write_text(json.dumps({"completed": [target_attack_id]}))
+
+        exit_code = director.main(["replan", "--plan-file", plan_file, "--results-file", str(results_file)])
+        assert exit_code == 0
+
+        reloaded = director.load_plan(plan_file)
+        assert next(a for a in reloaded.attacks if a.id == target_attack_id).state == "COMPLETED"
+
+    def test_replan_cli_without_results_file_is_a_noop_pass(self, isolated, tmp_path):
+        rd = _seed_leads(isolated, "t.example", REALISTIC_URLS)
+        plan_file = str(tmp_path / "hunt-plan.json")
+        director.main([
+            "build-plan", "t.example", "--hours", "3",
+            "--memory-dir", str(tmp_path / "hunt-memory"),
+            "--recon-dir", rd, "--write", "--plan-file", plan_file,
+        ])
+        before = director.load_plan(plan_file)
+        exit_code = director.main(["replan", "--plan-file", plan_file])
+        assert exit_code == 0
+        after = director.load_plan(plan_file)
+        assert [a.state for a in before.attacks] == [a.state for a in after.attacks]
 
 
 class TestShouldStopIntegration:

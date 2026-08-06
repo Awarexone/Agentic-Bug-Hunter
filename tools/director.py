@@ -61,6 +61,7 @@ from memory.vuln_intelligence import (  # noqa: E402
     expected_value_per_hour,
     hypothesis_calibration,
     priority_score,
+    tech_vuln_affinity,
 )
 from memory.experiment_memory import should_stop  # noqa: E402
 
@@ -410,7 +411,8 @@ class Attack:
     ev_per_hour: float
     ev_label: str
     state: str = "PENDING"
-    confidence: float = 0.0
+    confidence: float | None = None
+    confidence_note: str = "no informative signal yet — technology_match floor"
     calibrated_confidence: float | None = None
     calibration_note: str = "No calibration data available."
     risk_level: str = "LOW"
@@ -431,6 +433,14 @@ class Attack:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+    @staticmethod
+    def from_dict(data: dict) -> "Attack":
+        # Attack is a flat dataclass (no nested dataclass fields) and
+        # to_dict() is a plain asdict() -- data's keys already match the
+        # field names exactly, so reconstruction is a direct kwargs
+        # unpack, not a bespoke per-field mapping to drift out of sync.
+        return Attack(**data)
 
 
 @dataclass
@@ -454,6 +464,46 @@ class Plan:
             "generated_at": self.generated_at,
         }
 
+    @staticmethod
+    def from_dict(data: dict) -> "Plan":
+        return Plan(
+            target=data["target"],
+            total_budget_hours=data["total_budget_hours"],
+            attacks=[Attack.from_dict(a) for a in data.get("attacks", [])],
+            skipped=data.get("skipped", []),
+            checkpoints=data.get("checkpoints", []),
+            summary=data.get("summary", ""),
+            generated_at=data.get("generated_at", ""),
+        )
+
+
+def save_plan(plan: Plan, path: str) -> str:
+    """JSON sidecar for replan() across process boundaries. hunt-plan.md
+    stays the human-readable artifact for a hunter to read; this is the
+    separate machine-readable one replan() actually needs when build-plan
+    and replan run as two different CLI invocations instead of sharing one
+    in-process Plan object. Plain json.dumps(plan.to_dict()) — the same
+    to_dict() build-plan already prints to stdout, just persisted."""
+    out_path = Path(path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(plan.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return str(out_path)
+
+
+def load_plan(path: str) -> Plan:
+    """Inverse of save_plan() — round-trips to an equal Plan (see
+    tests/test_director.py's TestPlanPersistence for the round-trip
+    proof)."""
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    return Plan.from_dict(data)
+
+
+def default_plan_path(target: str, recon_dir: str | None = None) -> str:
+    """Same recon/<target>/ convention hunt-plan.md already uses — the
+    JSON sidecar sits right next to it as hunt-plan.json."""
+    recon_dir = recon_dir if recon_dir is not None else os.path.join("recon", target)
+    return str(Path(recon_dir) / "hunt-plan.json")
+
 
 DEFAULT_CHECKPOINTS = [
     "After 30 minutes — re-check EV/hour ordering against anything discovered so far",
@@ -471,15 +521,42 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _confidence_for(score_result: dict) -> float:
-    """priority_score()'s own technology_match component (0-100) — the
-    formula's existing "how well does memory back this tech/vuln pairing"
-    number. Not a new formula: recon-ranker.md's prose confidence bonus for
-    matching memory patterns/chains/hypotheses is already folded into
-    priority_score()'s technology_match and attack_chain_probability
-    components, so a separate recomputation here would double-count the
-    same signal instead of adding a new one."""
-    return float(score_result["components"]["technology_match"])
+def _has_affinity_signal(vuln_class: str, tech_stack: list[str], patterns: list[dict],
+                          failed_patterns: list[dict]) -> bool:
+    """Replicates priority_score()'s own internal branch condition for
+    "do we actually have memory data here" — calls the exact same public
+    tech_vuln_affinity() priority_score() calls internally, with the same
+    inputs, and applies the identical `affinity and wins+losses > 0` test.
+    Not a new formula: this inspects an existing function's decision
+    boundary instead of guessing "no data" from priority_score()'s output
+    values, which would be fragile (technology_match's heuristic floor,
+    20, is a value real affinity data could theoretically also produce)."""
+    affinity_list = tech_vuln_affinity(tech_stack, patterns, failed_patterns)
+    affinity = next((a for a in affinity_list if a["vuln_class"] == vuln_class), None)
+    return bool(affinity and (affinity["wins"] + affinity["losses"]) > 0)
+
+
+def _confidence_for(score_result: dict, has_signal: bool) -> tuple[float | None, str]:
+    """priority_score()'s own technology_match component (0-100) as a
+    confidence proxy — but ONLY when tech_vuln_affinity() actually found
+    matching pattern/failed_pattern data for this vuln_class (has_signal).
+    When it didn't, technology_match is just the hard-coded heuristic
+    floor (20) priority_score() falls back to — indistinguishable, at
+    that exact value, from a genuinely weak affinity score. Returning the
+    floor as "confidence" would read as real signal when it's actually
+    "we know nothing yet", so this returns None + an explicit note
+    instead, the same treatment calibrated_confidence already gets on
+    cold start. Not a new formula: recon-ranker.md's prose confidence
+    bonus for matching memory patterns/chains/hypotheses is already
+    folded into priority_score()'s technology_match and
+    attack_chain_probability components, so a separate recomputation
+    here would double-count the same signal instead of adding a new one."""
+    if not has_signal:
+        return None, "no informative signal yet — technology_match floor"
+    return (
+        float(score_result["components"]["technology_match"]),
+        "technology_match component from tech_vuln_affinity() (memory-backed)",
+    )
 
 
 def _calibrate_confidence(confidence: float, calibration: dict) -> tuple[float | None, str]:
@@ -650,9 +727,10 @@ class Director:
             journal_entries=mem["journal"], report_outcomes=mem["report_outcomes"],
             failed_patterns=mem["failed_patterns"],
         )
+        has_signal = _has_affinity_signal(vuln_class, tech_stack, mem["patterns"], mem["failed_patterns"])
         return {
             "lead": lead, "vuln_class": vuln_class, "score_result": score_result,
-            "ev_result": ev_result, "dup_check": dup_check, "skip_detail": "",
+            "ev_result": ev_result, "dup_check": dup_check, "has_signal": has_signal, "skip_detail": "",
         }
 
     def _skip_reason(self, c: dict, budget_minutes_remaining: float) -> str | None:
@@ -685,8 +763,14 @@ class Director:
         score_result = c["score_result"]
         ev_result = c["ev_result"]
         maximum_minutes = float(ev_result["estimated_minutes"])
-        confidence = _confidence_for(score_result)
-        calibrated_confidence, calibration_note = _calibrate_confidence(confidence, calibration)
+        confidence, confidence_note = _confidence_for(score_result, c["has_signal"])
+        if confidence is None:
+            # Nothing to calibrate against if there's no base confidence
+            # to begin with — stay consistent with the "no data" story
+            # instead of calibrating a floor value that isn't real signal.
+            calibrated_confidence, calibration_note = None, "No calibration data available."
+        else:
+            calibrated_confidence, calibration_note = _calibrate_confidence(confidence, calibration)
 
         evidence_lines = [lead.get("evidence", ""), lead.get("signal", "")]
         if lead.get("source") == "browser-intel":
@@ -706,6 +790,7 @@ class Director:
             ev_label=ev_result["ev_label"],
             state="PENDING" if dependencies else "READY",
             confidence=confidence,
+            confidence_note=confidence_note,
             calibrated_confidence=calibrated_confidence,
             calibration_note=calibration_note,
             risk_level=risk_level_for(lead["skill"], lead.get("source", ""), lead.get("evidence", "")),
@@ -958,7 +1043,8 @@ class Director:
             lines.append(f"- Priority: {a.priority} | EV/Hour: {a.ev_per_hour} ({a.ev_label})")
             cal = (f"{a.calibrated_confidence}" if a.calibrated_confidence is not None
                    else "No calibration data available.")
-            lines.append(f"- Confidence: {a.confidence} | Calibrated confidence: {cal}")
+            conf = f"{a.confidence}" if a.confidence is not None else "None"
+            lines.append(f"- Confidence: {conf} ({a.confidence_note}) | Calibrated confidence: {cal}")
             lines.append(f"- Risk level: {a.risk_level} (heuristic tier, not measured)")
             lines.append(f"- Time budget: {a.minimum_time_minutes}-{a.maximum_time_minutes} min "
                          f"(hard cutoff {a.hard_cutoff_minutes} min, estimated execution cost "
@@ -1008,7 +1094,28 @@ def _cmd_build_plan(args: argparse.Namespace) -> int:
     if args.write:
         path = director.write_plan(plan, recon_dir=args.recon_dir)
         print(f"[+] wrote {path}")
+        plan_file = args.plan_file or default_plan_path(args.target, args.recon_dir)
+        json_path = save_plan(plan, plan_file)
+        print(f"[+] wrote {json_path}")
     print(json.dumps(plan.to_dict(), indent=2))
+    return 0
+
+
+def _cmd_replan(args: argparse.Namespace) -> int:
+    plan = load_plan(args.plan_file)
+    results_so_far = {}
+    if args.results_file:
+        with open(args.results_file, encoding="utf-8") as fh:
+            results_so_far = json.load(fh)
+    director = Director()
+    updated = director.replan(plan, results_so_far)
+    save_plan(updated, args.plan_file)
+    print(f"[+] updated {args.plan_file}")
+    if args.write:
+        recon_dir = args.recon_dir if args.recon_dir is not None else os.path.join("recon", updated.target)
+        path = director.write_plan(updated, recon_dir=recon_dir)
+        print(f"[+] wrote {path}")
+    print(json.dumps(updated.to_dict(), indent=2))
     return 0
 
 
@@ -1035,8 +1142,21 @@ def main(argv: list[str] | None = None) -> int:
     p_build.add_argument("--hours", type=float, required=True)
     p_build.add_argument("--memory-dir", default="hunt-memory")
     p_build.add_argument("--recon-dir", default=None)
-    p_build.add_argument("--write", action="store_true", help="Also write recon/<target>/hunt-plan.md")
+    p_build.add_argument("--write", action="store_true",
+                          help="Also write recon/<target>/hunt-plan.md and its hunt-plan.json sidecar")
+    p_build.add_argument("--plan-file", default=None,
+                          help="Override path for the JSON sidecar (default: recon/<target>/hunt-plan.json)")
     p_build.set_defaults(func=_cmd_build_plan)
+
+    p_replan = sub.add_parser("replan", help="Update a saved plan with results-so-far, across process boundaries")
+    p_replan.add_argument("--plan-file", required=True,
+                           help="Path to a plan JSON previously written by build-plan --write")
+    p_replan.add_argument("--results-file", default=None,
+                           help='JSON file: {"completed": [...], "failed": [...], "abandoned": [...], '
+                                '"in_progress": [...], "revive": [...], "notes": {...}}')
+    p_replan.add_argument("--recon-dir", default=None)
+    p_replan.add_argument("--write", action="store_true", help="Also (re)write recon/<target>/hunt-plan.md")
+    p_replan.set_defaults(func=_cmd_replan)
 
     p_explain = sub.add_parser("explain", help="Explain why a lead ranked where it did")
     p_explain.add_argument("target")

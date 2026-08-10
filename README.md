@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>AI-powered bug bounty hunting — recon to report, in your terminal.</b><br>
-        <a href="https://trendshift.io/repositories/23808?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-23808" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/23808" alt="shuvonsec%2Fclaude-bug-bounty | Trendshift" width="250" height="55"/></a>
+      
   <a href="#standalone-mode--no-subscription-required">Free Setup</a>
   ·
   <a href="#quick-start">Quick Start</a>
@@ -29,6 +29,7 @@
 </p>
 
 <p align="center">
+    <a href="https://trendshift.io/repositories/23808?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-23808" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/23808" alt="shuvonsec%2Fclaude-bug-bounty | Trendshift" width="250" height="55"/></a>
   <img src="assets/cli-banner.png" alt="BUGHUNTER — Bug Bounty Automation Pipeline" width="900"/>
 </p>
 

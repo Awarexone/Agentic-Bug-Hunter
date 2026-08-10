@@ -5,8 +5,9 @@
 <h1 align="center">BugHunter</h1>
 
 <p align="center">
-  <b>AI-powered bug bounty hunting — recon to report, in your terminal.</b><br>
-      
+  <b>AI-powered bug bounty hunting — recon to report, in your terminal.</b>
+  
+  <br> 
   <a href="#standalone-mode--no-subscription-required">Free Setup</a>
   ·
   <a href="#quick-start">Quick Start</a>
@@ -18,6 +19,7 @@
   <a href="#installation">Install</a>
   ·
   <a href="FAQ.md">FAQ</a>
+  </br>
 </p>
 
 <p align="center">

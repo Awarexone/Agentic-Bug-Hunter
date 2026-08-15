@@ -5,12 +5,12 @@ from __future__ import annotations
 Brain — Multi-Provider LLM Reasoning Layer for Bug Bounty & VAPT
 Supports: Ollama (local), Claude, OpenAI, Grok, Groq, DeepSeek,
           Gemini, Kimi (Moonshot), Mistral, Together AI, Cerebras, Perplexity,
-          OpenRouter
+          OpenRouter, OrcaRouter
 
 Provider selection (in order of precedence):
   1. BRAIN_PROVIDER env var  (ollama | claude | openai | grok | groq | deepseek |
                                gemini | kimi | mistral | together | cerebras |
-                               perplexity | openrouter)
+                               perplexity | openrouter | orcarouter)
   2. Auto-detect: uses first provider whose API key / server is available
 
 Model selection:
@@ -32,6 +32,7 @@ API keys (env vars):
   CEREBRAS_API_KEY    — Cerebras (fastest inference — llama3.3-70b)
   PERPLEXITY_API_KEY  — Perplexity (sonar-pro — live web search)
   OPENROUTER_API_KEY  — OpenRouter (multi-model gateway — anthropic/claude-sonnet-4.6, etc.)
+  ORCAROUTER_API_KEY  — OrcaRouter (multi-model gateway — openai/gpt-4o, orcarouter/auto, etc.)
   OLLAMA_HOST         — Ollama base URL (default: http://localhost:11434)
 
 Default model priority (uses first available):
@@ -178,7 +179,7 @@ class LLMClient:
     PROVIDER_PRIORITY = [
         "ollama", "groq", "deepseek", "cerebras",
         "gemini", "kimi", "mistral", "together",
-        "perplexity", "openrouter", "claude", "openai", "grok",
+        "perplexity", "orcarouter", "openrouter", "claude", "openai", "grok",
     ]
 
     # Default models per provider
@@ -195,6 +196,7 @@ class LLMClient:
         "cerebras":    "llama3.3-70b",
         "perplexity":  "sonar-pro",
         "openrouter":  "anthropic/claude-sonnet-4.6",
+        "orcarouter":  "openai/gpt-4o",
         "ollama":      None,  # resolved dynamically
     }
 
@@ -241,6 +243,7 @@ class LLMClient:
         "cerebras":    "CEREBRAS_API_KEY",
         "perplexity":  "PERPLEXITY_API_KEY",
         "openrouter":  "OPENROUTER_API_KEY",
+        "orcarouter":  "ORCAROUTER_API_KEY",
     }
 
     def _auto_detect(self) -> str:
@@ -435,6 +438,23 @@ class LLMClient:
             self.available   = True
             self.description = "OpenRouter (multi-model gateway)"
 
+        elif provider == "orcarouter":
+            key = os.environ.get("ORCAROUTER_API_KEY", "")
+            if not key:
+                return
+            import requests
+            self._http = requests.Session()
+            # HTTP-Referer + X-Title are optional OrcaRouter attribution headers
+            self._http.headers.update({
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://github.com/shuvonsec/claude-bug-bounty",
+                "X-Title": "BugHunter",
+            })
+            self._api_base   = "https://api.orcarouter.ai/v1"
+            self.available   = True
+            self.description = "OrcaRouter (multi-model gateway)"
+
     def chat(self, model: str | None, system: str, user: str,
              max_tokens: int = 4000, temperature: float = 0.1) -> str:
         """Send a chat request; return the assistant reply as a string."""
@@ -449,7 +469,7 @@ class LLMClient:
             elif self.provider in (
                 "openai", "grok", "groq", "deepseek",
                 "gemini", "kimi", "mistral", "together", "cerebras", "perplexity",
-                "openrouter",
+                "openrouter", "orcarouter",
             ):
                 return self._chat_openai_compat(model, system, user, max_tokens, temperature)
         except Exception as e:
@@ -573,6 +593,17 @@ class LLMClient:
                 "google/gemini-2.0-flash-001",
                 "meta-llama/llama-3.3-70b-instruct",
                 "openrouter/auto",
+            ]
+        elif self.provider == "orcarouter":
+            return [
+                "orcarouter/auto",
+                "openai/gpt-5.5",
+                "openai/gpt-4o",
+                "anthropic/claude-opus-4.8",
+                "google/gemini-3.5-flash",
+                "grok/grok-4.3",
+                "deepseek/deepseek-v4-pro",
+                "qwen/qwen3.7-max",
             ]
         return []
 

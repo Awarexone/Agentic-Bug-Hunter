@@ -27,6 +27,7 @@
     "claude":      "ANTHROPIC_API_KEY=...  (claude-sonnet-4-6 / opus-4-8)",
     "openai":      "OPENAI_API_KEY=...  (gpt-4o / o1)",
     "grok":        "XAI_API_KEY=...  (grok-4.5 / grok-4.3)",
-    "openrouter":  "OPENROUTER_API_KEY=...  (anthropic/claude-sonnet-4.6 / openai/gpt-4o / …)"
+    "openrouter":  "OPENROUTER_API_KEY=...  (anthropic/claude-sonnet-4.6 / openai/gpt-4o / …)",
+    "orcarouter":  "ORCAROUTER_API_KEY=...  (openai/gpt-4o / orcarouter/auto / …)"
   }
 }

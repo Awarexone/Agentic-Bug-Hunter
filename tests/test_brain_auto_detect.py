@@ -19,7 +19,7 @@ sys.path.insert(0, ROOT)
 def brain_module(monkeypatch):
     for env in (
         "BRAIN_PROVIDER", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY",
-        "OPENROUTER_API_KEY",
+        "OPENROUTER_API_KEY", "ORCAROUTER_API_KEY",
     ):
         monkeypatch.delenv(env, raising=False)
     import brain
@@ -128,3 +128,34 @@ def test_openrouter_init_sets_api_base(brain_module, monkeypatch):
     assert "openrouter" in client.description.lower()
     assert brain_module.LLMClient.DEFAULT_MODELS["openrouter"] == "anthropic/claude-sonnet-4.6"
     assert "anthropic/claude-sonnet-4.6" in brain_module.LLMClient.list_models(client)
+
+
+def test_orcarouter_key_jumps_to_front(brain_module, monkeypatch):
+    monkeypatch.setenv("ORCAROUTER_API_KEY", "sk-orca-test")
+    client = brain_module.LLMClient.__new__(brain_module.LLMClient)
+    client.available = False
+    tracker = _Tracker(available_provider="orcarouter")
+    tracker.bind(client)
+
+    chosen = brain_module.LLMClient._auto_detect(client)
+
+    assert chosen == "orcarouter"
+    assert tracker.calls[0] == "orcarouter"
+
+
+def test_orcarouter_init_sets_api_base(brain_module, monkeypatch):
+    monkeypatch.setenv("ORCAROUTER_API_KEY", "sk-orca-test")
+    client = brain_module.LLMClient.__new__(brain_module.LLMClient)
+    client.available = False
+    client._ollama = None
+    client._http = None
+    client.description = ""
+    client.provider = "orcarouter"
+
+    brain_module.LLMClient._init_provider(client, "orcarouter")
+
+    assert client.available is True
+    assert client._api_base == "https://api.orcarouter.ai/v1"
+    assert "orcarouter" in client.description.lower()
+    assert brain_module.LLMClient.DEFAULT_MODELS["orcarouter"] == "openai/gpt-4o"
+    assert "orcarouter/auto" in brain_module.LLMClient.list_models(client)

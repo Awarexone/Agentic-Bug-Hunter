@@ -28,11 +28,22 @@
   <img src="https://img.shields.io/badge/Standalone-Free-brightgreen.svg?style=flat-square" alt="Free Standalone Mode">
   <a href="https://claude.ai/claude-code"><img src="https://img.shields.io/badge/Claude_Code-Plugin-D97706.svg?style=flat-square" alt="Claude Code Plugin"></a>
   <a href="https://github.com/shuvonsec/claude-bug-bounty/stargazers"><img src="https://img.shields.io/github/stars/shuvonsec/claude-bug-bounty?style=flat-square&color=yellow" alt="GitHub Stars"></a>
+  <a href="https://awarexone.com"><img src="https://img.shields.io/badge/Powered_by-AwareXone.com-7F55FF.svg?style=flat-square" alt="Powered by AwareXone.com"></a>
 </p>
 
 <p align="center">
     <a href="https://trendshift.io/repositories/23808?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-23808" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/23808" alt="shuvonsec%2Fclaude-bug-bounty | Trendshift" width="250" height="55"/></a>
   <img src="assets/cli-banner.png" alt="BUGHUNTER — Bug Bounty Automation Pipeline" width="900"/>
+</p>
+
+<p align="center">
+  <a href="https://awarexone.com">
+    <img src="assets/awarexone-logo.webp" alt="AwareXone" width="88"/>
+  </a>
+  <br/>
+  <b>Powered by <a href="https://awarexone.com">AwareXone.com</a></b>
+  <br/>
+  <sub>Your AI Agent Against Scams &amp; Fraud</sub>
 </p>
 
 ---
@@ -530,6 +541,22 @@ If BugHunter helps your hunts, you can fuel more of them:
 
 ---
 
+## Open for Sponsorship
+
+<p align="center">
+  <a href="https://awarexone.com">
+    <img src="assets/awarexone-logo.webp" alt="AwareXone" width="72"/>
+  </a>
+</p>
+
+BugHunter is open for sponsorship. Sponsoring helps fund new features and keeps the free standalone mode running for everyone.
+
+Sponsors get a logo and link here in the README, plus a credit in release notes.
+
+Want to sponsor? Get in touch at [AwareXone.com](https://awarexone.com) or email [shuvonsec@gmail.com](mailto:shuvonsec@gmail.com).
+
+---
+
 ## Thanks
 
 Thanks to everyone who has contributed to BugHunter. Click any avatar to open their GitHub profile.
@@ -570,4 +597,12 @@ Thanks to everyone who has contributed to BugHunter. Click any avatar to open th
   <a href="mailto:shuvonsec@gmail.com">shuvonsec@gmail.com</a><br>
   <b>Built by bug hunters, for bug hunters.</b><br>
   <sub>MIT License · For authorized security testing only. Always test within an approved bug bounty program scope.</sub>
+</p>
+
+<p align="center">
+  <a href="https://awarexone.com">
+    <img src="assets/awarexone-logo.webp" alt="AwareXone" width="56"/>
+  </a>
+  <br/>
+  <sub>Powered by <a href="https://awarexone.com"><b>AwareXone.com</b></a> · Your AI Agent Against Scams &amp; Fraud</sub>
 </p>

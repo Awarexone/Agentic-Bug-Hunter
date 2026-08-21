@@ -243,6 +243,7 @@ Verify /recon /hunt /validate /report are available.
 | `/jwt-scan <token>` | Offline JWT toolkit — alg:none · RS256→HS256 · secret crack |
 | `/oob <target>` | Out-of-band listener (interactsh) for blind SSRF/XXE/SQLi |
 | `/sast <path>` | Semgrep security packs over fetched JS/source → ranked sinks |
+| `/domxss <url>` | Confirms DOM XSS in headless Chromium — reports only when the payload executes |
 | `/llm-redteam <endpoint>` | LLM red-team corpus — prompt injection · jailbreak · exfil |
 
 ### Smart Contract (Web3)

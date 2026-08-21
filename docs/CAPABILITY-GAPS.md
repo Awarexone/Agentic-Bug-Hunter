@@ -51,10 +51,11 @@ Real runtime scanners exist for XSS/SQLi/SSTI/MFA/SAML (`vuln_scanner.sh`), IDOR
 - **WebSocket security** (cross-site WS hijacking, message auth) — [docs-only].
 - **HTTP parameter pollution, client-side path traversal, PostMessage** beyond the doc snippet —
   no automation.
-- **No headless-browser runtime testing** — DOM XSS, client-side prototype pollution, and
-  PostMessage bugs need a real DOM. `hai_browser_recon.js` is recon-only; there's no
-  Playwright/Selenium harness anywhere, so the agent can't confirm any client-side/JS-execution
-  bug. [no coverage]
+- **No headless-browser runtime testing** — ⚠️ PARTIAL: DOM XSS is now confirmable via `/domxss`
+  (`tools/dom_xss_harness.py`), which drives headless Chromium (Playwright), injects canary
+  payloads into query + fragment params, and reports `[CONFIRMED]` only when the browser actually
+  executes them. Client-side prototype pollution and PostMessage still need dedicated probes on
+  the same harness. Was [no coverage].
 
 ## LLM / AI
 

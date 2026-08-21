@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### Added
+- **Continuous integration** — `.github/workflows/tests.yml` runs the full `pytest` suite on every push to `main` and every pull request, across Python 3.10 / 3.11 / 3.12. A status badge is shown in the README.
+
+### Changed
+- **Minimum Python is now stated as 3.10** (was advertised as 3.9). The codebase uses PEP 604 `X | None` unions at runtime (e.g. `memory/schemas.py`), which raise `TypeError` on 3.9 — CI confirmed 3.9 never actually worked. README badge updated to match.
+
+### Fixed
+- **`tests/test_bypass_403_review_fixes.py`** re-pointed at the current WAF-aware bypass verdict pipeline (block-baseline sampling + `_is_real_bypass` signature/length gating + confirmed-vs-uncertain output split). It was still asserting the pre-#40 `_normalize_body` internals that the rewrite removed, so it failed on every run once CI was added.
 - **Port/service scanning** (`/portscan`, `tools/port_scanner.py`) — wraps `naabu` with an `smap` passive fallback and flags the non-web services the HTTP-only recon pipeline can't see (Redis, Docker API, exposed DBs, RDP, SMB). Parsing + service classification are pure and unit-tested. Closes a `[registered-not-wired]` gap.
 - **Visual triage / PoC screenshots** (`/screenshot`, `tools/visual_triage.py`) — screenshots live hosts via `eyewitness`/`aquatone`/`httpx -screenshot` into a self-contained HTML gallery that doubles as report evidence. Tool selection, command build, and gallery rendering are unit-tested. Closes a `[registered-not-wired]` gap and the "no automatic PoC capture" gap.
 - **SAST source audit** (`/sast`, `tools/sast_scan.py`) — runs Semgrep security packs over fetched JS/source and normalizes results into the toolkit's severity + `POSSIBLE` confidence model (SAST is a lead, not proof — `/validate` still requires a runtime PoC). Result parsing is unit-tested. Closes a `[registered-not-wired]` gap.

@@ -38,13 +38,17 @@
 
 <p align="center">
   <a href="https://awarexone.com">
-    <img src="assets/awarexone-logo.webp" alt="AwareXone" width="88"/>
+    <img src="assets/awarexone-logo.webp" alt="AwareXone" width="80"/>
   </a>
   <br/>
-  <b>Powered by <a href="https://awarexone.com">AwareXone.com</a></b>
-  <br/>
-  <sub>Your AI Agent Against Scams &amp; Fraud</sub>
+  <b>Powered by <a href="https://awarexone.com">AwareXone.com</a></b> — <sub>Your AI Agent Against Scams &amp; Fraud</sub>
 </p>
+
+> ### 💜 Open for Sponsorship
+>
+> **BugHunter is open for sponsorship.** Your support funds new features and keeps the free standalone mode running for everyone. Sponsors get a logo and link right here in the README, plus a credit in every release.
+>
+> **Want to sponsor?** Reach out at **[AwareXone.com](https://awarexone.com)** or email **[shuvonsec@gmail.com](mailto:shuvonsec@gmail.com)**.
 
 ---
 
@@ -539,22 +543,6 @@ If BugHunter helps your hunts, you can fuel more of them:
     <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50"/>
   </a>
 </p>
-
----
-
-## Open for Sponsorship
-
-<p align="center">
-  <a href="https://awarexone.com">
-    <img src="assets/awarexone-logo.webp" alt="AwareXone" width="72"/>
-  </a>
-</p>
-
-BugHunter is open for sponsorship. Sponsoring helps fund new features and keeps the free standalone mode running for everyone.
-
-Sponsors get a logo and link here in the README, plus a credit in release notes.
-
-Want to sponsor? Get in touch at [AwareXone.com](https://awarexone.com) or email [shuvonsec@gmail.com](mailto:shuvonsec@gmail.com).
 
 ---
 

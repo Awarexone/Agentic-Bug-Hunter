@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Added
+- **Port/service scanning** (`/portscan`, `tools/port_scanner.py`) — wraps `naabu` with an `smap` passive fallback and flags the non-web services the HTTP-only recon pipeline can't see (Redis, Docker API, exposed DBs, RDP, SMB). Parsing + service classification are pure and unit-tested. Closes a `[registered-not-wired]` gap.
+- **Visual triage / PoC screenshots** (`/screenshot`, `tools/visual_triage.py`) — screenshots live hosts via `eyewitness`/`aquatone`/`httpx -screenshot` into a self-contained HTML gallery that doubles as report evidence. Tool selection, command build, and gallery rendering are unit-tested. Closes a `[registered-not-wired]` gap and the "no automatic PoC capture" gap.
+- **SAST source audit** (`/sast`, `tools/sast_scan.py`) — runs Semgrep security packs over fetched JS/source and normalizes results into the toolkit's severity + `POSSIBLE` confidence model (SAST is a lead, not proof — `/validate` still requires a runtime PoC). Result parsing is unit-tested. Closes a `[registered-not-wired]` gap.
 - **AwareXone sponsorship & branding** — README now leads with an "Open for Sponsorship" callout and a "Powered by AwareXone.com" credit (hero badge + footer). Same credit added to the project site footer, plus a `.github/FUNDING.yml` so the repo shows a Sponsor button.
 - **OpenRouter provider** (`openrouter`) for standalone `bughunter` / `brain.py` — set `OPENROUTER_API_KEY`, choose option 7 in `bughunter setup`, or `BRAIN_PROVIDER=openrouter`. OpenAI-compatible gateway with default model `anthropic/claude-sonnet-4.6` and a short curated model list (same pattern as other cloud providers).
 - **OrcaRouter provider** (`orcarouter`) for standalone `bughunter` / `brain.py` — set `ORCAROUTER_API_KEY`, choose option 8 in `bughunter setup`, or `BRAIN_PROVIDER=orcarouter`. OpenAI-compatible gateway with default model `openai/gpt-4o` and a short curated model list (same pattern as other cloud providers).

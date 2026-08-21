@@ -133,10 +133,12 @@ param discovery, 403 bypass, CVE sweep.
 
 **Missing capabilities:**
 
-- **No active port/service scanning wired in** — `naabu` and `smap` are [registered-not-wired];
-  recon is HTTP-only, so non-web services on a host are invisible.
-- **No visual triage** — `eyewitness` and `aquatone` are [registered-not-wired]; no screenshot
-  gallery for fast surface review (also doubles as PoC capture).
+- **No active port/service scanning wired in** — ✅ SHIPPED (`/portscan`, `tools/port_scanner.py`):
+  wraps `naabu` with an `smap` (passive) fallback and flags the non-web services (Redis, Docker
+  API, exposed DBs, RDP, SMB) the HTTP pipeline can't see. Was [registered-not-wired].
+- **No visual triage** — ✅ SHIPPED (`/screenshot`, `tools/visual_triage.py`): screenshots live
+  hosts via `eyewitness`/`aquatone`/`httpx -screenshot` into a self-contained HTML gallery that
+  doubles as report PoC evidence. Was [registered-not-wired].
 - **No Shodan/Censys/favicon-hash** asset discovery, **no ASN/CIDR → IP-range** expansion.
   [no coverage]
 - **No JS source-map extraction / deobfuscation** beyond secret-grepping. `linkfinder` is
@@ -144,8 +146,9 @@ param discovery, 403 bypass, CVE sweep.
 
 ## Cross-cutting / Others
 
-- **SAST source audit** — `semgrep` is [registered-not-wired]. Grep patterns live in skills, but
-  no Semgrep/CodeQL ruleset is run against fetched source.
+- **SAST source audit** — ✅ SHIPPED (`/sast`, `tools/sast_scan.py`): runs `semgrep` security
+  packs over fetched JS/source and normalizes hits into the toolkit's severity + `POSSIBLE`
+  confidence model. Was [registered-not-wired]. (A CodeQL ruleset would still add depth.)
 - **API-spec-driven testing** — recon ingests OpenAPI/Postman specs, but nothing auto-generates
   IDOR/auth tests from a spec. [no coverage]
 - **No thick-client / desktop (Electron-binary), IoT/firmware, or network-pivot** capability —

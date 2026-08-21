@@ -24,7 +24,7 @@
 
 <p align="center">
   <a href="https://github.com/shuvonsec/claude-bug-bounty/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square" alt="MIT License"></a>
-  <img src="https://img.shields.io/badge/Python-3.9+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.9+">
+  <img src="https://img.shields.io/badge/Python-3.10+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/Standalone-Free-brightgreen.svg?style=flat-square" alt="Free Standalone Mode">
   <a href="https://claude.ai/claude-code"><img src="https://img.shields.io/badge/Claude_Code-Plugin-D97706.svg?style=flat-square" alt="Claude Code Plugin"></a>
   <a href="https://github.com/shuvonsec/claude-bug-bounty/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/shuvonsec/claude-bug-bounty/tests.yml?branch=main&style=flat-square&label=tests" alt="Tests"></a>

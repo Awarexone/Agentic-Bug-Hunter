@@ -228,6 +228,8 @@ Verify /recon /hunt /validate /report are available.
 | `/takeover --recon <dir>` | Subdomain takeover candidates via dnsReaper · subjack |
 | `/scan-cves <host>` | Focused nuclei high/critical sweep + optional log4j-scan |
 | `/bypass-403 <url>` | Header · method · encoding tricks against 403/401 |
+| `/portscan <host>` | Open ports + non-web services (Redis · Docker API · DBs · RDP) via naabu/smap |
+| `/screenshot -l urls.txt` | Screenshot live hosts into an HTML gallery — triage + PoC evidence |
 
 
 ### Scanners (Web + LLM)
@@ -239,6 +241,7 @@ Verify /recon /hunt /validate /report are available.
 | `/nosqli <url>` | NoSQL injection (operator bypass · `$where` timing) |
 | `/jwt-scan <token>` | Offline JWT toolkit — alg:none · RS256→HS256 · secret crack |
 | `/oob <target>` | Out-of-band listener (interactsh) for blind SSRF/XXE/SQLi |
+| `/sast <path>` | Semgrep security packs over fetched JS/source → ranked sinks |
 | `/llm-redteam <endpoint>` | LLM red-team corpus — prompt injection · jailbreak · exfil |
 
 ### Smart Contract (Web3)

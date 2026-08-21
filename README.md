@@ -520,6 +520,20 @@ git push origin feature/your-contribution
 
 ---
 
+## Used By
+
+<p align="center">
+  <a href="https://awarexone.com"><img src="assets/awarexone-logo.webp" alt="AwareXone" width="64"/></a>
+</p>
+
+<p align="center">
+  <b><a href="https://awarexone.com">AwareXone.com</a></b> — Your AI Agent Against Scams &amp; Fraud
+</p>
+
+Using BugHunter in your team, program, or workflow? **Add yourself** — open a PR editing [`ADOPTERS.md`](ADOPTERS.md), or open an [issue](https://github.com/shuvonsec/claude-bug-bounty/issues). Real, verifiable entries only.
+
+---
+
 ## Star History
 
 <p align="center">

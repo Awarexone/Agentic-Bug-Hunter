@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- **AwareXone sponsorship & branding** — README now leads with an "Open for Sponsorship" callout and a "Powered by AwareXone.com" credit (hero badge + footer). Same credit added to the project site footer, plus a `.github/FUNDING.yml` so the repo shows a Sponsor button.
 - **OpenRouter provider** (`openrouter`) for standalone `bughunter` / `brain.py` — set `OPENROUTER_API_KEY`, choose option 7 in `bughunter setup`, or `BRAIN_PROVIDER=openrouter`. OpenAI-compatible gateway with default model `anthropic/claude-sonnet-4.6` and a short curated model list (same pattern as other cloud providers).
 - **Explicit Ollama model selection** — `bughunter setup` now lists installed local models and persists the selected provider/model pair; `bughunter setup --provider ollama --model <name>` supports non-interactive configuration. `--model` / `BRAIN_MODEL` provide one-off overrides, and explicit choices no longer silently fall back to or race a different model.
 - **Standalone installer updates** — rerunning `install.sh --agent standalone` now refreshes the active managed `bughunter` path instead of allowing an older system installation to shadow a newer user-local link, and verifies the updated symlink target.

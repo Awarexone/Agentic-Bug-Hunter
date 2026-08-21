@@ -522,15 +522,29 @@ git push origin feature/your-contribution
 
 ## Used By
 
-<p align="center">
-  <a href="https://awarexone.com"><img src="assets/awarexone-logo.webp" alt="AwareXone" width="64"/></a>
-</p>
+<p align="center"><i>Teams and researchers running BugHunter in their workflow.</i></p>
+
+<table align="center">
+  <tr>
+    <td align="center" width="200">
+      <a href="https://awarexone.com">
+        <img src="assets/awarexone-logo.webp" alt="AwareXone" width="72"/>
+        <br/><b>AwareXone</b>
+      </a>
+      <br/><sub>AI agent vs. scams &amp; fraud</sub>
+    </td>
+    <td align="center" width="200">
+      <a href="ADOPTERS.md">
+        <img src="https://img.shields.io/badge/+-Add_your_team-7F55FF?style=for-the-badge" alt="Add your team"/>
+      </a>
+      <br/><sub>Open a one-line PR</sub>
+    </td>
+  </tr>
+</table>
 
 <p align="center">
-  <b><a href="https://awarexone.com">AwareXone.com</a></b> — Your AI Agent Against Scams &amp; Fraud
+  Using BugHunter in your team, program, or workflow? <b><a href="ADOPTERS.md">Add yourself</a></b> — a quick PR to <code>ADOPTERS.md</code>, or open an <a href="https://github.com/shuvonsec/claude-bug-bounty/issues">issue</a>. Real, verifiable entries only.
 </p>
-
-Using BugHunter in your team, program, or workflow? **Add yourself** — open a PR editing [`ADOPTERS.md`](ADOPTERS.md), or open an [issue](https://github.com/shuvonsec/claude-bug-bounty/issues). Real, verifiable entries only.
 
 ---
 

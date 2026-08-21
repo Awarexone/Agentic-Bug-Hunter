@@ -549,19 +549,11 @@ If BugHunter helps your hunts, you can fuel more of them:
   </a>
 </p>
 
-**BugHunter is open for sponsorship.** This project is actively maintained and used by security researchers worldwide — sponsoring it puts your brand in front of an engaged bug-bounty and offensive-security audience.
+BugHunter is open for sponsorship. Sponsoring helps fund new features and keeps the free standalone mode running for everyone.
 
-Sponsorship helps fund new scanner modules, detection techniques, and platform support, and keeps the standalone (free) mode running for everyone.
+Sponsors get a logo and link here in the README, plus a credit in release notes.
 
-**What sponsors get:**
-
-- Logo and link placement in this README and on the project site
-- A "Powered by / Sponsored by" credit in release notes
-- Priority consideration for feature requests and integrations
-
-Interested in sponsoring? Reach out via [AwareXone.com](https://awarexone.com) or email **[shuvonsec@gmail.com](mailto:shuvonsec@gmail.com)**.
-
-Proudly powered by **[AwareXone.com](https://awarexone.com)** — *Your AI Agent Against Scams &amp; Fraud.*
+Want to sponsor? Get in touch at [AwareXone.com](https://awarexone.com) or email [shuvonsec@gmail.com](mailto:shuvonsec@gmail.com).
 
 ---
 

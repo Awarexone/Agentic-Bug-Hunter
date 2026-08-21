@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- **DOM XSS confirmation harness** (`/domxss`, `tools/dom_xss_harness.py`) — drives headless Chromium via Playwright, injects uniquely-tagged canary payloads into every query + URL-fragment parameter, and reports `[CONFIRMED]` **only when the browser actually executes** the payload (dialog / hooked sink / console), vs `[POSSIBLE]` for reflected-but-neutralized. Turns the toolkit's biggest "confirmation-poor" gap (client-side/JS-execution bugs) into proven findings, and captures a screenshot for the report. Payload generation, URL injection, and verdict classification are pure and unit-tested; Playwright is lazy-imported so the suite needs no browser. Playwright registered in `external_arsenal.sh`.
 - **Continuous integration** — `.github/workflows/tests.yml` runs the full `pytest` suite on every push to `main` and every pull request, across Python 3.10 / 3.11 / 3.12. A status badge is shown in the README.
 
 ### Changed

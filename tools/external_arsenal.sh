@@ -99,6 +99,8 @@ ARSENAL_TOOLS=(
   "jadx|mobile|brew install jadx|github.com/skylot/jadx"
   # ── Static analysis ─────────────────────────────────────────────────────
   "semgrep|sast|brew install semgrep|github.com/semgrep/semgrep"
+  # ── Headless browser (client-side confirmation) ─────────────────────────
+  "playwright|browser|pip install playwright \&\& playwright install chromium|github.com/microsoft/playwright-python"
   # ── OSINT ───────────────────────────────────────────────────────────────
   "maigret|osint|pipx install maigret|github.com/soxoj/maigret"
   "pywhat|osint|pipx install pywhat|github.com/bee-san/pyWhat"

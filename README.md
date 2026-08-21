@@ -111,8 +111,9 @@ bughunter v "finding"        # short alias for validate
 | OpenAI | Paid | Cloud | Fast | [platform.openai.com](https://platform.openai.com) |
 | **Grok (xAI)** | Paid | Cloud | Fast | [console.x.ai](https://console.x.ai) → `grok-4.5` |
 | **OpenRouter** | Subscription / pay-as-you-go | Cloud | Fast | [openrouter.ai/keys](https://openrouter.ai/keys) → get API key |
+| **OrcaRouter** | Subscription / pay-as-you-go | Cloud | Fast | [orcarouter.ai](https://www.orcarouter.ai) → get API key |
 
-BugHunter auto-detects providers in this order: **Ollama → Groq → DeepSeek → … → OpenRouter → Claude → OpenAI**
+BugHunter auto-detects providers in this order: **Ollama → Groq → DeepSeek → … → OrcaRouter → OpenRouter → Claude → OpenAI**
 
 Switch providers or choose an installed Ollama model anytime: `bughunter setup`.
 The setup can also be fully non-interactive:

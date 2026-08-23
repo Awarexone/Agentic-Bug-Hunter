@@ -34,7 +34,19 @@ def _is_blocked_redirect_target(hostname: str) -> bool:
 
 def _one_hop(req: urllib.request.Request, timeout: float, **kwargs):
     opener = urllib.request.build_opener(_NoRedirectHandler)
-    return opener.open(req, timeout=timeout, **kwargs)
+    try:
+        return opener.open(req, timeout=timeout, **kwargs)
+    except urllib.error.HTTPError as e:
+        if e.code in (301, 302, 303, 307, 308):
+            # _NoRedirectHandler.redirect_request returning None makes every
+            # installed redirect handler decline, so urllib's chain falls
+            # through to HTTPDefaultErrorHandler, which raises HTTPError
+            # instead of returning the response. HTTPError doubles as a
+            # response object (.status/.code, .headers) — hand it back to
+            # the caller's redirect-driving loop instead of letting it
+            # propagate as an error.
+            return e
+        raise
 
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -64,5 +76,11 @@ def safe_urlopen(req: urllib.request.Request, timeout: float = 10, max_redirects
             raise urllib.error.URLError(
                 f"blocked redirect to disallowed host (SSRF guard): {hostname!r}"
             )
-        current = urllib.request.Request(next_url, headers=dict(current.header_items()))
+        preserve_body = resp.status in (307, 308)
+        current = urllib.request.Request(
+            next_url,
+            data=current.data if preserve_body else None,
+            headers=dict(current.header_items()),
+            method=current.get_method() if preserve_body else None,
+        )
     raise urllib.error.URLError(f"too many redirects (>{max_redirects})")

@@ -1,8 +1,10 @@
 """safe_urlopen must reject redirects to private/link-local/loopback
 addresses and cloud metadata hosts, even when the initial request target
 was fine. See SECURITY-REVIEW-2026-08-22.md finding #8 (MEDIUM)."""
+import http.server
 import os
 import sys
+import threading
 import urllib.error
 import urllib.request
 from unittest.mock import MagicMock, patch
@@ -70,3 +72,109 @@ class TestSafeUrlopenRejectsRedirectToBlockedHost:
                 assert False, "expected too-many-redirects error"
             except urllib.error.URLError as e:
                 assert "redirect" in str(e).lower()
+
+
+class _RedirectTestHandler(http.server.BaseHTTPRequestHandler):
+    """Minimal real HTTP server used to exercise urllib's actual redirect
+    chain (opener.open() / HTTPRedirectHandler / HTTPDefaultErrorHandler)
+    end to end — deliberately NOT mocking _one_hop, since mocking it hides
+    bugs in how _one_hop drives that chain (see SECURITY-REVIEW-2026-08-22.md
+    finding #8 follow-up: _NoRedirectHandler.redirect_request returning None
+    makes urllib raise HTTPError instead of returning the 3xx response)."""
+
+    def log_message(self, format, *args):
+        pass  # silence request logging during tests
+
+    def do_GET(self):
+        if self.path == "/start":
+            self.send_response(302)
+            self.send_header("Location", "/final")
+            self.end_headers()
+        elif self.path == "/final":
+            body = b"ok"
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/evil-start":
+            self.send_response(302)
+            self.send_header("Location", "http://169.254.169.254/latest/meta-data/")
+            self.end_headers()
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        if self.path == "/redirect307":
+            self.send_response(307)
+            self.send_header("Location", "/final307")
+            self.end_headers()
+        elif self.path == "/final307":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+
+class TestSafeUrlopenRealServerRedirects:
+    """No mocking here — a genuine local HTTP server + the real urllib
+    opener. This is what actually caught the HTTPError-swallowing bug: the
+    mocked tests above patch _one_hop directly, which bypasses
+    opener.open()'s real redirect-handling chain entirely and would pass
+    even if _one_hop never worked against a live server."""
+
+    @classmethod
+    def setup_class(cls):
+        cls.server = http.server.HTTPServer(("127.0.0.1", 0), _RedirectTestHandler)
+        cls.port = cls.server.server_port
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+
+    @classmethod
+    def teardown_class(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.thread.join(timeout=5)
+
+    def _url(self, path):
+        return f"http://127.0.0.1:{self.port}{path}"
+
+    def test_legitimate_redirect_is_followed_to_completion(self):
+        # The test server itself only has a loopback address, which
+        # _is_blocked_redirect_target correctly refuses (proven by the test
+        # below) — so this test patches *only* the allow/block decision
+        # (already covered by TestIsBlockedRedirectTarget above) to isolate
+        # what it's actually verifying: that a real 3xx response from a real
+        # server, driven through the real opener.open()/HTTPError chain, is
+        # correctly followed to completion. _one_hop itself is NOT mocked.
+        req = urllib.request.Request(self._url("/start"))
+        with patch("tools.safe_http._is_blocked_redirect_target", return_value=False):
+            with safe_urlopen(req, timeout=5) as resp:
+                assert resp.status == 200
+                assert resp.read() == b"ok"
+
+    def test_redirect_to_metadata_ip_is_blocked(self):
+        req = urllib.request.Request(self._url("/evil-start"))
+        try:
+            safe_urlopen(req, timeout=5)
+            assert False, "expected a rejection"
+        except urllib.error.URLError as e:
+            assert "blocked" in str(e).lower() or "ssrf" in str(e).lower()
+
+    def test_307_redirect_preserves_method_and_body(self):
+        body = b"race-condition-poc-payload"
+        req = urllib.request.Request(
+            self._url("/redirect307"),
+            data=body,
+            method="POST",
+            headers={"Content-Type": "text/plain"},
+        )
+        with patch("tools.safe_http._is_blocked_redirect_target", return_value=False), \
+                safe_urlopen(req, timeout=5) as resp:
+            assert resp.status == 200
+            assert resp.read() == body

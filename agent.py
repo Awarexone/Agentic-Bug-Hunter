@@ -101,6 +101,12 @@ except Exception as _brain_err:
     MODEL_PRIORITY = ["qwen3:8b"]
     OLLAMA_HOST = "http://localhost:11434"
 
+# ── Scope enforcement for autonomous tool dispatch ──────────────────────────────
+# _here is the repo root (inserted onto sys.path above), so tools.* / memory.*
+# import as regular packages here.
+from tools.scope_checker import ScopeChecker, _split_patterns  # noqa: E402
+from memory.audit_log import AutopilotGuard  # noqa: E402
+
 # ── Colours ───────────────────────────────────────────────────────────────────
 GREEN   = "\033[0;32m"
 CYAN    = "\033[0;36m"
@@ -507,20 +513,47 @@ class HuntMemory:
 class ToolDispatcher:
     """Execute tool calls and return plain-text observations."""
 
+    # Tool names that send traffic toward `domain` (directly or via
+    # subprocess-driven scanners) and therefore must clear the scope guard
+    # before running. Local/bookkeeping tools are excluded — they touch only
+    # session state on disk, never the network.
+    NETWORK_TOOLS = {
+        "run_recon", "run_vuln_scan", "run_js_analysis", "run_secret_hunt",
+        "run_param_discovery", "run_post_param_discovery", "run_api_fuzz",
+        "run_cors_check", "run_cms_exploit", "run_rce_scan",
+        "run_sqlmap_targeted", "run_sqlmap_on_file", "run_jwt_audit",
+    }
+
     def __init__(self, domain: str, memory: HuntMemory,
                  scope_lock: bool = False, max_urls: int = 100,
-                 default_cookies: str = ""):
+                 default_cookies: str = "", scope_checker: ScopeChecker | None = None):
         self.domain          = domain
-        self.memory          = memory
-        self.scope_lock      = scope_lock
-        self.max_urls        = max_urls
-        self.default_cookies = default_cookies
+        self.memory           = memory
+        self.scope_lock       = scope_lock
+        self.max_urls         = max_urls
+        self.default_cookies  = default_cookies
+        # fail_closed=True (AutopilotGuard default): if the caller didn't pass
+        # a scope_checker, every network tool call below is blocked rather
+        # than silently allowed. See main()/run_agent_hunt() for where
+        # scope_checker gets built from --domain/--exclude-domain.
+        self._guard = AutopilotGuard(scope_checker=scope_checker)
 
     def dispatch(self, name: str, args: dict) -> str:
         """Execute named tool and return text observation."""
         h = _h()
         domain = self.domain
         t0 = time.time()
+
+        # Scope gate: checked first, ahead of everything else, for any tool
+        # that actually sends traffic. `method` is nominal here — dispatch
+        # operates at whole-tool granularity (a shell-out to a scanner), not
+        # a single HTTP request, so there's no real verb to report. GET just
+        # selects "safe, no approval step" in AutopilotGuard's method policy;
+        # the check that matters at this layer is scope.
+        if name in self.NETWORK_TOOLS:
+            gate = self._guard.check_request("GET", f"https://{domain}")
+            if gate["decision"] != "allow":
+                return f"BLOCKED by scope guard: {gate['reason']}"
 
         try:
             if name == "run_recon":
@@ -1437,6 +1470,7 @@ def run_agent_hunt(
     model: str | None = None,
     resume_session_id: str | None = None,
     use_langgraph: bool = False,
+    scope_checker: ScopeChecker | None = None,
 ) -> dict:
     """
     Main entry point for agent-driven autonomous hunting.
@@ -1463,6 +1497,7 @@ def run_agent_hunt(
         scope_lock=scope_lock,
         max_urls=max_urls,
         default_cookies=cookies,
+        scope_checker=scope_checker,
     )
 
     # ── Run ───────────────────────────────────────────────────────────────
@@ -1537,6 +1572,10 @@ Examples:
   python3 agent.py --target example.com --langgraph
   python3 agent.py --target example.com --resume SESSION_ID
   python3 agent.py --list-models
+
+Scope (required before any tool that sends traffic will run):
+  python3 agent.py --target example.com -d example.com -d '*.example.com'
+  python3 agent.py --target example.com -d '*.example.com' -x blog.example.com
 """
     )
     parser.add_argument("--target",      required=False, help="Domain to hunt")
@@ -1545,6 +1584,14 @@ Examples:
     parser.add_argument("--cookie",      type=str,   default="",  help="Session cookie for POST discovery")
     parser.add_argument("--scope-lock",  action="store_true",     help="Stick to exact target only")
     parser.add_argument("--max-urls",    type=int,   default=100, help="Max URLs in recon (default 100)")
+    parser.add_argument("--domain", "-d", action="append", default=[],
+                        help="Program's in-scope domain pattern, e.g. target.com or "
+                             "'*.target.com'. Repeat or comma-separate. REQUIRED for any "
+                             "tool that sends traffic — with none given, autopilot refuses "
+                             "to run rather than hunt with no scope configured.")
+    parser.add_argument("--exclude-domain", "-x", action="append", default=[],
+                        help="Domain pattern excluded by the program despite matching "
+                             "--domain, e.g. blog.target.com. Repeat or comma-separate.")
     parser.add_argument("--model",       type=str,   default=None, help="Ollama model override")
     parser.add_argument("--langgraph",   action="store_true",     help="Use real LangGraph backend")
     parser.add_argument("--resume",      type=str,   default=None, help="Resume session ID")
@@ -1584,6 +1631,18 @@ Examples:
         parser.print_help()
         sys.exit(1)
 
+    domains = _split_patterns(args.domain)
+    scope_checker = ScopeChecker(
+        domains=domains,
+        excluded_domains=_split_patterns(args.exclude_domain),
+    ) if domains else None
+
+    if scope_checker is None:
+        print(f"{YELLOW}[Agent] No --domain given — every tool that sends traffic "
+              f"will be blocked (fail-closed).{NC}")
+        print(f"{YELLOW}[Agent] Pass scope explicitly, e.g.: "
+              f"-d {args.target} -d '*.{args.target}'{NC}")
+
     result = run_agent_hunt(
         args.target,
         scope_lock=args.scope_lock,
@@ -1594,6 +1653,7 @@ Examples:
         model=args.model,
         resume_session_id=args.resume,
         use_langgraph=args.langgraph,
+        scope_checker=scope_checker,
     )
 
     print(f"\n{BOLD}{'═'*60}{NC}")

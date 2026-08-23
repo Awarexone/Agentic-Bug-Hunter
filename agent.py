@@ -552,7 +552,9 @@ class ToolDispatcher:
     def __init__(self, domain: str, memory: HuntMemory,
                  scope_lock: bool = False, max_urls: int = 100,
                  default_cookies: str = "", scope_checker: ScopeChecker | None = None,
-                 circuit_threshold: int = 5):
+                 circuit_threshold: int = 5,
+                 time_budget_hours: float = 2.0,
+                 start_time: float | None = None):
         self.domain          = domain
         self.memory           = memory
         self.scope_lock       = scope_lock
@@ -564,6 +566,14 @@ class ToolDispatcher:
         # scope_checker gets built from --domain/--exclude-domain.
         self._guard = AutopilotGuard(scope_checker=scope_checker,
                                       circuit_threshold=circuit_threshold)
+        # Mirrors ReActAgent's own time_budget_hours/time_start (see
+        # ReActAgent.__init__) so dispatch() can refuse to start a new
+        # network-facing tool once the budget is nearly gone, without
+        # touching ReActAgent's existing tracking. Defaults to "plenty of
+        # time remaining" so callers that don't pass these (including
+        # existing tests) see no behavior change.
+        self._time_budget_hours = time_budget_hours
+        self._start_time        = start_time if start_time is not None else time.time()
 
     def dispatch(self, name: str, args: dict) -> str:
         """Execute named tool and return text observation."""
@@ -571,8 +581,26 @@ class ToolDispatcher:
         domain = self.domain
         t0 = time.time()
 
-        # Scope gate: checked first, ahead of everything else, for any tool
-        # that actually sends traffic. `method` now reflects the tool's real
+        # Time-budget gate: `time_budget_hours` is otherwise only checked
+        # between ReActAgent steps (see ReActAgent.step()), so a single
+        # scanner subprocess launched right before the budget runs out can
+        # overrun it by up to that subprocess's own internal timeout — up
+        # to 3600s for run_recon, 1800s for run_vuln_scan (see
+        # tools/hunt.py). This can't preempt an in-flight subprocess
+        # without deeper changes to those scanners (out of scope here), so
+        # instead it reduces the blast radius: refuse to *start* any new
+        # network-facing tool once under 10% of the time budget remains.
+        # See SECURITY-REVIEW-2026-08-22.md finding #16 (LOW-MEDIUM).
+        if name in self.NETWORK_TOOLS:
+            remaining_fraction = self._time_remaining_fraction()
+            if remaining_fraction < 0.10:
+                return (f"BLOCKED: time budget nearly exhausted "
+                        f"({remaining_fraction*100:.0f}% remaining) — "
+                        f"refusing to start a new long-running tool this late in the budget.")
+
+        # Scope gate: checked ahead of everything except the time-budget
+        # gate above, for any tool that actually sends traffic. `method`
+        # now reflects the tool's real
         # HTTP-method semantics (see TOOL_METHODS) so AutopilotGuard's
         # method policy can require human approval for state-changing tools
         # instead of every call being nominally "safe" GET.
@@ -728,6 +756,20 @@ class ToolDispatcher:
         self.memory.save()
 
         return obs_full
+
+    def _time_remaining_fraction(self) -> float:
+        """Fraction (0.0-1.0) of `time_budget_hours` left, based on when
+        this dispatcher was constructed. Mirrors the elapsed/remaining
+        math ReActAgent already does in step()/_build_context() — kept as
+        a small, self-contained calculation here rather than reaching into
+        the agent, since ToolDispatcher must stay usable on its own (see
+        the tests that construct it directly)."""
+        total_secs = self._time_budget_hours * 3600
+        if total_secs <= 0:
+            return 0.0
+        elapsed = time.time() - self._start_time
+        remaining = total_secs - elapsed
+        return max(0.0, remaining / total_secs)
 
     @staticmethod
     def _parse_request_file_host(request_file: str) -> str | None:
@@ -1614,6 +1656,11 @@ def run_agent_hunt(
     print(f"{GREEN}[Agent] Session: {session_id} → {recon_dir}{NC}", flush=True)
 
     # ── Init memory + dispatcher ──────────────────────────────────────────
+    # start_time captured here, shared with ToolDispatcher, so its
+    # time-budget gate (see ToolDispatcher._time_remaining_fraction) tracks
+    # the same clock ReActAgent.time_start is about to be set to just below
+    # — both mark "now" at hunt start, a few instructions apart.
+    hunt_start_time = time.time()
     memory     = HuntMemory(session_file)
     dispatcher = ToolDispatcher(
         domain, memory,
@@ -1621,6 +1668,8 @@ def run_agent_hunt(
         max_urls=max_urls,
         default_cookies=cookies,
         scope_checker=scope_checker,
+        time_budget_hours=time_budget_hours,
+        start_time=hunt_start_time,
     )
 
     # ── Run ───────────────────────────────────────────────────────────────

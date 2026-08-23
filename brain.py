@@ -2280,8 +2280,14 @@ Based on this:
 
         return full_transcript
 
+    # exploit_finding() bounds its own multi-turn loop to this many rounds
+    # (see the `for iteration in range(6):` there) — used here purely for
+    # completion-budget accounting, not to alter that loop itself.
+    EXPLOIT_ROUND_CAP = 6
+
     def auto_triage_and_exploit(self, findings_dir: str,
-                                recon_dir: str = "") -> list[dict]:
+                                recon_dir: str = "",
+                                max_completions: int = 50) -> list[dict]:
         """
         Post-scan autonomous loop:
           1. Read every finding file
@@ -2290,6 +2296,17 @@ Based on this:
           4. Return list of {vuln, url, verdict, impact}
 
         Saves results to findings_dir/brain/auto_triage.md
+
+        `max_completions` is a hard cap on total LLM completions across
+        this whole call (triage + exploit rounds combined). Each
+        triage_finding() call costs 1 completion; each exploit_finding()
+        call is budgeted at EXPLOIT_ROUND_CAP completions (its own
+        internal worst case), and is skipped — not truncated mid-flight —
+        if it would push total accounted completions past the cap. With
+        up to 25 candidates from _collect_candidate_findings() and no cap,
+        this loop could previously trigger up to 25 * (1 + 6) = 175
+        completions in a single run (SECURITY-REVIEW-2026-08-22.md
+        finding #14, MEDIUM).
         """
         if not self.enabled:
             return []
@@ -2323,24 +2340,37 @@ Based on this:
         self._gate_workings_path = str(gate_path)
 
         triage_summary = []
+        completions_used = 0
         for cat, line in all_findings:
+            if completions_used >= max_completions:
+                print(f"{YELLOW}[Brain] max_completions={max_completions} reached — "
+                      f"stopping triage loop early ({len(results)}/{len(all_findings)} "
+                      f"candidates processed){NC}")
+                break
+
             verdict, reasoning = self.triage_finding(f"[{cat}] {line}")
+            completions_used += 1
             result = {"category": cat, "finding": line,
                       "verdict": verdict, "reasoning": reasoning[:300]}
             results.append(result)
             triage_summary.append(f"[{verdict}] [{cat}] {line[:100]}")
 
             if verdict in ("SUBMIT", "CHAIN"):
-                # Extract URL from the finding line (first http:// or https:// token)
-                import re
-                url_match = re.search(r"https?://\S+", line)
-                target_url = url_match.group(0) if url_match else target
-                self.exploit_finding(
-                    target_url=target_url,
-                    vuln_type=cat,
-                    evidence=line,
-                    findings_dir=findings_dir,
-                )
+                if completions_used + self.EXPLOIT_ROUND_CAP > max_completions:
+                    print(f"{YELLOW}[Brain] Skipping exploit_finding for [{cat}] "
+                          f"{line[:80]} — would exceed max_completions budget{NC}")
+                else:
+                    # Extract URL from the finding line (first http:// or https:// token)
+                    import re
+                    url_match = re.search(r"https?://\S+", line)
+                    target_url = url_match.group(0) if url_match else target
+                    self.exploit_finding(
+                        target_url=target_url,
+                        vuln_type=cat,
+                        evidence=line,
+                        findings_dir=findings_dir,
+                    )
+                    completions_used += self.EXPLOIT_ROUND_CAP
 
         # Save triage summary
         summary_md = (

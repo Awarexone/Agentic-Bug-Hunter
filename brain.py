@@ -1536,7 +1536,7 @@ Do NOT fabricate hypothetical chains using invented endpoints or made-up evidenc
         prompt = f"""Write professional VAPT reports for validated findings on {target}.
 
 ## Grounded Evidence Only
-{evidence[:7000]}
+{delimit_untrusted("grounded evidence", evidence[:7000])}
 
 ---
 
@@ -2200,7 +2200,7 @@ NEXT ACTION: <one concrete action>
 {target_url}
 
 Evidence / scanner output:
-{evidence[:2000]}
+{delimit_untrusted("exploit evidence", evidence[:2000])}
 
 {f'Additional context:{chr(10)}{extra_context[:1000]}' if extra_context else ''}
 

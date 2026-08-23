@@ -79,6 +79,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
+from tools.prompt_safety import delimit_untrusted
+
 try:
     import ollama as _ollama_lib
 except ImportError:
@@ -1291,40 +1293,40 @@ Keep it under 80 words total."""
 {json.dumps(summary, indent=2)}
 
 ## CVE-Priority (tech detection + CVSS scoring)
-{priority_json or "(not available)"}
+{delimit_untrusted("CVE-priority JSON", priority_json) if priority_json else "(not available)"}
 
 ## Attack surface report
-{attack_surface or "(not available)"}
+{delimit_untrusted("attack surface report", attack_surface) if attack_surface else "(not available)"}
 
 ## OpenAPI audit summary
-{openapi_summary or "(not available)"}
+{delimit_untrusted("OpenAPI audit summary", openapi_summary) if openapi_summary else "(not available)"}
 
 ## Autonomous session state
-{autonomous_session or "(not available)"}
+{delimit_untrusted("autonomous session state", autonomous_session) if autonomous_session else "(not available)"}
 
 ## Live hosts sample (httpx with tech detection)
-{httpx_sample or "(empty)"}
+{delimit_untrusted("live hosts sample", httpx_sample) if httpx_sample else "(empty)"}
 
 ## CRITICAL CVE-risk hosts
-{critical_hosts or "(none)"}
+{delimit_untrusted("CRITICAL CVE-risk hosts", critical_hosts) if critical_hosts else "(none)"}
 
 ## HIGH CVE-risk hosts
-{high_hosts or "(none)"}
+{delimit_untrusted("HIGH CVE-risk hosts", high_hosts) if high_hosts else "(none)"}
 
 ## API endpoints discovered
-{api_endpoints or "(none)"}
+{delimit_untrusted("API endpoints discovered", api_endpoints) if api_endpoints else "(none)"}
 
 ## Interesting parameters (SSRF/redirect/LFI candidates)
-{interesting_params or "(none)"}
+{delimit_untrusted("interesting parameters", interesting_params) if interesting_params else "(none)"}
 
 ## Upload-like URLs / connectors
-{upload_hint_sample or "(none)"}
+{delimit_untrusted("upload-like URLs", upload_hint_sample) if upload_hint_sample else "(none)"}
 
 ## Potential JS secrets
-{js_secrets or "(none)"}
+{delimit_untrusted("potential JS secrets", js_secrets) if js_secrets else "(none)"}
 
 ## Subdomain takeover candidates
-{takeovers or "(none)"}
+{delimit_untrusted("subdomain takeover candidates", takeovers) if takeovers else "(none)"}
 
 ---
 
@@ -1395,13 +1397,16 @@ endpoints, URLs, APIs, credentials, or findings. If the data shows "(none)" or
             f"## {cat.upper()}\n{content}" for cat, content in sections.items()
         )
 
+        summary_snip = summary_text[:1500]
+        findings_snip = findings_text[:8000]
+
         prompt = f"""I ran vulnerability scans on {target} and got these raw findings:
 
 ## Scan Summary
-{summary_text[:1500]}
+{delimit_untrusted("scan summary", summary_snip) if summary_snip else "(none)"}
 
 ## Raw Tool Output
-{findings_text[:8000]}
+{delimit_untrusted("raw tool output", findings_snip) if findings_snip else "(none)"}
 
 ---
 
@@ -1469,17 +1474,17 @@ Think like a senior red teamer and identify exploit chains.
 
 ## Findings
 
-IDOR candidates: {idor_candidates or "(none)"}
-CORS reflection: {cors_findings or "(none)"}
-Open redirect params: {redirect_params or "(none)"}
-SSRF params: {ssrf_params or "(none)"}
-Unauthenticated API endpoints: {unauth_api or "(none)"}
-XSS findings: {xss_findings or "(none)"}
-Subdomain takeover: {takeover or "(none)"}
-GraphQL introspection: {graphql or "(none)"}
-CVE hits: {cves or "(none)"}
-JWT none-alg: {jwt_none or "(none)"}
-Cloud metadata SSRF: {cloud_ssrf or "(none)"}
+IDOR candidates: {delimit_untrusted("IDOR candidates", idor_candidates) if idor_candidates else "(none)"}
+CORS reflection: {delimit_untrusted("CORS reflection", cors_findings) if cors_findings else "(none)"}
+Open redirect params: {delimit_untrusted("open redirect params", redirect_params) if redirect_params else "(none)"}
+SSRF params: {delimit_untrusted("SSRF params", ssrf_params) if ssrf_params else "(none)"}
+Unauthenticated API endpoints: {delimit_untrusted("unauthenticated API endpoints", unauth_api) if unauth_api else "(none)"}
+XSS findings: {delimit_untrusted("XSS findings", xss_findings) if xss_findings else "(none)"}
+Subdomain takeover: {delimit_untrusted("subdomain takeover", takeover) if takeover else "(none)"}
+GraphQL introspection: {delimit_untrusted("GraphQL introspection", graphql) if graphql else "(none)"}
+CVE hits: {delimit_untrusted("CVE hits", cves) if cves else "(none)"}
+JWT none-alg: {delimit_untrusted("JWT none-alg", jwt_none) if jwt_none else "(none)"}
+Cloud metadata SSRF: {delimit_untrusted("cloud metadata SSRF", cloud_ssrf) if cloud_ssrf else "(none)"}
 
 ---
 
@@ -1602,7 +1607,7 @@ Rules:
         prompt = f"""Analyze this JavaScript file from: {url or "(unknown URL)"}
 
 ```javascript
-{js_content}
+{delimit_untrusted("JavaScript file content", js_content)}
 ```
 
 As a penetration tester I need:
@@ -1642,7 +1647,7 @@ Be concise. Flag only what's actually interesting."""
         prompt = f"""Validate this finding against VAPT quality criteria:
 
 ---
-{finding_description}
+{delimit_untrusted("finding description", finding_description)}
 ---
 
 THE 7 QUESTIONS:
@@ -1712,7 +1717,7 @@ IF DROP: What would need to change for this to become viable?"""
 Current phase: {phase}
 Time remaining: {time_left_hours} hours
 Current state:
-{data_summary[:3000]}
+{delimit_untrusted("current state summary", data_summary[:3000]) if data_summary else "(none)"}
 
 What is the single best thing I should do RIGHT NOW?
 
@@ -1896,13 +1901,13 @@ Mode: {mode}
 Command: {command}
 Last file growth: {last_growth_age if last_growth_age is not None else "unknown"}s ago
 Last weak activity (file churn / process-tree change): {last_activity_age if last_activity_age is not None else "unknown"}s ago
-Recent file changes: {", ".join(recent_files) if recent_files else "(none reported)"}
+Recent file changes: {delimit_untrusted("recent file changes", ", ".join(recent_files)) if recent_files else "(none reported)"}
 
 === CHILD PROCESS TREE FOR THIS PID ===
-{proc_summary}
+{delimit_untrusted("child process tree", proc_summary)}
 
 === OUTPUT FILE STATE ===
-{file_state}
+{delimit_untrusted("output file state", file_state)}
 
 === TOOL RESOLUTION USING THE SUBPROCESS PATH ===
 {tool_summary}

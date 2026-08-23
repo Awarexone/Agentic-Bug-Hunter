@@ -50,6 +50,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from tools.prompt_safety import delimit_untrusted
+
 # ── LangGraph optional import ──────────────────────────────────────────────────
 try:
     from langgraph.graph import StateGraph, END
@@ -503,7 +505,8 @@ class HuntMemory:
             return "No tool outputs yet."
         parts = []
         for obs in recents:
-            parts.append(f"[{obs['tool']}]\n{obs['text']}")
+            wrapped = delimit_untrusted(f"prior observation: {obs['tool']}", obs['text'])
+            parts.append(f"[{obs['tool']}]\n{wrapped}")
         return "\n\n".join(parts)
 
 
@@ -824,7 +827,7 @@ class ToolDispatcher:
                                ("critical", "high", "vulnerable", "injectable",
                                 "rce", "sqli", "open redirect", "exposed", "default cred")):
                             head = content[:400].replace("\n", " ")
-                            lines.append(f"  [{fn}] {head}")
+                            lines.append(f"  [{fn}] {delimit_untrusted(f'findings:{fn}', head)}")
                     except Exception:
                         pass
 
@@ -855,7 +858,7 @@ class ToolDispatcher:
                 data = json.loads(Path(fp).read_text())
                 for url, info in list(data.items())[:8]:
                     params = ", ".join(info.get("params", [])[:6])
-                    lines.append(f"  POST {url}  →  [{params}]")
+                    lines.append(f"  POST {delimit_untrusted('post param endpoint', f'{url}  →  [{params}]')}")
             except Exception:
                 pass
         return "\n".join(lines)
@@ -876,7 +879,8 @@ class ToolDispatcher:
                 lines = [l.strip() for l in open(fp) if l.strip()]
                 count = len(lines)
                 sample = lines[:20]
-                parts.append(f"=== {label} ({count} total) ===\n" + "\n".join(sample))
+                wrapped = delimit_untrusted(f"recon:{fn}", "\n".join(sample))
+                parts.append(f"=== {label} ({count} total) ===\n{wrapped}")
 
         return "\n\n".join(parts) if parts else "No recon data found. Run run_recon first."
 
@@ -896,7 +900,7 @@ class ToolDispatcher:
                     content = Path(fp).read_text(errors="replace")
                     if content.strip():
                         rel = os.path.relpath(fp, findings_dir)
-                        parts.append(f"=== {rel} ===\n{content[:800]}")
+                        parts.append(f"=== {rel} ===\n{delimit_untrusted(f'findings:{rel}', content[:800])}")
                 except Exception:
                     pass
 

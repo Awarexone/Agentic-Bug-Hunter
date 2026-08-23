@@ -26,6 +26,7 @@ import re
 import signal
 import subprocess
 import sys
+import uuid as _uuid
 from datetime import datetime
 
 # Auth session is bundled into the package; importable when run as a script
@@ -90,6 +91,66 @@ RECON_DIR = os.path.join(BASE_DIR, "recon")
 FINDINGS_DIR = os.path.join(BASE_DIR, "findings")
 REPORTS_DIR = os.path.join(BASE_DIR, "reports")
 WORDLIST_DIR = os.path.join(BASE_DIR, "wordlists")
+
+
+def _validate_domain_for_path(domain: str) -> str:
+    """Reject anything that isn't a plain path segment before it touches
+    os.path.join — closes the path-traversal gap in SECURITY-REVIEW-
+    2026-08-22.md finding #0/#7 (domain flowing unsanitized into
+    RECON_DIR/FINDINGS_DIR joins)."""
+    if not domain or "/" in domain or "\\" in domain or ".." in domain:
+        raise ValueError(f"invalid domain for path resolution: {domain!r}")
+    return domain
+
+
+def _resolve_recon_dir(domain: str) -> str:
+    domain = _validate_domain_for_path(domain)
+    return os.path.join(RECON_DIR, domain)
+
+
+def _resolve_findings_dir(domain: str, create: bool = False) -> str:
+    domain = _validate_domain_for_path(domain)
+    path = os.path.join(FINDINGS_DIR, domain)
+    if create:
+        os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _activate_recon_session(
+    domain: str, requested_session_id: str = "latest", create: bool = False
+) -> tuple[str, str]:
+    """Resolve (and optionally create) a session directory under
+    RECON_DIR/<domain>/sessions/<session_id>/, for agent.py's --resume
+    support. Session IDs sort lexicographically by creation time (ISO
+    timestamp prefix), so 'latest' is just the last directory name."""
+    domain = _validate_domain_for_path(domain)
+    sessions_dir = os.path.join(RECON_DIR, domain, "sessions")
+
+    if create and requested_session_id in (None, "latest", ""):
+        session_id = f"{datetime.now().strftime('%Y%m%dT%H%M%S%f')}-{_uuid.uuid4().hex[:8]}"
+        session_dir = os.path.join(sessions_dir, session_id)
+        os.makedirs(session_dir, exist_ok=True)
+        return session_id, session_dir
+
+    if not os.path.isdir(sessions_dir):
+        raise ValueError(f"no sessions exist for domain {domain!r}")
+    existing = sorted(
+        d for d in os.listdir(sessions_dir) if os.path.isdir(os.path.join(sessions_dir, d))
+    )
+    if not existing:
+        raise ValueError(f"no sessions exist for domain {domain!r}")
+
+    if requested_session_id in (None, "latest", ""):
+        session_id = existing[-1]
+    elif requested_session_id in existing:
+        session_id = requested_session_id
+    else:
+        raise ValueError(f"unknown session id {requested_session_id!r} for domain {domain!r}")
+
+    session_dir = os.path.join(sessions_dir, session_id)
+    if create:
+        os.makedirs(session_dir, exist_ok=True)
+    return session_id, session_dir
 
 # Colors
 GREEN = "\033[0;32m"

@@ -83,7 +83,7 @@ def _h():
     if _hunt is None:
         import importlib.util, sys as _sys
         _here = os.path.dirname(os.path.abspath(__file__))
-        spec = importlib.util.spec_from_file_location("hunt", os.path.join(_here, "hunt.py"))
+        spec = importlib.util.spec_from_file_location("hunt", os.path.join(_here, "tools", "hunt.py"))
         _hunt = importlib.util.module_from_spec(spec)
         _sys.modules.setdefault("hunt", _hunt)
         spec.loader.exec_module(_hunt)

@@ -34,8 +34,13 @@ try:
     import certifi
     _SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 except ImportError:
-    _SSL_CTX.check_hostname = False
-    _SSL_CTX.verify_mode = ssl.CERT_NONE
+    # certifi isn't installed — fall back to the system CA store via
+    # ssl.create_default_context(), which is already a verifying context.
+    # Never disable verification: see SECURITY-REVIEW-2026-08-22.md
+    # finding #9 — this fallback used to disable verification outright,
+    # silently exposing every request to MITM on any stock install, since
+    # certifi is not a declared dependency.
+    _SSL_CTX = ssl.create_default_context()
 
 H1_GRAPHQL = "https://hackerone.com/graphql"
 DEFAULT_TIMEOUT = 15

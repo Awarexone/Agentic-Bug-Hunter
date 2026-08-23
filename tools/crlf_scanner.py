@@ -24,12 +24,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
+
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+from tools.safe_http import safe_urlopen  # noqa: E402
 
 USER_AGENT = "claude-bug-bounty/crlf_scanner"
 CANARY = "crlftest"
@@ -110,7 +116,7 @@ def _send(url: str, extra_headers: dict[str, str] | None, timeout: int) -> dict[
         headers.update(extra_headers)
     req = urllib.request.Request(url, headers=headers, method="GET")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with safe_urlopen(req, timeout=timeout) as resp:
             return dict(resp.headers.items())
     except urllib.error.HTTPError as e:
         return dict(e.headers.items()) if e.headers else {}

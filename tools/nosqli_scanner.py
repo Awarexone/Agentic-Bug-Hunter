@@ -22,11 +22,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+from tools.safe_http import safe_urlopen  # noqa: E402
 
 USER_AGENT = "claude-bug-bounty/nosqli_scanner"
 
@@ -117,7 +123,7 @@ def _post_json(url: str, body: dict, timeout: int) -> tuple[int, int, float]:
     )
     t0 = time.monotonic()
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with safe_urlopen(req, timeout=timeout) as resp:
             n = len(resp.read())
             return resp.status, n, (time.monotonic() - t0) * 1000
     except urllib.error.HTTPError as e:

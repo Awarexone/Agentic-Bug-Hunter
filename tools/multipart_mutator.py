@@ -19,6 +19,11 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+from tools.safe_http import safe_urlopen  # noqa: E402
+
 
 CRLF = b"\r\n"
 LF = b"\n"
@@ -193,7 +198,7 @@ def send_request(url: str, body: bytes, content_type: str) -> dict:
     req.add_header("Content-Type", content_type)
     req.add_header("User-Agent", "Mozilla/5.0")
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with safe_urlopen(req, timeout=10) as resp:
             return {"status": resp.status, "length": len(resp.read())}
     except urllib.error.HTTPError as e:
         return {"status": e.code, "length": 0}

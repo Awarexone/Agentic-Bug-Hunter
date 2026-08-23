@@ -27,7 +27,6 @@ import subprocess
 import sys
 import time
 import hashlib
-import shlex
 from datetime import datetime
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
@@ -36,10 +35,11 @@ FINDINGS_DIR = os.path.join(BASE_DIR, "findings")
 
 
 def run_cmd(cmd, timeout=15):
+    """Run cmd (an argv list — never a shell string) without a shell."""
     proc = None
     try:
         proc = subprocess.Popen(
-            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, preexec_fn=os.setsid,
         )
         stdout, stderr = proc.communicate(timeout=timeout)
@@ -77,9 +77,8 @@ def curl_request(url, method="GET", headers=None, data=None, timeout=10):
         cmd_parts.extend(["-d", data])
 
     cmd_parts.append(url)
-    cmd = " ".join(shlex.quote(p) for p in cmd_parts)
 
-    success, stdout, stderr = run_cmd(cmd, timeout=timeout + 5)
+    success, stdout, stderr = run_cmd(cmd_parts, timeout=timeout + 5)
 
     if not success or not stdout:
         return None, None, None
@@ -349,7 +348,7 @@ class ZeroDayFuzzer:
             for payload in payloads[:3]:  # Test top 3 payloads per param
                 url = f"{base_url}/?{param}={payload}"
                 # Use curl with -L to follow redirects but capture all headers
-                cmd = f'curl -sI -D- --max-time 10 "{url}" 2>/dev/null'
+                cmd = ["curl", "-sI", "-D-", "--max-time", "10", url]
                 success, stdout, _ = run_cmd(cmd, timeout=15)
                 if success and stdout:
                     location = re.search(r'location:\s*(.+)', stdout, re.I)

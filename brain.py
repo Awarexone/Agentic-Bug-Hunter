@@ -79,6 +79,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
+from tools.prompt_safety import delimit_untrusted
+
 try:
     import ollama as _ollama_lib
 except ImportError:
@@ -1291,40 +1293,40 @@ Keep it under 80 words total."""
 {json.dumps(summary, indent=2)}
 
 ## CVE-Priority (tech detection + CVSS scoring)
-{priority_json or "(not available)"}
+{delimit_untrusted("CVE-priority JSON", priority_json) if priority_json else "(not available)"}
 
 ## Attack surface report
-{attack_surface or "(not available)"}
+{delimit_untrusted("attack surface report", attack_surface) if attack_surface else "(not available)"}
 
 ## OpenAPI audit summary
-{openapi_summary or "(not available)"}
+{delimit_untrusted("OpenAPI audit summary", openapi_summary) if openapi_summary else "(not available)"}
 
 ## Autonomous session state
-{autonomous_session or "(not available)"}
+{delimit_untrusted("autonomous session state", autonomous_session) if autonomous_session else "(not available)"}
 
 ## Live hosts sample (httpx with tech detection)
-{httpx_sample or "(empty)"}
+{delimit_untrusted("live hosts sample", httpx_sample) if httpx_sample else "(empty)"}
 
 ## CRITICAL CVE-risk hosts
-{critical_hosts or "(none)"}
+{delimit_untrusted("CRITICAL CVE-risk hosts", critical_hosts) if critical_hosts else "(none)"}
 
 ## HIGH CVE-risk hosts
-{high_hosts or "(none)"}
+{delimit_untrusted("HIGH CVE-risk hosts", high_hosts) if high_hosts else "(none)"}
 
 ## API endpoints discovered
-{api_endpoints or "(none)"}
+{delimit_untrusted("API endpoints discovered", api_endpoints) if api_endpoints else "(none)"}
 
 ## Interesting parameters (SSRF/redirect/LFI candidates)
-{interesting_params or "(none)"}
+{delimit_untrusted("interesting parameters", interesting_params) if interesting_params else "(none)"}
 
 ## Upload-like URLs / connectors
-{upload_hint_sample or "(none)"}
+{delimit_untrusted("upload-like URLs", upload_hint_sample) if upload_hint_sample else "(none)"}
 
 ## Potential JS secrets
-{js_secrets or "(none)"}
+{delimit_untrusted("potential JS secrets", js_secrets) if js_secrets else "(none)"}
 
 ## Subdomain takeover candidates
-{takeovers or "(none)"}
+{delimit_untrusted("subdomain takeover candidates", takeovers) if takeovers else "(none)"}
 
 ---
 
@@ -1395,13 +1397,16 @@ endpoints, URLs, APIs, credentials, or findings. If the data shows "(none)" or
             f"## {cat.upper()}\n{content}" for cat, content in sections.items()
         )
 
+        summary_snip = summary_text[:1500]
+        findings_snip = findings_text[:8000]
+
         prompt = f"""I ran vulnerability scans on {target} and got these raw findings:
 
 ## Scan Summary
-{summary_text[:1500]}
+{delimit_untrusted("scan summary", summary_snip) if summary_snip else "(none)"}
 
 ## Raw Tool Output
-{findings_text[:8000]}
+{delimit_untrusted("raw tool output", findings_snip) if findings_snip else "(none)"}
 
 ---
 
@@ -1469,17 +1474,17 @@ Think like a senior red teamer and identify exploit chains.
 
 ## Findings
 
-IDOR candidates: {idor_candidates or "(none)"}
-CORS reflection: {cors_findings or "(none)"}
-Open redirect params: {redirect_params or "(none)"}
-SSRF params: {ssrf_params or "(none)"}
-Unauthenticated API endpoints: {unauth_api or "(none)"}
-XSS findings: {xss_findings or "(none)"}
-Subdomain takeover: {takeover or "(none)"}
-GraphQL introspection: {graphql or "(none)"}
-CVE hits: {cves or "(none)"}
-JWT none-alg: {jwt_none or "(none)"}
-Cloud metadata SSRF: {cloud_ssrf or "(none)"}
+IDOR candidates: {delimit_untrusted("IDOR candidates", idor_candidates) if idor_candidates else "(none)"}
+CORS reflection: {delimit_untrusted("CORS reflection", cors_findings) if cors_findings else "(none)"}
+Open redirect params: {delimit_untrusted("open redirect params", redirect_params) if redirect_params else "(none)"}
+SSRF params: {delimit_untrusted("SSRF params", ssrf_params) if ssrf_params else "(none)"}
+Unauthenticated API endpoints: {delimit_untrusted("unauthenticated API endpoints", unauth_api) if unauth_api else "(none)"}
+XSS findings: {delimit_untrusted("XSS findings", xss_findings) if xss_findings else "(none)"}
+Subdomain takeover: {delimit_untrusted("subdomain takeover", takeover) if takeover else "(none)"}
+GraphQL introspection: {delimit_untrusted("GraphQL introspection", graphql) if graphql else "(none)"}
+CVE hits: {delimit_untrusted("CVE hits", cves) if cves else "(none)"}
+JWT none-alg: {delimit_untrusted("JWT none-alg", jwt_none) if jwt_none else "(none)"}
+Cloud metadata SSRF: {delimit_untrusted("cloud metadata SSRF", cloud_ssrf) if cloud_ssrf else "(none)"}
 
 ---
 
@@ -1531,7 +1536,7 @@ Do NOT fabricate hypothetical chains using invented endpoints or made-up evidenc
         prompt = f"""Write professional VAPT reports for validated findings on {target}.
 
 ## Grounded Evidence Only
-{evidence[:7000]}
+{delimit_untrusted("grounded evidence", evidence[:7000])}
 
 ---
 
@@ -1602,7 +1607,7 @@ Rules:
         prompt = f"""Analyze this JavaScript file from: {url or "(unknown URL)"}
 
 ```javascript
-{js_content}
+{delimit_untrusted("JavaScript file content", js_content)}
 ```
 
 As a penetration tester I need:
@@ -1642,7 +1647,7 @@ Be concise. Flag only what's actually interesting."""
         prompt = f"""Validate this finding against VAPT quality criteria:
 
 ---
-{finding_description}
+{delimit_untrusted("finding description", finding_description)}
 ---
 
 THE 7 QUESTIONS:
@@ -1712,7 +1717,7 @@ IF DROP: What would need to change for this to become viable?"""
 Current phase: {phase}
 Time remaining: {time_left_hours} hours
 Current state:
-{data_summary[:3000]}
+{delimit_untrusted("current state summary", data_summary[:3000]) if data_summary else "(none)"}
 
 What is the single best thing I should do RIGHT NOW?
 
@@ -1896,13 +1901,13 @@ Mode: {mode}
 Command: {command}
 Last file growth: {last_growth_age if last_growth_age is not None else "unknown"}s ago
 Last weak activity (file churn / process-tree change): {last_activity_age if last_activity_age is not None else "unknown"}s ago
-Recent file changes: {", ".join(recent_files) if recent_files else "(none reported)"}
+Recent file changes: {delimit_untrusted("recent file changes", ", ".join(recent_files)) if recent_files else "(none reported)"}
 
 === CHILD PROCESS TREE FOR THIS PID ===
-{proc_summary}
+{delimit_untrusted("child process tree", proc_summary)}
 
 === OUTPUT FILE STATE ===
-{file_state}
+{delimit_untrusted("output file state", file_state)}
 
 === TOOL RESOLUTION USING THE SUBPROCESS PATH ===
 {tool_summary}
@@ -2021,19 +2026,45 @@ NEXT ACTION: <one concrete action>
             return self._gowitness_install_command()
         return self._TOOL_INSTALL.get(tool_name.lower())
 
-    def run_command(self, cmd: str, timeout: int = 120,
-                    cwd: str = None) -> tuple[int, str, str]:
+    _EXPLOIT_ENV_ALLOWLIST = ("PATH", "HOME", "LANG", "TERM")
+
+    def run_command(self, cmd: str, timeout: int = 120, cwd: str = None,
+                    require_confirmation: bool = True) -> tuple[int, str, str]:
         """
         Execute a shell command and return (returncode, stdout, stderr).
         Stdout/stderr are capped at 8K each to avoid flooding context.
+
+        require_confirmation=True (default): the operator must type the
+        exact command back at an interactive TTY before it runs — the same
+        pattern tools/spray_orchestrator.sh uses for credential sprays.
+        This is the ONLY real gate for LLM-proposed commands; the denylist
+        in _sanitize_exploit_command is defense in depth, not sufficient on
+        its own (see SECURITY-REVIEW-2026-08-22.md finding #1). Only pass
+        require_confirmation=False for commands that were never derived
+        from LLM output or target-controlled content.
         """
         import subprocess as _sp
+
+        if require_confirmation:
+            if not sys.stdin.isatty():
+                return (2, "", "Refused: command confirmation requires an interactive "
+                              "terminal, not piped/automated input.")
+            print(f"\n[Exploit] Proposed command:\n  {cmd}\n")
+            typed = input("Type the command exactly to confirm, or anything else to refuse: ")
+            if typed != cmd:
+                return (2, "", "Refused: typed confirmation did not match the proposed command.")
+
+        # Minimal explicit environment — the full os.environ carries every
+        # configured LLM provider API key (ANTHROPIC_API_KEY, OPENAI_API_KEY,
+        # etc.); an executed command must never inherit those implicitly.
+        child_env = {k: os.environ[k] for k in self._EXPLOIT_ENV_ALLOWLIST if k in os.environ}
+        child_env["PATH"] = f"{os.path.expanduser('~/go/bin')}:{child_env.get('PATH', '')}"
+
         proc = None
         try:
             proc = _sp.Popen(
                 cmd, shell=True, stdout=_sp.PIPE, stderr=_sp.PIPE, text=True,
-                cwd=cwd, start_new_session=True,
-                env={**os.environ, "PATH": f"{os.path.expanduser('~/go/bin')}:{os.environ.get('PATH', '')}"},
+                cwd=cwd, start_new_session=True, env=child_env,
             )
             stdout, stderr = proc.communicate(timeout=timeout)
             return proc.returncode, stdout[:8000], stderr[:2000]
@@ -2083,7 +2114,10 @@ NEXT ACTION: <one concrete action>
             return False
 
         print(f"{CYAN}[Brain] {cmd}{NC}")
-        rc, out, err = self.run_command(cmd, timeout=300)
+        # require_confirmation=False: cmd here is looked up from the fixed
+        # _TOOL_INSTALL dict above (keyed by a known tool name), never raw
+        # LLM output or target-controlled content — safe to run unattended.
+        rc, out, err = self.run_command(cmd, timeout=300, require_confirmation=False)
         if rc == 0:
             print(f"{GREEN}[Brain] '{resolved}' installed OK{NC}")
             return True
@@ -2166,7 +2200,7 @@ NEXT ACTION: <one concrete action>
 {target_url}
 
 Evidence / scanner output:
-{evidence[:2000]}
+{delimit_untrusted("exploit evidence", evidence[:2000])}
 
 {f'Additional context:{chr(10)}{extra_context[:1000]}' if extra_context else ''}
 
@@ -2246,8 +2280,14 @@ Based on this:
 
         return full_transcript
 
+    # exploit_finding() bounds its own multi-turn loop to this many rounds
+    # (see the `for iteration in range(6):` there) — used here purely for
+    # completion-budget accounting, not to alter that loop itself.
+    EXPLOIT_ROUND_CAP = 6
+
     def auto_triage_and_exploit(self, findings_dir: str,
-                                recon_dir: str = "") -> list[dict]:
+                                recon_dir: str = "",
+                                max_completions: int = 50) -> list[dict]:
         """
         Post-scan autonomous loop:
           1. Read every finding file
@@ -2256,6 +2296,17 @@ Based on this:
           4. Return list of {vuln, url, verdict, impact}
 
         Saves results to findings_dir/brain/auto_triage.md
+
+        `max_completions` is a hard cap on total LLM completions across
+        this whole call (triage + exploit rounds combined). Each
+        triage_finding() call costs 1 completion; each exploit_finding()
+        call is budgeted at EXPLOIT_ROUND_CAP completions (its own
+        internal worst case), and is skipped — not truncated mid-flight —
+        if it would push total accounted completions past the cap. With
+        up to 25 candidates from _collect_candidate_findings() and no cap,
+        this loop could previously trigger up to 25 * (1 + 6) = 175
+        completions in a single run (SECURITY-REVIEW-2026-08-22.md
+        finding #14, MEDIUM).
         """
         if not self.enabled:
             return []
@@ -2289,24 +2340,37 @@ Based on this:
         self._gate_workings_path = str(gate_path)
 
         triage_summary = []
+        completions_used = 0
         for cat, line in all_findings:
+            if completions_used >= max_completions:
+                print(f"{YELLOW}[Brain] max_completions={max_completions} reached — "
+                      f"stopping triage loop early ({len(results)}/{len(all_findings)} "
+                      f"candidates processed){NC}")
+                break
+
             verdict, reasoning = self.triage_finding(f"[{cat}] {line}")
+            completions_used += 1
             result = {"category": cat, "finding": line,
                       "verdict": verdict, "reasoning": reasoning[:300]}
             results.append(result)
             triage_summary.append(f"[{verdict}] [{cat}] {line[:100]}")
 
             if verdict in ("SUBMIT", "CHAIN"):
-                # Extract URL from the finding line (first http:// or https:// token)
-                import re
-                url_match = re.search(r"https?://\S+", line)
-                target_url = url_match.group(0) if url_match else target
-                self.exploit_finding(
-                    target_url=target_url,
-                    vuln_type=cat,
-                    evidence=line,
-                    findings_dir=findings_dir,
-                )
+                if completions_used + self.EXPLOIT_ROUND_CAP > max_completions:
+                    print(f"{YELLOW}[Brain] Skipping exploit_finding for [{cat}] "
+                          f"{line[:80]} — would exceed max_completions budget{NC}")
+                else:
+                    # Extract URL from the finding line (first http:// or https:// token)
+                    import re
+                    url_match = re.search(r"https?://\S+", line)
+                    target_url = url_match.group(0) if url_match else target
+                    self.exploit_finding(
+                        target_url=target_url,
+                        vuln_type=cat,
+                        evidence=line,
+                        findings_dir=findings_dir,
+                    )
+                    completions_used += self.EXPLOIT_ROUND_CAP
 
         # Save triage summary
         summary_md = (

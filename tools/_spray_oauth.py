@@ -45,8 +45,13 @@ try:
     import certifi
     SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 except ImportError:
-    SSL_CTX.check_hostname = False
-    SSL_CTX.verify_mode = ssl.CERT_NONE
+    # certifi isn't installed — fall back to the system CA store via
+    # ssl.create_default_context(), which is already a verifying context.
+    # Never disable verification: see SECURITY-REVIEW-2026-08-22.md
+    # finding #9 — this fallback used to disable verification outright,
+    # silently exposing every request (including sprayed credentials) to
+    # MITM on any stock install, since certifi is not a declared dependency.
+    SSL_CTX = ssl.create_default_context()
 
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Bug-Bounty-Research"
 

@@ -27,6 +27,7 @@ import argparse
 import dataclasses
 import hashlib
 import json
+import os
 import re
 import ssl
 import statistics
@@ -36,6 +37,11 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from typing import Any
+
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+from tools.safe_http import safe_urlopen  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -341,12 +347,13 @@ _INSECURE_CTX: ssl.SSLContext | None = None
 
 
 def _insecure_ssl_context() -> ssl.SSLContext:
+    """Despite the legacy name (kept to avoid touching call sites), this
+    now returns a normal verifying context. It used to disable
+    verification unconditionally — see SECURITY-REVIEW-2026-08-22.md
+    finding #9 — which exposed every fetched WAF response to MITM."""
     global _INSECURE_CTX
     if _INSECURE_CTX is None:
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        _INSECURE_CTX = ctx
+        _INSECURE_CTX = ssl.create_default_context()
     return _INSECURE_CTX
 
 
@@ -361,7 +368,7 @@ def _http_get(url: str, *, timeout: float = 8.0) -> dict[str, Any]:
     )
     started = datetime.now(timezone.utc)
     try:
-        with urllib.request.urlopen(
+        with safe_urlopen(
             req, timeout=timeout, context=_insecure_ssl_context()
         ) as resp:
             raw = resp.read()

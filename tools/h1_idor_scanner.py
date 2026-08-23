@@ -12,11 +12,17 @@ Usage:
 import argparse
 import base64
 import json
+import os
 import time
 import sys
 from typing import Optional
 import urllib.request
 import urllib.error
+
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+from tools.safe_http import safe_urlopen  # noqa: E402
 
 # ─── Config ───────────────────────────────────────────────────────────────────
 GRAPHQL_URL = "https://hackerone.com/graphql"
@@ -44,7 +50,7 @@ def gql(token: str, query: str, variables: dict = None) -> dict:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=15) as r:
+        with safe_urlopen(req, timeout=15) as r:
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
         return {"_http_error": e.code, "_body": e.read().decode(errors="replace")}
@@ -63,7 +69,7 @@ def rest(token: str, path: str) -> tuple[int, dict | str]:
         },
     )
     try:
-        with urllib.request.urlopen(req, timeout=15) as r:
+        with safe_urlopen(req, timeout=15) as r:
             return r.status, json.loads(r.read())
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode(errors="replace")
@@ -420,7 +426,7 @@ def test_graphql_csrf(token_a: str):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=10) as r:
+        with safe_urlopen(req, timeout=10) as r:
             acao = r.headers.get("Access-Control-Allow-Origin", "not set")
             acac = r.headers.get("Access-Control-Allow-Credentials", "not set")
             print(f"  Access-Control-Allow-Origin: {acao}")
@@ -457,7 +463,7 @@ def test_2fa_rate_limit(token_b: str):
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=10) as r:
+            with safe_urlopen(req, timeout=10) as r:
                 status = r.status
         except urllib.error.HTTPError as e:
             status = e.code
@@ -487,7 +493,7 @@ def test_s3_url(attachment_url: str, token_b: str):
     # Test 1: access without any H1 auth (pure S3 presigned URL)
     req = urllib.request.Request(attachment_url, headers={"User-Agent": "Mozilla/5.0"})
     try:
-        with urllib.request.urlopen(req, timeout=10) as r:
+        with safe_urlopen(req, timeout=10) as r:
             print(f"  Unauthenticated access: HTTP {r.status} — URL works without H1 session")
             print(f"  Content-Type: {r.headers.get('Content-Type')}")
             if r.status == 200:
@@ -501,7 +507,7 @@ def test_s3_url(attachment_url: str, token_b: str):
         headers={"Authorization": f"Bearer {token_b}", "User-Agent": "Mozilla/5.0"},
     )
     try:
-        with urllib.request.urlopen(req2, timeout=10) as r:
+        with safe_urlopen(req2, timeout=10) as r:
             print(f"  Account B access: HTTP {r.status}")
     except urllib.error.HTTPError as e:
         print(f"  Account B access: HTTP {e.code}")

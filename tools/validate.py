@@ -22,15 +22,21 @@ _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 from tools.banner import print_banner  # noqa: E402
+from tools.safe_http import safe_urlopen  # noqa: E402
 
-# macOS: Python may not have system SSL certs. Use unverified context for API queries.
+# Prefer certifi's CA bundle when available (macOS Python may lack system
+# SSL certs); otherwise fall back to the system CA store via
+# ssl.create_default_context(), which is already a verifying context.
 _SSL_CTX = ssl.create_default_context()
 try:
     import certifi
     _SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 except ImportError:
-    _SSL_CTX.check_hostname = False
-    _SSL_CTX.verify_mode = ssl.CERT_NONE
+    # certifi isn't installed — never disable verification: see
+    # SECURITY-REVIEW-2026-08-22.md finding #9 — this fallback used to
+    # disable verification outright, silently exposing every request to
+    # MITM on any stock install, since certifi is not a declared dependency.
+    _SSL_CTX = ssl.create_default_context()
 
 # ─── Color codes ──────────────────────────────────────────────────────────────
 RED    = "\033[91m"
@@ -180,7 +186,7 @@ def check_h1_dups(program_handle: str, vuln_keyword: str) -> list[dict]:
             data=json.dumps(query).encode(),
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=10, context=_SSL_CTX) as resp:
+        with safe_urlopen(req, timeout=10, context=_SSL_CTX) as resp:
             data = json.loads(resp.read().decode())
         nodes = (data.get("data") or {}).get("hacktivity_items", {}).get("nodes", [])
         results = []
@@ -365,7 +371,7 @@ def gate2_in_scope(program_handle: str) -> tuple[bool, dict]:
                 data=json.dumps(query).encode(),
                 headers={"Content-Type": "application/json"},
             )
-            with urllib.request.urlopen(req, timeout=8, context=_SSL_CTX) as resp:
+            with safe_urlopen(req, timeout=8, context=_SSL_CTX) as resp:
                 data = json.loads(resp.read().decode())
             scopes = (data.get("data") or {}).get("team", {}).get("policy_scopes", {}).get("edges", [])
             if scopes:

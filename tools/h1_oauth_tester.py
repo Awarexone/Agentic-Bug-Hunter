@@ -12,10 +12,17 @@ Usage:
 
 import argparse
 import json
+import os
+import sys
 import time
 import urllib.request
 import urllib.error
 import urllib.parse
+
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+from tools.safe_http import safe_urlopen  # noqa: E402
 
 BASE = "https://hackerone.com"
 
@@ -35,7 +42,7 @@ def request(method: str, path: str, headers: dict = None, data: dict = None,
 
     req = urllib.request.Request(url, data=body, headers=h, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=15) as r:
+        with safe_urlopen(req, timeout=15) as r:
             resp_headers = dict(r.headers)
             body_text = r.read().decode(errors="replace")
             return r.status, body_text, resp_headers

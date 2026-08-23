@@ -22,6 +22,7 @@ _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 from tools.banner import print_banner  # noqa: E402
+from tools.safe_http import safe_urlopen  # noqa: E402
 
 # macOS: Python may not have system SSL certs. Use unverified context for API queries.
 _SSL_CTX = ssl.create_default_context()
@@ -180,7 +181,7 @@ def check_h1_dups(program_handle: str, vuln_keyword: str) -> list[dict]:
             data=json.dumps(query).encode(),
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=10, context=_SSL_CTX) as resp:
+        with safe_urlopen(req, timeout=10, context=_SSL_CTX) as resp:
             data = json.loads(resp.read().decode())
         nodes = (data.get("data") or {}).get("hacktivity_items", {}).get("nodes", [])
         results = []
@@ -365,7 +366,7 @@ def gate2_in_scope(program_handle: str) -> tuple[bool, dict]:
                 data=json.dumps(query).encode(),
                 headers={"Content-Type": "application/json"},
             )
-            with urllib.request.urlopen(req, timeout=8, context=_SSL_CTX) as resp:
+            with safe_urlopen(req, timeout=8, context=_SSL_CTX) as resp:
                 data = json.loads(resp.read().decode())
             scopes = (data.get("data") or {}).get("team", {}).get("policy_scopes", {}).get("edges", [])
             if scopes:

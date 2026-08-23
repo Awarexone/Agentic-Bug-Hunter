@@ -27,6 +27,7 @@ import argparse
 import dataclasses
 import hashlib
 import json
+import os
 import re
 import ssl
 import statistics
@@ -36,6 +37,11 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from typing import Any
+
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+from tools.safe_http import safe_urlopen  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -361,7 +367,7 @@ def _http_get(url: str, *, timeout: float = 8.0) -> dict[str, Any]:
     )
     started = datetime.now(timezone.utc)
     try:
-        with urllib.request.urlopen(
+        with safe_urlopen(
             req, timeout=timeout, context=_insecure_ssl_context()
         ) as resp:
             raw = resp.read()

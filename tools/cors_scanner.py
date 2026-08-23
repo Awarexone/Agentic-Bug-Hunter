@@ -27,12 +27,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
+
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+from tools.safe_http import safe_urlopen  # noqa: E402
 
 USER_AGENT = "claude-bug-bounty/cors_scanner"
 
@@ -179,7 +185,7 @@ def _fetch_cors(url: str, origin: str, cookie: str | None, timeout: int) -> tupl
         headers["Cookie"] = cookie
     req = urllib.request.Request(url, headers=headers, method="GET")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with safe_urlopen(req, timeout=timeout) as resp:
             return (
                 resp.headers.get("Access-Control-Allow-Origin"),
                 resp.headers.get("Access-Control-Allow-Credentials"),

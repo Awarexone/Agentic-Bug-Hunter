@@ -12,11 +12,18 @@ Usage:
 
 import argparse
 import json
+import os
+import sys
 import threading
 import time
 from typing import Optional
 import urllib.request
 import urllib.error
+
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+from tools.safe_http import safe_urlopen  # noqa: E402
 
 BASE = "https://hackerone.com"
 RESULTS = []
@@ -35,7 +42,7 @@ def gql_raw(token: str, query: str) -> tuple[int, dict]:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=10) as r:
+        with safe_urlopen(req, timeout=10) as r:
             return r.status, json.loads(r.read())
     except urllib.error.HTTPError as e:
         return e.code, {"_error": e.read().decode(errors="replace")}
@@ -57,7 +64,7 @@ def rest_raw(token: str, method: str, path: str, data: dict = None) -> tuple[int
         method=method,
     )
     try:
-        with urllib.request.urlopen(req, timeout=10) as r:
+        with safe_urlopen(req, timeout=10) as r:
             return r.status, r.read().decode(errors="replace")
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode(errors="replace")

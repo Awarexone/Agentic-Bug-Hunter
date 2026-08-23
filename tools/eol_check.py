@@ -18,11 +18,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import urllib.request
 import urllib.error
 from datetime import date, datetime
 from typing import Any
+
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+from tools.safe_http import safe_urlopen  # noqa: E402
 
 
 ENDOFLIFE_API = "https://endoflife.date/api"
@@ -77,7 +83,8 @@ def fetch_product(product: str) -> list[dict[str, Any]]:
     """Fetch lifecycle data for a product from endoflife.date."""
     url = f"{ENDOFLIFE_API}/{product}.json"
     try:
-        with urllib.request.urlopen(url, timeout=10) as resp:
+        req = urllib.request.Request(url)
+        with safe_urlopen(req, timeout=10) as resp:
             return json.loads(resp.read())
     except urllib.error.HTTPError as e:
         if e.code == 404:

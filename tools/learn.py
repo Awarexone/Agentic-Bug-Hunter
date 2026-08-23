@@ -23,6 +23,7 @@ _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 from tools.banner import print_banner  # noqa: E402
+from tools.safe_http import safe_urlopen  # noqa: E402
 
 # macOS: Python may not have system SSL certs. Use unverified context for API queries.
 _SSL_CTX = ssl.create_default_context()
@@ -125,7 +126,7 @@ def fetch_url(url: str, headers: dict = None, data: bytes = None, timeout: int =
     """Simple HTTP fetch, returns parsed JSON or None on error."""
     req = urllib.request.Request(url, data=data, headers=headers or {})
     try:
-        with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX) as resp:
+        with safe_urlopen(req, timeout=timeout, context=_SSL_CTX) as resp:
             body = resp.read().decode("utf-8", errors="replace")
             return json.loads(body)
     except urllib.error.HTTPError as e:

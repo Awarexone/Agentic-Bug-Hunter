@@ -240,13 +240,19 @@ class SafeMethodPolicy:
 class AutopilotGuard:
     """Unified pre-request guard for autopilot mode.
 
-    Integrates CircuitBreaker + RateLimiter + SafeMethodPolicy into a single
-    check_request() call that returns allow / block / require_approval.
+    Integrates ScopeChecker + CircuitBreaker + RateLimiter + SafeMethodPolicy
+    into a single check_request() call that returns allow / block /
+    require_approval.
 
     Check order:
+      0. Scope check (out of scope? → block)  [HARD BLOCK, checked first]
       1. Circuit breaker (host blocked? → block)
       2. Safe method policy (unsafe method? → require_approval)
       3. Allow
+
+    If no scope_checker is supplied and fail_closed is True (the default),
+    every request is blocked — a run with no configured scope is treated as a
+    misconfiguration rather than an invitation to hit anything.
     """
 
     def __init__(
@@ -257,6 +263,8 @@ class AutopilotGuard:
         test_rps: float = 1.0,
         safe_methods_only: bool = True,
         safe_methods: set[str] | None = None,
+        scope_checker=None,
+        fail_closed: bool = True,
     ):
         self._breaker = CircuitBreaker(
             threshold=circuit_threshold,
@@ -267,6 +275,16 @@ class AutopilotGuard:
             safe_methods=safe_methods,
             enabled=safe_methods_only,
         )
+        # Scope enforcement. When a ScopeChecker is supplied, every request is
+        # checked against the program allowlist as a HARD BLOCK before any other
+        # gate. This is the backstop the manual /scope command cannot guarantee.
+        #
+        # fail_closed=True (default): if no scope_checker was supplied, block ALL
+        # requests rather than silently allowing everything. An autopilot run with
+        # no configured scope is almost certainly a misconfiguration, and the safe
+        # failure mode for an out-of-scope request is "don't send it."
+        self._scope_checker = scope_checker
+        self._fail_closed = fail_closed
 
     @staticmethod
     def _extract_host(url: str) -> str:
@@ -288,6 +306,31 @@ class AutopilotGuard:
             dict with 'decision' key: 'allow', 'block', or 'require_approval'.
         """
         host = self._extract_host(url)
+
+        # 0. Scope enforcement (HARD BLOCK, checked first).
+        # An out-of-scope request must never be sent, regardless of method or
+        # host health. This is deliberately the first gate.
+        if self._scope_checker is not None:
+            if not self._scope_checker.is_in_scope(url):
+                return {
+                    "decision": "block",
+                    "method": method.upper(),
+                    "url": url,
+                    "host": host,
+                    "reason": f"Out of scope: {host} is not on the program allowlist",
+                }
+        elif self._fail_closed:
+            return {
+                "decision": "block",
+                "method": method.upper(),
+                "url": url,
+                "host": host,
+                "reason": (
+                    "No scope configured and fail_closed is set — refusing to send "
+                    "requests. Configure a ScopeChecker with the program's in-scope "
+                    "domains before running autopilot."
+                ),
+            }
 
         # 1. Circuit breaker
         if self._breaker.is_tripped(host):

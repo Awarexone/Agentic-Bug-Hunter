@@ -134,7 +134,20 @@ log_warn "  - Read the program policy for 'credential stuffing', 'brute force',"
 log_warn "    'authentication testing' — these are usually explicitly excluded"
 log_warn "  - If unsure, ABORT and ask the program first"
 
-if [ "$I_UNDERSTAND" != true ] && [ "$DRY_RUN" != true ]; then
+# The typed-hostname confirmation is the single strongest guard against
+# spraying the wrong target, so it is UNCONDITIONAL for any run that actually
+# sends traffic. --i-understand can waive the softer "type yes" lockout prompt
+# below, but it can NEVER waive this one. Only --dry-run (which sends nothing)
+# skips it.
+if [ "$DRY_RUN" != true ]; then
+    # Require an interactive terminal: a human must type this, not a pipe or an
+    # automated agent feeding stdin. This defeats "--i-understand + echo host |"
+    # style bypasses.
+    if [ ! -t 0 ]; then
+        log_err "Refusing to spray: hostname confirmation requires an interactive terminal."
+        log_err "This guard cannot be satisfied by piped or automated input. Aborting."
+        exit 2
+    fi
     echo ""
     read -r -p "Type the target hostname ($TARGET_HOST) to confirm: " TYPED
     if [ "$TYPED" != "$TARGET_HOST" ]; then

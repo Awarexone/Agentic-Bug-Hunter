@@ -40,6 +40,10 @@ def fake_hunt(monkeypatch, tmp_path):
             self.calls.append(("run_post_param_discovery", domain, kwargs))
             return True
 
+        def run_sqlmap_request_file(self, request_file, **kwargs):
+            self.calls.append(("run_sqlmap_request_file", request_file, kwargs))
+            return True
+
         def _resolve_recon_dir(self, domain):
             recon_dir = tmp_path / "recon" / domain
             recon_dir.mkdir(parents=True, exist_ok=True)
@@ -116,3 +120,57 @@ class TestMethodPolicyEnforced:
         result = dispatcher.dispatch("run_recon", {})
         assert "APPROVAL" not in result.upper()
         assert fake_hunt.calls
+
+
+class TestSqlmapRequestFileScope:
+    """run_sqlmap_on_file's actual target is data-driven from a request
+    file, not self.domain — a --target that's in scope says nothing about
+    what host the request file itself targets. This is the sharp edge:
+    self.domain passes scope, but the file smuggles in an out-of-scope
+    host. See SECURITY-REVIEW-2026-08-22.md finding #2."""
+
+    def test_out_of_scope_request_file_host_hard_blocked(self, memory, fake_hunt, tmp_path):
+        checker = ScopeChecker(domains=["target.com", "*.target.com"])
+        dispatcher = ToolDispatcher("target.com", memory, scope_checker=checker)
+        req_file = tmp_path / "request.txt"
+        req_file.write_text(
+            "POST /api/login HTTP/1.1\r\n"
+            "Host: evil.other-corp.com\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            '{"user":"a"}'
+        )
+
+        result = dispatcher.dispatch("run_sqlmap_on_file", {"request_file": str(req_file)})
+
+        assert result.startswith("BLOCKED by scope guard:")
+        assert "evil.other-corp.com" in result
+        assert not fake_hunt.calls  # never actually ran
+
+    def test_unparseable_host_blocked_not_bypassed(self, memory, fake_hunt, tmp_path):
+        checker = ScopeChecker(domains=["target.com"])
+        dispatcher = ToolDispatcher("target.com", memory, scope_checker=checker)
+        req_file = tmp_path / "request.txt"
+        req_file.write_text("POST /api/login HTTP/1.1\r\n\r\n{}")  # no Host: header
+
+        result = dispatcher.dispatch("run_sqlmap_on_file", {"request_file": str(req_file)})
+
+        assert result.startswith("BLOCKED by scope guard:")
+        assert not fake_hunt.calls
+
+    def test_in_scope_request_file_host_still_requires_approval_and_names_host(self, memory, fake_hunt, tmp_path):
+        checker = ScopeChecker(domains=["target.com", "*.target.com"])
+        dispatcher = ToolDispatcher("target.com", memory, scope_checker=checker)
+        req_file = tmp_path / "request.txt"
+        req_file.write_text(
+            "POST /api/login HTTP/1.1\r\n"
+            "Host: api.target.com\r\n"
+            "\r\n"
+            "{}"
+        )
+
+        result = dispatcher.dispatch("run_sqlmap_on_file", {"request_file": str(req_file)})
+
+        assert "APPROVAL" in result.upper()
+        assert "api.target.com" in result
+        assert not fake_hunt.calls  # still not executed without approval

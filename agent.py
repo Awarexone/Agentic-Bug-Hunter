@@ -42,6 +42,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import traceback
@@ -572,15 +573,44 @@ class ToolDispatcher:
         # HTTP-method semantics (see TOOL_METHODS) so AutopilotGuard's
         # method policy can require human approval for state-changing tools
         # instead of every call being nominally "safe" GET.
+        # run_sqlmap_on_file's actual target is data-driven from a request
+        # file, not self.domain — self.domain passing scope says nothing
+        # about what host the file itself targets. Parse the file's Host:
+        # header and hard-block on it BEFORE the generic method-policy gate
+        # below, so an out-of-scope request file can never reach
+        # "require_approval" (which would only warn, not block) and a human
+        # approving an in-scope one can see the real target in the message.
+        # See SECURITY-REVIEW-2026-08-22.md finding #2.
+        sqlmap_file_host = None
+        if name == "run_sqlmap_on_file":
+            req_file = args.get("request_file", "")
+            if not req_file or not os.path.isfile(req_file):
+                return f"ERROR: request_file not found: {req_file}"
+            sqlmap_file_host = self._parse_request_file_host(req_file)
+            if self._guard._scope_checker is not None:
+                if sqlmap_file_host is None:
+                    return ("BLOCKED by scope guard: could not determine target "
+                             f"host from request_file ({req_file}) — refusing "
+                             "rather than assuming in-scope")
+                if not self._guard._scope_checker.is_in_scope(f"https://{sqlmap_file_host}"):
+                    return (f"BLOCKED by scope guard: Out of scope: "
+                             f"{sqlmap_file_host} is not on the program "
+                             f"allowlist (target host parsed from request_file "
+                             f"{req_file})")
+
         if name in self.NETWORK_TOOLS:
             method = self.TOOL_METHODS.get(name, "GET")
             gate = self._guard.check_request(method, f"https://{domain}")
             if gate["decision"] == "block":
                 return f"BLOCKED by scope guard: {gate['reason']}"
             if gate["decision"] == "require_approval":
-                return (f"REQUIRES APPROVAL: {name} issues a state-changing "
-                         f"request ({method}) — a human must review and run "
-                         f"this manually before it proceeds. Not executed.")
+                if sqlmap_file_host is not None:
+                    target_desc = f"targets {sqlmap_file_host} via request_file"
+                else:
+                    target_desc = f"issues a state-changing request ({method})"
+                return (f"REQUIRES APPROVAL: {name} {target_desc} — a human "
+                         f"must review and run this manually before it "
+                         f"proceeds. Not executed.")
             # Scope check above only validated the base --target domain;
             # recon may have discovered subdomains/URLs outside that scope.
             # Filter recon output in place before any scanner reads it.
@@ -695,6 +725,26 @@ class ToolDispatcher:
         self.memory.save()
 
         return obs_full
+
+    @staticmethod
+    def _parse_request_file_host(request_file: str) -> str | None:
+        """Parse the target host out of a raw HTTP request file (sqlmap/
+        Burp style) by scanning for a `Host:` header line. Deliberately not
+        a full HTTP parser — request files for sqlmap are well-formed raw
+        requests with a `Host:` header, and a simple line scan is
+        sufficient. Returns the host (with port, if present), or None if
+        the file couldn't be read or no Host header was found — callers
+        must treat None as "refuse", not "assume in scope". See
+        SECURITY-REVIEW-2026-08-22.md finding #2."""
+        try:
+            with open(request_file, "r", errors="replace") as f:
+                for line in f:
+                    m = re.match(r"^\s*Host:\s*(.+?)\s*$", line, re.IGNORECASE)
+                    if m:
+                        return m.group(1).strip()
+        except OSError:
+            return None
+        return None
 
     def _filter_recon_urls_to_scope(self, domain: str) -> None:
         """Drop out-of-scope URLs from recon output files IN PLACE before

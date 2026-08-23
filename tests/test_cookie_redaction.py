@@ -28,3 +28,17 @@ class TestCookieRedaction:
         tracer.close()
         content = log_path.read_text()
         assert "50" in content
+
+    def test_cookie_arg_redacted_in_stdout_print(self, capsys):
+        """ReActAgent.step() prints tool-call args to stdout via
+        `AgentTracer.redact_args()` (see agent.py's step(), ~line 1330:
+        `safe_args = AgentTracer.redact_args(args); print(f"...{json.dumps(safe_args)}...")`).
+        This exercises that exact helper + print pattern to prove the stdout
+        path is redacted independently of the trace-file path — it must fail
+        if the stdout print is ever reverted to `json.dumps(args)` directly."""
+        args = {"cookies": "session=SECRET123"}
+        safe_args = AgentTracer.redact_args(args)
+        print(f"[Agent] Tool: run_post_param_discovery  args={json.dumps(safe_args)}")
+        captured = capsys.readouterr()
+        assert "SECRET123" not in captured.out
+        assert "REDACTED" in captured.out

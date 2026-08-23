@@ -194,7 +194,9 @@ remove_standalone_path() {
         fi
     fi
 
-    "${remove_cmd[@]}" rm -f -- "$target"
+    # bash 3.2 (macOS default) aborts under set -u when expanding an empty array
+    # as "${remove_cmd[@]}" — same idiom as tools/_auth_helper.sh.
+    ${remove_cmd[@]+"${remove_cmd[@]}"} rm -f -- "$target"
     echo "✓ Removed standalone command: $target"
     removed=$((removed + 1))
 }

@@ -330,7 +330,10 @@ if [ -f requirements.txt ] && command -v uv &>/dev/null; then
         # plain `python3 -m pip install` would target in this case.
         UV_PIP_ARGS+=(--system)
     fi
-    if uv pip install "${UV_PIP_ARGS[@]}" -r requirements.txt; then
+    # bash 3.2 (macOS default) aborts under set -u when expanding an empty array
+    # as "${UV_PIP_ARGS[@]}" — which is the common case, since the array is only
+    # populated when no venv is present. Same idiom as tools/_auth_helper.sh.
+    if uv pip install ${UV_PIP_ARGS[@]+"${UV_PIP_ARGS[@]}"} -r requirements.txt; then
         log_ok "Python dependencies installed (via uv)"
     else
         log_warn "Python dependencies could not be installed automatically"

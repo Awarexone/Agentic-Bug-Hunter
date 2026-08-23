@@ -280,8 +280,10 @@ install_standalone() {
         fi
     fi
 
-    "${install_cmd[@]}" mkdir -p "$bin_dir"
-    "${install_cmd[@]}" ln -sfn "$engine" "$target"
+    # bash 3.2 (macOS default) aborts under set -u when expanding an empty array
+    # as "${install_cmd[@]}" — same idiom as tools/_auth_helper.sh.
+    ${install_cmd[@]+"${install_cmd[@]}"} mkdir -p "$bin_dir"
+    ${install_cmd[@]+"${install_cmd[@]}"} ln -sfn "$engine" "$target"
 
     if [ -L "$target" ] && [ "$(readlink "$target")" = "$engine" ]; then
         echo "[+] $action: $target -> $engine"

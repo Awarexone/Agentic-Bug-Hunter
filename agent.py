@@ -524,9 +524,31 @@ class ToolDispatcher:
         "run_sqlmap_targeted", "run_sqlmap_on_file", "run_jwt_audit",
     }
 
+    # Real HTTP-method semantics per tool, so AutopilotGuard's method policy
+    # (unsafe methods require human approval) actually fires instead of
+    # every call being hardcoded GET. Read/recon-only tools stay GET; tools
+    # that submit data, mutate state, or run active exploitation map to
+    # their real verb. See SECURITY-REVIEW-2026-08-22.md finding #7.
+    TOOL_METHODS = {
+        "run_recon": "GET",
+        "run_vuln_scan": "GET",
+        "run_js_analysis": "GET",
+        "run_secret_hunt": "GET",
+        "run_param_discovery": "GET",
+        "run_cors_check": "GET",
+        "run_post_param_discovery": "POST",
+        "run_api_fuzz": "POST",
+        "run_cms_exploit": "POST",
+        "run_rce_scan": "POST",
+        "run_sqlmap_targeted": "POST",
+        "run_sqlmap_on_file": "POST",
+        "run_jwt_audit": "GET",
+    }
+
     def __init__(self, domain: str, memory: HuntMemory,
                  scope_lock: bool = False, max_urls: int = 100,
-                 default_cookies: str = "", scope_checker: ScopeChecker | None = None):
+                 default_cookies: str = "", scope_checker: ScopeChecker | None = None,
+                 circuit_threshold: int = 5):
         self.domain          = domain
         self.memory           = memory
         self.scope_lock       = scope_lock
@@ -536,7 +558,8 @@ class ToolDispatcher:
         # a scope_checker, every network tool call below is blocked rather
         # than silently allowed. See main()/run_agent_hunt() for where
         # scope_checker gets built from --domain/--exclude-domain.
-        self._guard = AutopilotGuard(scope_checker=scope_checker)
+        self._guard = AutopilotGuard(scope_checker=scope_checker,
+                                      circuit_threshold=circuit_threshold)
 
     def dispatch(self, name: str, args: dict) -> str:
         """Execute named tool and return text observation."""
@@ -545,15 +568,23 @@ class ToolDispatcher:
         t0 = time.time()
 
         # Scope gate: checked first, ahead of everything else, for any tool
-        # that actually sends traffic. `method` is nominal here — dispatch
-        # operates at whole-tool granularity (a shell-out to a scanner), not
-        # a single HTTP request, so there's no real verb to report. GET just
-        # selects "safe, no approval step" in AutopilotGuard's method policy;
-        # the check that matters at this layer is scope.
+        # that actually sends traffic. `method` now reflects the tool's real
+        # HTTP-method semantics (see TOOL_METHODS) so AutopilotGuard's
+        # method policy can require human approval for state-changing tools
+        # instead of every call being nominally "safe" GET.
         if name in self.NETWORK_TOOLS:
-            gate = self._guard.check_request("GET", f"https://{domain}")
-            if gate["decision"] != "allow":
+            method = self.TOOL_METHODS.get(name, "GET")
+            gate = self._guard.check_request(method, f"https://{domain}")
+            if gate["decision"] == "block":
                 return f"BLOCKED by scope guard: {gate['reason']}"
+            if gate["decision"] == "require_approval":
+                return (f"REQUIRES APPROVAL: {name} issues a state-changing "
+                         f"request ({method}) — a human must review and run "
+                         f"this manually before it proceeds. Not executed.")
+            # Scope check above only validated the base --target domain;
+            # recon may have discovered subdomains/URLs outside that scope.
+            # Filter recon output in place before any scanner reads it.
+            self._filter_recon_urls_to_scope(domain)
 
         try:
             if name == "run_recon":
@@ -643,8 +674,13 @@ class ToolDispatcher:
                 return f"Unknown tool: {name}"
 
         except Exception as exc:
+            if name in self.NETWORK_TOOLS:
+                self._guard.record_failure(domain)
             tb = traceback.format_exc()
             return f"Tool {name} raised exception: {exc}\n{tb[:500]}"
+
+        if name in self.NETWORK_TOOLS:
+            self._guard.record_success(domain)
 
         elapsed = round(time.time() - t0, 1)
         obs_full = f"{obs}\n\n[{name} completed in {elapsed}s]"
@@ -659,6 +695,25 @@ class ToolDispatcher:
         self.memory.save()
 
         return obs_full
+
+    def _filter_recon_urls_to_scope(self, domain: str) -> None:
+        """Drop out-of-scope URLs from recon output files IN PLACE before
+        any scanner reads them. The base-domain check at the top of
+        dispatch() only validates self.domain; scanners then read whatever
+        recon discovered (subdomains, crawled URLs) with no further scope
+        check — this closes that gap. See SECURITY-REVIEW-2026-08-22.md
+        finding #2."""
+        if self._guard._scope_checker is None:
+            return  # fail_closed already blocked dispatch entirely in this case
+        h = _h()
+        try:
+            recon_dir = h._resolve_recon_dir(domain)
+        except Exception:
+            return
+        urls_file = os.path.join(recon_dir, "urls", "all.txt")
+        if not os.path.isfile(urls_file):
+            return
+        self._guard._scope_checker.filter_file(urls_file)
 
     # ── Observation formatters ──────────────────────────────────────────────
 

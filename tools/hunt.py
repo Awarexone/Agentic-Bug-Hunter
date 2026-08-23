@@ -520,8 +520,8 @@ def run_graphql_audit(domain):
         os.makedirs(out_dir, exist_ok=True)
         try:
             proc = subprocess.Popen(
-                f'bash "{script}" "{url}" --output-dir "{out_dir}"',
-                shell=True, cwd=BASE_DIR, env=child_env,
+                ["bash", str(script), url, "--output-dir", out_dir],
+                shell=False, cwd=BASE_DIR, env=child_env,
             )
             proc.wait(timeout=600)
             any_ok = any_ok or proc.returncode == 0

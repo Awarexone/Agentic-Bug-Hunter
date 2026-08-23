@@ -193,11 +193,14 @@ def _get_brain(provider: str | None = None):
     return Brain(model=model, provider=provider)
 
 
-def _run_shell(cmd: str, cwd: str | None = None, timeout: int = 3600) -> tuple[bool, str]:
-    """Run a shell command with live output, return (success, combined_output)."""
+def _run_shell(cmd: list[str], cwd: str | None = None, timeout: int = 3600) -> tuple[bool, str]:
+    """Run a command with live output, return (success, combined_output).
+    Takes an argv list, not a shell string — see
+    SECURITY-REVIEW-2026-08-22.md finding #5 for why shell=True with
+    f-string-interpolated targets was a command injection bug."""
     try:
         proc = subprocess.Popen(
-            cmd, shell=True, cwd=cwd or str(HERE),
+            cmd, shell=False, cwd=cwd or str(HERE),
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
         )
         lines = []
@@ -426,7 +429,7 @@ def cmd_recon(args):
     script = TOOLS / "recon_engine.sh"
     if script.exists():
         info("Running recon pipeline...")
-        success, _ = _run_shell(f'bash "{script}" "{target}"')
+        success, _ = _run_shell(["bash", str(script), target])
         if not success:
             warn("Recon had issues — continuing with AI analysis")
     else:
@@ -451,14 +454,14 @@ def cmd_hunt(args):
     script = TOOLS / "recon_engine.sh"
     if script.exists():
         info("Phase 1: Recon...")
-        _run_shell(f'bash "{script}" "{target}"')
+        _run_shell(["bash", str(script), target])
 
     # Run vuln scan
     vuln_script = TOOLS / "vuln_scanner.sh"
     recon_dir = RECON / target
     if vuln_script.exists() and recon_dir.exists():
         info("Phase 2: Vuln scan...")
-        _run_shell(f'bash "{vuln_script}" "{recon_dir}"')
+        _run_shell(["bash", str(vuln_script), str(recon_dir)])
 
     # AI analysis
     info("Phase 3: AI analysis...")

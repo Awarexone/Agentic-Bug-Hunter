@@ -33,7 +33,17 @@ def _is_blocked_redirect_target(hostname: str) -> bool:
 
 
 def _one_hop(req: urllib.request.Request, timeout: float, **kwargs):
-    opener = urllib.request.build_opener(_NoRedirectHandler)
+    # OpenerDirector.open() (used below) does NOT accept a context=
+    # kwarg — only the module-level urllib.request.urlopen() does. Callers
+    # that pass context=<ssl.SSLContext>, expecting the same behavior as
+    # passing it straight to urlopen(), would otherwise hit a TypeError on
+    # every single call. Bind the SSL context to the opener itself via an
+    # HTTPSHandler instead of forwarding it as a kwarg to .open().
+    context = kwargs.pop("context", None)
+    handlers = [_NoRedirectHandler]
+    if context is not None:
+        handlers.append(urllib.request.HTTPSHandler(context=context))
+    opener = urllib.request.build_opener(*handlers)
     try:
         return opener.open(req, timeout=timeout, **kwargs)
     except urllib.error.HTTPError as e:
@@ -59,9 +69,12 @@ def safe_urlopen(req: urllib.request.Request, timeout: float = 10, max_redirects
     hostname before following it, rejecting private/loopback/link-local/
     metadata addresses.
 
-    Extra keyword arguments (e.g. context=<ssl.SSLContext>) are forwarded
-    to the underlying opener on every hop, so callers that pass a custom
-    SSL context to urlopen() keep that behavior unchanged."""
+    Extra keyword arguments are forwarded to the underlying opener on
+    every hop, so callers that pass a custom SSL context to urlopen()
+    keep that behavior unchanged. context=<ssl.SSLContext> is handled
+    specially by _one_hop: OpenerDirector.open() doesn't accept a
+    context= kwarg the way module-level urlopen() does, so it's bound to
+    an HTTPSHandler on the opener instead of being forwarded as-is."""
     current = req
     for _ in range(max_redirects + 1):
         resp = _one_hop(current, timeout, **kwargs)

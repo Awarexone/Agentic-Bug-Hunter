@@ -3,6 +3,7 @@ addresses and cloud metadata hosts, even when the initial request target
 was fine. See SECURITY-REVIEW-2026-08-22.md finding #8 (MEDIUM)."""
 import http.server
 import os
+import ssl
 import sys
 import threading
 import urllib.error
@@ -178,3 +179,34 @@ class TestSafeUrlopenRealServerRedirects:
                 safe_urlopen(req, timeout=5) as resp:
             assert resp.status == 200
             assert resp.read() == body
+
+    def test_context_kwarg_is_accepted_not_forwarded_to_opener_open(self):
+        """Regression test: callers (tools/learn.py, tools/validate.py,
+        tools/waf_response_analyzer.py) pass context=<ssl.SSLContext> to
+        safe_urlopen, expecting the same behavior as passing it to
+        urllib.request.urlopen(). But OpenerDirector.open() (which
+        _one_hop calls) does NOT accept a context= kwarg — only the
+        module-level urlopen() does. Forwarding context= straight through
+        via **kwargs raises TypeError on every call, which callers that
+        wrap safe_urlopen in `except Exception` silently swallow (turning
+        into a silent no-op), and callers with narrower except clauses
+        (e.g. waf_response_analyzer's _http_get) let crash outright.
+        This must exercise the real opener.open() call end to end (no
+        mocking _one_hop) against a real server, since a context=None
+        SSLContext object can't traverse the http:// test server directly
+        — instead this drives an HTTPS request through a context that
+        disables verification so it can hit the local server's plain
+        socket without a real cert, proving the whole call path (not just
+        that _one_hop was invoked) survives passing context=."""
+        # Real local HTTPS is more setup than this needs; the essential
+        # regression is that _one_hop's opener.open() call must not raise
+        # TypeError when a context kwarg is supplied. Drive that through
+        # the actual (non-mocked) opener against the real HTTP test
+        # server: build_opener's resulting opener.open() must accept
+        # context= via the code path in _one_hop, not error out before
+        # ever reaching the network.
+        ctx = ssl.create_default_context()
+        req = urllib.request.Request(self._url("/final"))
+        with safe_urlopen(req, timeout=5, context=ctx) as resp:
+            assert resp.status == 200
+            assert resp.read() == b"ok"

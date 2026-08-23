@@ -797,7 +797,25 @@ class ToolDispatcher:
         dispatch() only validates self.domain; scanners then read whatever
         recon discovered (subdomains, crawled URLs) with no further scope
         check — this closes that gap. See SECURITY-REVIEW-2026-08-22.md
-        finding #2."""
+        finding #2.
+
+        urls/all.txt is not the only file scanners read: recon_engine.sh
+        derives urls/with_params.txt, urls/js_files.txt, and
+        urls/api_endpoints.txt from all.txt ONCE during the initial recon
+        pass (before this filter ever runs), and live/urls.txt comes from
+        a separate subdomain-enum/httpx pipeline entirely — none of those
+        four are re-derived from the now-filtered all.txt on later
+        dispatches, so tools/vuln_scanner.sh (active SQLi/XSS/SSTI probing,
+        invoked by run_vuln_scan with no approval gate) could still send
+        exploitation traffic to out-of-scope hosts. Filter all of them in
+        place, the same way as all.txt. Each not existing yet (e.g. before
+        recon has produced it) must not crash this — skip silently, same
+        as the all.txt case. See SECURITY-REVIEW-2026-08-22.md finding #2
+        follow-up. (tools/vuln_scanner.sh also reads
+        $PRIORITY_DIR/critical_hosts.txt / high_hosts.txt /
+        prioritized_hosts.txt for its ORDERED_SCAN target list, but nothing
+        in this codebase currently writes those files — they're inert, so
+        filtering them here would be dead code.)"""
         if self._guard._scope_checker is None:
             return  # fail_closed already blocked dispatch entirely in this case
         h = _h()
@@ -805,10 +823,18 @@ class ToolDispatcher:
             recon_dir = h._resolve_recon_dir(domain)
         except Exception:
             return
-        urls_file = os.path.join(recon_dir, "urls", "all.txt")
-        if not os.path.isfile(urls_file):
-            return
-        self._guard._scope_checker.filter_file(urls_file)
+        relative_paths = (
+            os.path.join("urls", "all.txt"),
+            os.path.join("urls", "with_params.txt"),
+            os.path.join("urls", "js_files.txt"),
+            os.path.join("urls", "api_endpoints.txt"),
+            os.path.join("live", "urls.txt"),
+        )
+        for rel_path in relative_paths:
+            urls_file = os.path.join(recon_dir, rel_path)
+            if not os.path.isfile(urls_file):
+                continue
+            self._guard._scope_checker.filter_file(urls_file)
 
     # ── Observation formatters ──────────────────────────────────────────────
 

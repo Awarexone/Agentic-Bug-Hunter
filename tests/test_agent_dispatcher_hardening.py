@@ -71,6 +71,45 @@ class TestScopeFiltersReconUrls:
         assert "api.target.com" in remaining
         assert "evil.com" not in remaining
 
+    def test_out_of_scope_urls_dropped_from_derived_recon_files_too(self, memory, fake_hunt, tmp_path):
+        """all.txt isn't the only file scanners read: tools/vuln_scanner.sh
+        does active SQLi/XSS/SSTI probing straight off
+        urls/with_params.txt (and also reads urls/js_files.txt,
+        urls/api_endpoints.txt, live/urls.txt), all of which are derived
+        from recon and were previously never re-filtered even after
+        all.txt itself was cleaned. See SECURITY-REVIEW-2026-08-22.md
+        finding #2 follow-up."""
+        checker = ScopeChecker(domains=["target.com", "*.target.com"])
+        dispatcher = ToolDispatcher("target.com", memory, scope_checker=checker)
+        recon_dir = fake_hunt._resolve_recon_dir("target.com")
+        urls_dir = os.path.join(recon_dir, "urls")
+        live_dir = os.path.join(recon_dir, "live")
+        os.makedirs(urls_dir, exist_ok=True)
+        os.makedirs(live_dir, exist_ok=True)
+        with open(os.path.join(urls_dir, "all.txt"), "w") as f:
+            f.write("https://api.target.com/x\nhttps://evil.com/y\n")
+        with open(os.path.join(urls_dir, "with_params.txt"), "w") as f:
+            f.write("https://api.target.com/x?id=1\nhttps://evil.com/y?id=1\n")
+        with open(os.path.join(urls_dir, "js_files.txt"), "w") as f:
+            f.write("https://api.target.com/app.js\nhttps://evil.com/app.js\n")
+        with open(os.path.join(urls_dir, "api_endpoints.txt"), "w") as f:
+            f.write("https://api.target.com/v1/users\nhttps://evil.com/v1/users\n")
+        with open(os.path.join(live_dir, "urls.txt"), "w") as f:
+            f.write("https://api.target.com/\nhttps://evil.com/\n")
+
+        dispatcher.dispatch("run_vuln_scan", {})
+
+        for fn in (
+            os.path.join(urls_dir, "with_params.txt"),
+            os.path.join(urls_dir, "js_files.txt"),
+            os.path.join(urls_dir, "api_endpoints.txt"),
+            os.path.join(live_dir, "urls.txt"),
+        ):
+            with open(fn) as f:
+                remaining = f.read()
+            assert "api.target.com" in remaining, f"{fn} lost in-scope entries"
+            assert "evil.com" not in remaining, f"{fn} still has out-of-scope entries"
+
 
 class TestCircuitBreakerRecording:
     def test_failed_tool_records_failure_against_guard(self, memory, tmp_path, monkeypatch):

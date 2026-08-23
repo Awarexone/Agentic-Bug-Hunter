@@ -347,12 +347,13 @@ _INSECURE_CTX: ssl.SSLContext | None = None
 
 
 def _insecure_ssl_context() -> ssl.SSLContext:
+    """Despite the legacy name (kept to avoid touching call sites), this
+    now returns a normal verifying context. It used to disable
+    verification unconditionally — see SECURITY-REVIEW-2026-08-22.md
+    finding #9 — which exposed every fetched WAF response to MITM."""
     global _INSECURE_CTX
     if _INSECURE_CTX is None:
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        _INSECURE_CTX = ctx
+        _INSECURE_CTX = ssl.create_default_context()
     return _INSECURE_CTX
 
 

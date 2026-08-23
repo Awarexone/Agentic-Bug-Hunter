@@ -2021,19 +2021,45 @@ NEXT ACTION: <one concrete action>
             return self._gowitness_install_command()
         return self._TOOL_INSTALL.get(tool_name.lower())
 
-    def run_command(self, cmd: str, timeout: int = 120,
-                    cwd: str = None) -> tuple[int, str, str]:
+    _EXPLOIT_ENV_ALLOWLIST = ("PATH", "HOME", "LANG", "TERM")
+
+    def run_command(self, cmd: str, timeout: int = 120, cwd: str = None,
+                    require_confirmation: bool = True) -> tuple[int, str, str]:
         """
         Execute a shell command and return (returncode, stdout, stderr).
         Stdout/stderr are capped at 8K each to avoid flooding context.
+
+        require_confirmation=True (default): the operator must type the
+        exact command back at an interactive TTY before it runs — the same
+        pattern tools/spray_orchestrator.sh uses for credential sprays.
+        This is the ONLY real gate for LLM-proposed commands; the denylist
+        in _sanitize_exploit_command is defense in depth, not sufficient on
+        its own (see SECURITY-REVIEW-2026-08-22.md finding #1). Only pass
+        require_confirmation=False for commands that were never derived
+        from LLM output or target-controlled content.
         """
         import subprocess as _sp
+
+        if require_confirmation:
+            if not sys.stdin.isatty():
+                return (2, "", "Refused: command confirmation requires an interactive "
+                              "terminal, not piped/automated input.")
+            print(f"\n[Exploit] Proposed command:\n  {cmd}\n")
+            typed = input("Type the command exactly to confirm, or anything else to refuse: ")
+            if typed != cmd:
+                return (2, "", "Refused: typed confirmation did not match the proposed command.")
+
+        # Minimal explicit environment — the full os.environ carries every
+        # configured LLM provider API key (ANTHROPIC_API_KEY, OPENAI_API_KEY,
+        # etc.); an executed command must never inherit those implicitly.
+        child_env = {k: os.environ[k] for k in self._EXPLOIT_ENV_ALLOWLIST if k in os.environ}
+        child_env["PATH"] = f"{os.path.expanduser('~/go/bin')}:{child_env.get('PATH', '')}"
+
         proc = None
         try:
             proc = _sp.Popen(
                 cmd, shell=True, stdout=_sp.PIPE, stderr=_sp.PIPE, text=True,
-                cwd=cwd, start_new_session=True,
-                env={**os.environ, "PATH": f"{os.path.expanduser('~/go/bin')}:{os.environ.get('PATH', '')}"},
+                cwd=cwd, start_new_session=True, env=child_env,
             )
             stdout, stderr = proc.communicate(timeout=timeout)
             return proc.returncode, stdout[:8000], stderr[:2000]
@@ -2083,7 +2109,10 @@ NEXT ACTION: <one concrete action>
             return False
 
         print(f"{CYAN}[Brain] {cmd}{NC}")
-        rc, out, err = self.run_command(cmd, timeout=300)
+        # require_confirmation=False: cmd here is looked up from the fixed
+        # _TOOL_INSTALL dict above (keyed by a known tool name), never raw
+        # LLM output or target-controlled content — safe to run unattended.
+        rc, out, err = self.run_command(cmd, timeout=300, require_confirmation=False)
         if rc == 0:
             print(f"{GREEN}[Brain] '{resolved}' installed OK{NC}")
             return True

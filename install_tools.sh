@@ -77,10 +77,20 @@ done
 echo ""
 echo "[*] Installing tools via Go..."
 
+# Pinned to specific tagged releases (not @latest) — verified current as of
+# 2026-08-23 via each project's GitHub releases / the Go module proxy.
 GO_TOOLS=(
-    "github.com/lc/gau/v2/cmd/gau@latest"
-    "github.com/hahwul/dalfox/v2@latest"
-    "github.com/haccer/subjack@latest"
+    "github.com/lc/gau/v2/cmd/gau@v2.2.4"
+    # dalfox v3.x is a Rust rewrite (Cargo.toml, no go.mod) and is not
+    # go-installable — v2.13.0 is the latest tag still on the Go module line.
+    "github.com/hahwul/dalfox/v2@v2.13.0"
+    # subjack's own v2.x/v3.0.0 tags are invalid Go modules (go.mod module
+    # path lacks the required /v2, /v3 suffix for those major versions), so
+    # `go install .../subjack@v3.0.0` fails outright. The Go module proxy
+    # resolves @latest to a pseudo-version pointing at that same v3.0.0
+    # commit — pin to that resolved pseudo-version so the install is still
+    # reproducible instead of silently floating on upstream's tagging bug.
+    "github.com/haccer/subjack@v0.0.0-20260316055456-b53899ce6230"
 )
 
 GO_TOOL_NAMES=(
@@ -124,17 +134,40 @@ if [ -n "$SISAKULINT_CURRENT" ] && [ "$SISAKULINT_CURRENT" = "$SISAKULINT_LATEST
     log_ok "sisakulint v${SISAKULINT_CURRENT} already up to date ($(command -v sisakulint))"
 elif [ -n "$SISAKULINT_LATEST" ]; then
     [ -n "$SISAKULINT_CURRENT" ] && echo "    Upgrading sisakulint v${SISAKULINT_CURRENT} → v${SISAKULINT_LATEST}..."
-    SISAKULINT_URL="https://github.com/sisaku-security/sisakulint/releases/download/v${SISAKULINT_LATEST}/sisakulint_${SISAKULINT_LATEST}_${OS}_${ARCH}.tar.gz"
+    SISAKULINT_ASSET="sisakulint_${SISAKULINT_LATEST}_${OS}_${ARCH}.tar.gz"
+    SISAKULINT_URL="https://github.com/sisaku-security/sisakulint/releases/download/v${SISAKULINT_LATEST}/${SISAKULINT_ASSET}"
+    SISAKULINT_CHECKSUMS_URL="https://github.com/sisaku-security/sisakulint/releases/download/v${SISAKULINT_LATEST}/sisakulint_${SISAKULINT_LATEST}_checksums.txt"
+    SISAKULINT_TARBALL="/tmp/${SISAKULINT_ASSET}"
+    SISAKULINT_CHECKSUMS="/tmp/sisakulint_${SISAKULINT_LATEST}_checksums.txt"
     echo "    Downloading sisakulint v${SISAKULINT_LATEST} (${OS}/${ARCH})..."
-    if curl -sL "$SISAKULINT_URL" -o /tmp/sisakulint.tar.gz && \
-       tar -xzf /tmp/sisakulint.tar.gz -C /tmp/ && \
-       { mv /tmp/sisakulint /usr/local/bin/sisakulint 2>/dev/null || \
-         sudo mv /tmp/sisakulint /usr/local/bin/sisakulint; }; then
-        rm -f /tmp/sisakulint.tar.gz
-        log_ok "sisakulint v${SISAKULINT_LATEST} installed"
+    # -f: fail (no output) on HTTP errors instead of saving the error body as if
+    # it were the real binary/checksums file.
+    if curl -fsSL "$SISAKULINT_URL" -o "$SISAKULINT_TARBALL" && \
+       curl -fsSL "$SISAKULINT_CHECKSUMS_URL" -o "$SISAKULINT_CHECKSUMS"; then
+        # sha256sum -c expects the checksummed filename relative to cwd, and the
+        # published checksums.txt lists filenames for every OS/ARCH — filter to
+        # just our asset's line before verifying.
+        if (cd /tmp && grep -F " ${SISAKULINT_ASSET}" "$(basename "$SISAKULINT_CHECKSUMS")" | sha256sum -c - --strict) &>/dev/null; then
+            log_ok "sisakulint v${SISAKULINT_LATEST} checksum verified"
+            if tar -xzf "$SISAKULINT_TARBALL" -C /tmp/ && \
+               { mv /tmp/sisakulint /usr/local/bin/sisakulint 2>/dev/null || \
+                 sudo mv /tmp/sisakulint /usr/local/bin/sisakulint; }; then
+                rm -f "$SISAKULINT_TARBALL" "$SISAKULINT_CHECKSUMS"
+                log_ok "sisakulint v${SISAKULINT_LATEST} installed"
+            else
+                rm -f "$SISAKULINT_TARBALL" "$SISAKULINT_CHECKSUMS" /tmp/sisakulint
+                log_err "sisakulint failed to install. Download manually from:"
+                log_err "  https://github.com/sisaku-security/sisakulint/releases"
+            fi
+        else
+            rm -f "$SISAKULINT_TARBALL" "$SISAKULINT_CHECKSUMS"
+            log_err "sisakulint checksum verification FAILED — refusing to install a tarball"
+            log_err "that doesn't match the published checksums.txt. Download manually from:"
+            log_err "  https://github.com/sisaku-security/sisakulint/releases"
+        fi
     else
-        rm -f /tmp/sisakulint.tar.gz /tmp/sisakulint
-        log_err "sisakulint failed to install. Download manually from:"
+        rm -f "$SISAKULINT_TARBALL" "$SISAKULINT_CHECKSUMS"
+        log_err "sisakulint failed to download. Download manually from:"
         log_err "  https://github.com/sisaku-security/sisakulint/releases"
     fi
 else
@@ -237,7 +270,9 @@ if [ "$INSTALL_CREDENTIAL_ATTACK" = true ]; then
         log_ok "kerbrute already installed"
     else
         echo "    [*] Installing kerbrute via go..."
-        if go install github.com/ropnop/kerbrute@latest; then
+        # Pinned to v1.0.3 (latest tagged release as of 2026-08-23) instead
+        # of @latest — see GO_TOOLS above for why we pin.
+        if go install github.com/ropnop/kerbrute@v1.0.3; then
             log_ok "kerbrute installed"
         else
             log_err "kerbrute failed to install"

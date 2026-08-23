@@ -90,6 +90,7 @@ def load_config() -> dict:
 def save_config(cfg: dict):
     CONFIG.parent.mkdir(parents=True, exist_ok=True)
     CONFIG.write_text(json.dumps(cfg, indent=2))
+    os.chmod(CONFIG, 0o600)
 
 
 COMMAND_ALIASES = {

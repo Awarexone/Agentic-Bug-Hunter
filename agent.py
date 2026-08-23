@@ -986,6 +986,10 @@ class AgentTracer:
     `tail -f session.jsonl` gives live stream of what the agent is doing.
     """
 
+    # Arg keys whose values must never be written to disk or stdout in
+    # plaintext (cookies/tokens/passwords). Compared case-insensitively.
+    _REDACT_KEYS = {"cookies", "cookie", "authorization", "token", "password"}
+
     def __init__(self, log_path: str):
         self.log_path = log_path
         Path(log_path).parent.mkdir(parents=True, exist_ok=True)
@@ -996,8 +1000,17 @@ class AgentTracer:
         self._f.write(json.dumps(event) + "\n")
         self._f.flush()
 
-    def tool_call(self, tool: str, args: dict, step: int) -> None:
-        self._write({"event": "tool_call", "step": step, "tool": tool, "args": args})
+    @classmethod
+    def redact_args(cls, args: dict) -> dict:
+        """Return a copy of args with sensitive values replaced by 'REDACTED'."""
+        return {
+            k: ("REDACTED" if k.lower() in cls._REDACT_KEYS else v)
+            for k, v in args.items()
+        }
+
+    def tool_call(self, tool: str, args: dict, step: int = 0) -> None:
+        safe_args = self.redact_args(args)
+        self._write({"event": "tool_call", "step": step, "tool": tool, "args": safe_args})
 
     def tool_result(self, tool: str, result: str, elapsed: float, step: int) -> None:
         self._write({"event": "tool_result", "step": step, "tool": tool,
@@ -1327,7 +1340,8 @@ class ReActAgent:
                     if self.tracer:
                         self.tracer.loop_warn(name, LoopDetector.WARN_AT, self.memory.step_count)
 
-                print(f"{MAGENTA}[Agent] Tool: {BOLD}{name}{NC}{MAGENTA}  args={json.dumps(args)}{NC}",
+                safe_args = AgentTracer.redact_args(args)
+                print(f"{MAGENTA}[Agent] Tool: {BOLD}{name}{NC}{MAGENTA}  args={json.dumps(safe_args)}{NC}",
                       flush=True)
                 if self.tracer:
                     self.tracer.tool_call(name, args, self.memory.step_count)

@@ -99,14 +99,14 @@ echo "============================================="
 echo ""
 
 # Build sisakulint command
-CMD="sisakulint -remote \"$TARGET\" -D $DEPTH -l $LIMIT -p $PARALLEL"
-[ -n "$RECURSIVE" ] && CMD="$CMD -r"
+CMD=(sisakulint -remote "$TARGET" -D "$DEPTH" -l "$LIMIT" -p "$PARALLEL")
+[ -n "$RECURSIVE" ] && CMD+=(-r)
 
-log_info "Running: $CMD"
+log_info "Running: ${CMD[*]}"
 echo ""
 
 # Run sisakulint and capture output (don't fail on non-zero exit — findings cause exit 1)
-eval "$CMD" 2>&1 | tee "$SCAN_RESULTS" || true
+"${CMD[@]}" 2>&1 | tee "$SCAN_RESULTS" || true
 
 echo ""
 

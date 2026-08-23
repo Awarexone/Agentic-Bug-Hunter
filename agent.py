@@ -1485,7 +1485,7 @@ def run_agent_hunt(
         requested_session_id=resume_session_id or "latest",
         create=True,
     )
-    session_dir  = os.path.dirname(recon_dir)
+    session_dir  = recon_dir
     session_file = os.path.join(session_dir, "agent_session.json")
 
     print(f"{GREEN}[Agent] Session: {session_id} → {recon_dir}{NC}", flush=True)

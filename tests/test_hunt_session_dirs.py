@@ -104,3 +104,37 @@ class TestActivateReconSession:
             assert False, "expected ValueError"
         except ValueError:
             pass
+
+    def test_resume_specific_id_with_create_true(self, monkeypatch, tmp_path):
+        """Test the exact combination used by --resume SESSION_ID flag:
+        resume an existing session with create=True (idempotent)."""
+        monkeypatch.setattr(hunt, "RECON_DIR", str(tmp_path / "recon"))
+        first_id, first_dir = hunt._activate_recon_session("target.com", create=True)
+        # Resume the same session with create=True (--resume SESSION_ID behavior)
+        resumed_id, resumed_dir = hunt._activate_recon_session(
+            "target.com", requested_session_id=first_id, create=True
+        )
+        assert resumed_id == first_id
+        assert resumed_dir == first_dir
+
+    def test_multiple_sessions_have_different_paths(self, monkeypatch, tmp_path):
+        """Regression test: verifies that two different sessions for the same
+        domain resolve to different paths (not the shared parent). This is
+        critical for --resume to work — agent.py derives agent_session.json
+        from recon_dir directly, so each session must have its own file."""
+        monkeypatch.setattr(hunt, "RECON_DIR", str(tmp_path / "recon"))
+        # Create two sessions
+        first_id, first_recon_dir = hunt._activate_recon_session("target.com", create=True)
+        second_id, second_recon_dir = hunt._activate_recon_session("target.com", create=True)
+
+        # Verify they have different recon_dir paths
+        assert first_recon_dir != second_recon_dir
+        assert first_id != second_id
+
+        # Verify that agent.py's usage pattern results in different session files
+        # (mimicking agent.py lines 1483-1489)
+        first_session_file = os.path.join(first_recon_dir, "agent_session.json")
+        second_session_file = os.path.join(second_recon_dir, "agent_session.json")
+
+        # Critical: they must NOT be the same file (would break --resume)
+        assert first_session_file != second_session_file

@@ -23,11 +23,9 @@
 <p align="center">
   <a href="https://github.com/Awarexone/Agentic-Bug-Hunter/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+">
-  <img src="https://img.shields.io/badge/Standalone-Free-brightgreen.svg?style=flat-square" alt="Free Standalone Mode">
   <a href="https://claude.ai/claude-code"><img src="https://img.shields.io/badge/Claude_Code-Plugin-D97706.svg?style=flat-square" alt="Claude Code Plugin"></a>
   <a href="https://github.com/Awarexone/Agentic-Bug-Hunter/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/Awarexone/Agentic-Bug-Hunter/tests.yml?branch=main&style=flat-square&label=tests" alt="Tests"></a>
   <a href="https://github.com/Awarexone/Agentic-Bug-Hunter/stargazers"><img src="https://img.shields.io/github/stars/Awarexone/Agentic-Bug-Hunter?style=flat-square&color=yellow" alt="GitHub Stars"></a>
-  <a href="https://awarexone.com"><img src="https://img.shields.io/badge/Powered_by-AwareXone.com-7F55FF.svg?style=flat-square" alt="Powered by AwareXone.com"></a>
 </p>
 
 <p align="center">
@@ -35,36 +33,18 @@
 </p>
 
 <p align="center">
-  <a href="https://awarexone.com">
-    <img src="assets/awarexone-logo.webp" alt="AwareXone" width="80"/>
-  </a>
-  <br/>
-  <b>Built and maintained by <a href="https://awarexone.com">AwareXone</a></b>
-  <br/>
-  <sub>Open-source security tools and research for a safer digital world.</sub>
-  <br/>
-  <sub>
-    <a href="https://awarexone.com">Website</a> ·
-    <a href="https://x.com/awarexone">X / Twitter</a> ·
-    <a href="https://github.com/Awarexone">GitHub</a>
-  </sub>
+  <sub>Built and maintained by <b>AwareXone</b> · <a href="https://awarexone.com">Website</a> · <a href="https://x.com/awarexone">X</a> · <a href="https://github.com/Awarexone">GitHub</a></sub>
 </p>
-
-> ### 💜 Open for Sponsorship
->
-> **BugHunter is open for sponsorship.** Your support funds new features and keeps the free standalone mode running for everyone. Sponsors get a logo and link right here in the README, plus a credit in every release.
->
-> **Want to sponsor?** Reach out at **[AwareXone.com](https://awarexone.com)** or email **[shuvonsec@gmail.com](mailto:shuvonsec@gmail.com)**.
 
 ---
 
 ## What Is This?
 
-**Agentic Bug Hunter**, built and maintained by **[AwareXone](https://awarexone.com)**, is a professional bug bounty hunting toolkit that works **with or without a Claude subscription**. Give it a target - it handles recon, tests for vulnerabilities, validates findings through a strict gate, and writes submission-ready reports for HackerOne, Bugcrowd, Intigriti, and Immunefi.
+Agentic Bug Hunter finds real, reportable bugs, not theoretical ones. Point it at a target and it runs recon, tests for vulnerabilities, validates findings against a strict gate, and writes a submission-ready report for HackerOne, Bugcrowd, Intigriti, or Immunefi.
 
-**It remembers everything.** Patterns found on one target inform the next. Sessions pick up where they left off.
+It remembers everything: patterns found on one target inform the next, and sessions pick up where they left off.
 
-Works as a [Claude Code](https://claude.ai/claude-code) plugin **or** as a fully standalone CLI (`bughunter`) powered by free AI providers.
+Works as a [Claude Code](https://claude.ai/claude-code) plugin, or as a fully standalone CLI (`bughunter`) with no subscription required.
 
 ---
 
@@ -566,6 +546,8 @@ If BugHunter helps your hunts, you can fuel more of them:
     <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50"/>
   </a>
 </p>
+
+We're also open to sponsors. Sponsoring funds new features and keeps the standalone mode free for everyone, and gets your logo and a link right here. Reach out at [AwareXone.com](https://awarexone.com) or [shuvonsec@gmail.com](mailto:shuvonsec@gmail.com).
 
 ---
 

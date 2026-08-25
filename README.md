@@ -537,7 +537,7 @@ git push origin feature/your-contribution
 
 ---
 
-## Support
+## Support This Project
 
 If BugHunter helps your hunts, you can fuel more of them:
 
@@ -547,7 +547,11 @@ If BugHunter helps your hunts, you can fuel more of them:
   </a>
 </p>
 
-We're also open to sponsors. Sponsoring funds new features and keeps the standalone mode free for everyone, and gets your logo and a link right here. Reach out at [AwareXone.com](https://awarexone.com) or [shuvonsec@gmail.com](mailto:shuvonsec@gmail.com).
+### Sponsorship
+
+We're open to sponsors. Sponsoring funds new features and keeps the standalone mode free for everyone, and gets your logo and a link right here in the README, plus a credit in every release.
+
+Want to sponsor? Reach out at [AwareXone.com](https://awarexone.com) or [shuvonsec@gmail.com](mailto:shuvonsec@gmail.com).
 
 ---
 

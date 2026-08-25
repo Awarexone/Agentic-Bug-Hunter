@@ -33,7 +33,7 @@
 </p>
 
 <p align="center">
-  <sub>Built and maintained by <b>AwareXone</b> · <a href="https://awarexone.com">Website</a> · <a href="https://x.com/awarexone">X</a> · <a href="https://github.com/Awarexone">GitHub</a></sub>
+  Built and maintained by <b>AwareXone</b> · <a href="https://awarexone.com">Website</a> · <a href="https://x.com/awarexone">X</a> · <a href="https://github.com/Awarexone">GitHub</a>
 </p>
 
 ---

@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="logo.png" alt="BugHunter" width="160"/>
+  <img src="assets/banner.png" alt="Agentic Bug Hunter — by AwareXone — AI-powered bug bounty reconnaissance and vulnerability discovery" width="100%"/>
 </p>
-
-<h1 align="center">BugHunter</h1>
 
 <p align="center">
   <b>AI-powered bug bounty hunting — recon to report, in your terminal.</b>
@@ -42,7 +40,15 @@
     <img src="assets/awarexone-logo.webp" alt="AwareXone" width="80"/>
   </a>
   <br/>
-  <b>Powered by <a href="https://awarexone.com">AwareXone.com</a></b> — <sub>Your AI Agent Against Scams &amp; Fraud</sub>
+  <b>Built and maintained by <a href="https://awarexone.com">AwareXone</a></b>
+  <br/>
+  <sub>Open-source security tools and research for a safer digital world.</sub>
+  <br/>
+  <sub>
+    <a href="https://awarexone.com">Website</a> ·
+    <a href="https://x.com/awarexone">X / Twitter</a> ·
+    <a href="https://github.com/Awarexone">GitHub</a>
+  </sub>
 </p>
 
 > ### 💜 Open for Sponsorship
@@ -611,7 +617,6 @@ Thanks to everyone who has contributed to BugHunter. Click any avatar to open th
 ---
 
 <p align="center">
-  <img src="logo.png" alt="BugHunter" width="48"/><br>
   <a href="https://github.com/shuvonsec">GitHub</a>
   ·
   <a href="https://x.com/shuvonsec">Twitter</a>
@@ -626,5 +631,11 @@ Thanks to everyone who has contributed to BugHunter. Click any avatar to open th
     <img src="assets/awarexone-logo.webp" alt="AwareXone" width="56"/>
   </a>
   <br/>
-  <sub>Powered by <a href="https://awarexone.com"><b>AwareXone.com</b></a> · Your AI Agent Against Scams &amp; Fraud</sub>
+  <sub>Powered by <a href="https://awarexone.com"><b>AwareXone.com</b></a></sub>
+  <br/>
+  <sub>
+    <a href="https://awarexone.com">Website</a> ·
+    <a href="https://x.com/awarexone">X / Twitter</a> ·
+    <a href="https://github.com/Awarexone">GitHub</a>
+  </sub>
 </p>

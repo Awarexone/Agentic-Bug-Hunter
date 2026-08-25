@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="assets/banner.png" alt="Agentic Bug Hunter — by AwareXone — AI-powered bug bounty reconnaissance and vulnerability discovery" width="100%"/>
+  <img src="assets/banner.png" alt="Agentic Bug Hunter - by AwareXone - AI-powered bug bounty reconnaissance and vulnerability discovery" width="100%"/>
 </p>
 
 <p align="center">
-  <b>AI-powered bug bounty hunting — recon to report, in your terminal.</b>
+  <b>AI-powered bug bounty hunting - recon to report, in your terminal.</b>
   
   <br> 
-  <a href="#standalone-mode--no-subscription-required">Free Setup</a>
+  <a href="#standalone-mode-no-subscription-required">Free Setup</a>
   ·
   <a href="#quick-start">Quick Start</a>
   ·
@@ -31,8 +31,7 @@
 </p>
 
 <p align="center">
-    <a href="https://trendshift.io/repositories/23808?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-23808" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/23808" alt="shuvonsec%2Fclaude-bug-bounty | Trendshift" width="250" height="55"/></a>
-  <img src="assets/cli-banner.png" alt="BUGHUNTER — Bug Bounty Automation Pipeline" width="900"/>
+  <a href="https://trendshift.io/repositories/23808?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-23808" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/23808" alt="Awarexone%2FAgentic-Bug-Hunter | Trendshift" width="250" height="55"/></a>
 </p>
 
 <p align="center">
@@ -61,17 +60,15 @@
 
 ## What Is This?
 
-**Agentic Bug Hunter**, built and maintained by **[AwareXone](https://awarexone.com)**, is a professional bug bounty hunting toolkit that works **with or without a Claude subscription**. Give it a target — it handles recon, tests for vulnerabilities, validates findings through a strict gate, and writes submission-ready reports for HackerOne, Bugcrowd, Intigriti, and Immunefi.
+**Agentic Bug Hunter**, built and maintained by **[AwareXone](https://awarexone.com)**, is a professional bug bounty hunting toolkit that works **with or without a Claude subscription**. Give it a target - it handles recon, tests for vulnerabilities, validates findings through a strict gate, and writes submission-ready reports for HackerOne, Bugcrowd, Intigriti, and Immunefi.
 
 **It remembers everything.** Patterns found on one target inform the next. Sessions pick up where they left off.
 
 Works as a [Claude Code](https://claude.ai/claude-code) plugin **or** as a fully standalone CLI (`bughunter`) powered by free AI providers.
 
-<sub>AwareXone builds open-source security tools and research for a safer digital world — <a href="https://awarexone.com">Website</a> · <a href="https://x.com/awarexone">X / Twitter</a> · <a href="https://github.com/Awarexone">GitHub</a></sub>
-
 ---
 
-## Standalone Mode — No Subscription Required
+## Standalone Mode: No Subscription Required
 
 **You no longer need Claude Code, Claude Pro, or any paid AI subscription.**
 
@@ -117,7 +114,7 @@ bughunter v "finding"        # short alias for validate
 
 | Provider | Cost | Privacy | Speed | Get Started |
 |:---|:---|:---|:---|:---|
-| **Ollama** | 100% free · runs locally | Full — stays on your machine | Fast | `ollama pull qwen2.5:14b` |
+| **Ollama** | 100% free · runs locally | Full - stays on your machine | Fast | `ollama pull qwen2.5:14b` |
 | **Groq** | Free tier available | Cloud | Very fast | [console.groq.com](https://console.groq.com) → get API key |
 | **DeepSeek** | Very cheap (v4-flash / v4-pro) | Cloud | Fast | [platform.deepseek.com](https://platform.deepseek.com) |
 | Claude API | Paid | Cloud | Fast | [console.anthropic.com](https://console.anthropic.com) |
@@ -171,7 +168,7 @@ bughunter hunt target.com
 
 ## Quick Start
 
-**Option A — standalone (no subscription, works for everyone)**
+**Option A - standalone (no subscription, works for everyone)**
 
 ```bash
 git clone https://github.com/Awarexone/Agentic-Bug-Hunter.git
@@ -184,7 +181,7 @@ bughunter validate "my finding"
 bughunter report
 ```
 
-**Option B — Claude Code plugin** *(requires Claude Code)*
+**Option B - Claude Code plugin** *(requires Claude Code)*
 
 ```bash
 git clone https://github.com/Awarexone/Agentic-Bug-Hunter.git
@@ -201,7 +198,7 @@ claude
 /report                  # write the submission
 ```
 
-**Option C — let Claude install it** *(Claude Code only)*
+**Option C - let Claude install it** *(Claude Code only)*
 
 Open your terminal, run `claude`, then paste:
 
@@ -221,9 +218,9 @@ Verify /recon /hunt /validate /report are available.
 |:---|:---|
 | `/recon target.com` | Subdomain enum · live host probing · URL crawl · nuclei sweep |
 | `/hunt target.com` | Tests IDOR · auth bypass · SSRF · XSS · SQLi · logic flaws and more |
-| `/validate` | 7-Question Gate — kills weak findings before you waste time reporting |
+| `/validate` | 7-Question Gate - kills weak findings before you waste time reporting |
 | `/report` | Generates an H1 · Bugcrowd · Intigriti · Immunefi submission in 60s |
-| `/autopilot target.com` | Full loop, autonomous — scope → recon → hunt → validate → report |
+| `/autopilot target.com` | Full loop, autonomous - scope → recon → hunt → validate → report |
 
 ### Recon & Enumeration
 
@@ -238,34 +235,33 @@ Verify /recon /hunt /validate /report are available.
 | `/scan-cves <host>` | Focused nuclei high/critical sweep + optional log4j-scan |
 | `/bypass-403 <url>` | Header · method · encoding tricks against 403/401 |
 | `/portscan <host>` | Open ports + non-web services (Redis · Docker API · DBs · RDP) via naabu/smap |
-| `/screenshot -l urls.txt` | Screenshot live hosts into an HTML gallery — triage + PoC evidence |
-
+| `/screenshot -l urls.txt` | Screenshot live hosts into an HTML gallery - triage + PoC evidence |
 
 ### Scanners (Web + LLM)
 
 | Command | What It Does |
 |:---|:---|
-| `/cors <url>` | CORS misconfig — origin reflection · null · credentialed |
+| `/cors <url>` | CORS misconfig - origin reflection · null · credentialed |
 | `/crlf <url>` | CRLF / response-splitting + host-header injection |
 | `/nosqli <url>` | NoSQL injection (operator bypass · `$where` timing) |
-| `/jwt-scan <token>` | Offline JWT toolkit — alg:none · RS256→HS256 · secret crack |
+| `/jwt-scan <token>` | Offline JWT toolkit - alg:none · RS256→HS256 · secret crack |
 | `/oob <target>` | Out-of-band listener (interactsh) for blind SSRF/XXE/SQLi |
 | `/sast <path>` | Semgrep security packs over fetched JS/source → ranked sinks |
-| `/domxss <url>` | Confirms DOM XSS in headless Chromium — reports only when the payload executes |
-| `/llm-redteam <endpoint>` | LLM red-team corpus — prompt injection · jailbreak · exfil |
+| `/domxss <url>` | Confirms DOM XSS in headless Chromium - reports only when the payload executes |
+| `/llm-redteam <endpoint>` | LLM red-team corpus - prompt injection · jailbreak · exfil |
 
 ### Smart Contract (Web3)
 
 | Command | What It Does |
 |:---|:---|
 | `/web3-audit <contract.sol>` | 10-class smart contract audit with Foundry PoC template |
-| `/token-scan <contract>` | Rug pull scanner — mint authority · LP lock · honeypot · bonding curve |
+| `/token-scan <contract>` | Rug pull scanner - mint authority · LP lock · honeypot · bonding curve |
 
 ### Session & Utility
 
 | Command | What It Does |
 |:---|:---|
-| `/pickup target.com` | Resume from last session — untested endpoints first |
+| `/pickup target.com` | Resume from last session - untested endpoints first |
 | `/intel target.com` | CVEs + disclosed reports relevant to this target |
 | `/chain` | Bug A found → finds bugs B and C that chain with it |
 | `/scope <asset>` | Checks if a domain or URL is in scope before you test it |
@@ -342,7 +338,7 @@ Nine specialists, each built for one job:
 |:---|:---|
 | `recon-agent` | Subdomain enum · live host discovery · URL crawl |
 | `report-writer` | Impact-first reports that get paid, not N/A'd |
-| `validator` | Runs the 7-Question Gate — kills weak findings |
+| `validator` | Runs the 7-Question Gate - kills weak findings |
 | `web3-auditor` | Smart contract audit across 10 bug classes |
 | `chain-builder` | Bug A → finds bugs B and C that chain with it |
 | `autopilot` | Full hunt loop with safety checkpoints |
@@ -367,7 +363,7 @@ Nine specialists, each built for one job:
 
 </div>
 
-Every tool in the pipeline is gated on whether it's installed — missing tools are skipped, not errors. Auth headers set once carry through httpx · katana · ffuf · nuclei · dalfox automatically.
+Every tool in the pipeline is gated on whether it's installed - missing tools are skipped, not errors. Auth headers set once carry through httpx · katana · ffuf · nuclei · dalfox automatically.
 
 ---
 
@@ -378,10 +374,10 @@ Every tool in the pipeline is gated on whether it's installed — missing tools 
 <br>
 
 ```
-claude-bug-bounty/
+Agentic-Bug-Hunter/
 │
-├── skills/                    # AI knowledge bases — loaded as /skill-name
-│   ├── bug-bounty/            # Master workflow — all vuln classes, LLM testing, chains
+├── skills/                    # AI knowledge bases - loaded as /skill-name
+│   ├── bug-bounty/            # Master workflow - all vuln classes, LLM testing, chains
 │   ├── bb-methodology/        # Hunting mindset · 5-phase workflow · session discipline
 │   ├── web2-recon/            # Subdomain enum · live host discovery · URL crawl
 │   ├── web2-vuln-classes/     # 26 bug classes with bypass tables
@@ -393,7 +389,7 @@ claude-bug-bounty/
 │   ├── credential-attack/     # Password spray methodology · legal guardrails
 │   └── client-reverse/        # Request-signing / anti-bot token reversal
 │
-├── commands/                  # 26 slash commands (/recon /hunt /validate /report …)
+├── commands/                  # 33 slash commands (/recon /hunt /validate /report …)
 ├── agents/                    # 9 specialized AI agents (recon, validator, reporter …)
 │
 ├── tools/                     # Python + shell scanner pipeline (~35 tools)
@@ -401,13 +397,13 @@ claude-bug-bounty/
 │   ├── recon_engine.sh        # Subdomain + URL discovery
 │   ├── vuln_scanner.sh        # XSS · SQLi · SSRF · SSTI probe pipeline
 │   ├── validate.py            # 4-gate finding validator with identity checks
-│   └── …                      # 30+ more scanners — see tools/README.md
+│   └── …                      # 30+ more scanners - see tools/README.md
 │
 ├── memory/                    # Cross-session hunt memory (pattern DB · audit log)
 ├── rules/                     # Always-active hunting + reporting rules
 ├── tests/                     # Regression test suite (pytest)
 ├── web3/                      # 13-chapter smart contract audit guide
-├── mcp/                       # MCP integrations — Burp Suite · Caido · HackerOne API
+├── mcp/                       # MCP integrations - Burp Suite · Caido · HackerOne API
 ├── wordlists/                 # Curated wordlists + SecLists / PayloadsAllTheThings refs
 ├── scripts/                   # Dork runner · full hunt pipeline
 ├── hooks/                     # Claude Code hook configuration
@@ -429,7 +425,7 @@ claude-bug-bounty/
 │   ├── PULL_REQUEST_TEMPLATE.md
 │   └── ISSUE_TEMPLATE/        # Bug report · Feature request · False positive
 │
-├── engine.py                  # Standalone CLI — 'bughunter' command, no subscription needed
+├── engine.py                  # Standalone CLI - 'bughunter' command, no subscription needed
 ├── brain.py                   # Multi-provider LLM layer (Ollama · Groq · DeepSeek · Claude · OpenAI)
 ├── agent.py                   # LangGraph-style ReAct hunting agent
 ├── install.sh                 # Install skills + commands → ~/.claude/ (or standalone mode)
@@ -508,7 +504,7 @@ Seven rules run every session, no exceptions:
 | # | Rule | Why |
 |:-:|:---|:---|
 | 1 | **Read full scope first** | Only test what the program authorizes |
-| 2 | **Real bugs only** | "Can an attacker do this RIGHT NOW?" — if no, stop |
+| 2 | **Real bugs only** | "Can an attacker do this RIGHT NOW?" - if no, stop |
 | 3 | **Kill weak findings** | A 30-second check saves hours of wasted reporting |
 | 4 | **Never go out of scope** | One wrong request can get you banned |
 | 5 | **5-minute rule** | No progress after 5 minutes? Move on |
@@ -556,21 +552,7 @@ git push origin feature/your-contribution
 </table>
 
 <p align="center">
-  Using BugHunter in your team, program, or workflow? <b><a href="ADOPTERS.md">Add yourself</a></b> — a quick PR to <code>ADOPTERS.md</code>, or open an <a href="https://github.com/Awarexone/Agentic-Bug-Hunter/issues">issue</a>. Real, verifiable entries only.
-</p>
-
----
-
-## Star History
-
-<p align="center">
-  <a href="https://star-history.dera.page/#Awarexone/Agentic-Bug-Hunter&type=date&legend=top-left">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=Awarexone/Agentic-Bug-Hunter&type=date&theme=dark&legend=top-left" />
-      <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=Awarexone/Agentic-Bug-Hunter&type=date&legend=top-left" />
-      <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=Awarexone/Agentic-Bug-Hunter&type=date&legend=top-left" width="560" />
-    </picture>
-  </a>
+  Using BugHunter in your team, program, or workflow? <b><a href="ADOPTERS.md">Add yourself</a></b> - a quick PR to <code>ADOPTERS.md</code>, or open an <a href="https://github.com/Awarexone/Agentic-Bug-Hunter/issues">issue</a>. Real, verifiable entries only.
 </p>
 
 ---

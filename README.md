@@ -21,12 +21,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/shuvonsec/claude-bug-bounty/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square" alt="MIT License"></a>
+  <a href="https://github.com/Awarexone/Agentic-Bug-Hunter/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/Python-3.10+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/Standalone-Free-brightgreen.svg?style=flat-square" alt="Free Standalone Mode">
   <a href="https://claude.ai/claude-code"><img src="https://img.shields.io/badge/Claude_Code-Plugin-D97706.svg?style=flat-square" alt="Claude Code Plugin"></a>
-  <a href="https://github.com/shuvonsec/claude-bug-bounty/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/shuvonsec/claude-bug-bounty/tests.yml?branch=main&style=flat-square&label=tests" alt="Tests"></a>
-  <a href="https://github.com/shuvonsec/claude-bug-bounty/stargazers"><img src="https://img.shields.io/github/stars/shuvonsec/claude-bug-bounty?style=flat-square&color=yellow" alt="GitHub Stars"></a>
+  <a href="https://github.com/Awarexone/Agentic-Bug-Hunter/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/Awarexone/Agentic-Bug-Hunter/tests.yml?branch=main&style=flat-square&label=tests" alt="Tests"></a>
+  <a href="https://github.com/Awarexone/Agentic-Bug-Hunter/stargazers"><img src="https://img.shields.io/github/stars/Awarexone/Agentic-Bug-Hunter?style=flat-square&color=yellow" alt="GitHub Stars"></a>
   <a href="https://awarexone.com"><img src="https://img.shields.io/badge/Powered_by-AwareXone.com-7F55FF.svg?style=flat-square" alt="Powered by AwareXone.com"></a>
 </p>
 
@@ -61,11 +61,13 @@
 
 ## What Is This?
 
-A professional bug bounty hunting toolkit that works **with or without a Claude subscription**. Give it a target — it handles recon, tests for vulnerabilities, validates findings through a strict gate, and writes submission-ready reports for HackerOne, Bugcrowd, Intigriti, and Immunefi.
+**Agentic Bug Hunter**, built and maintained by **[AwareXone](https://awarexone.com)**, is a professional bug bounty hunting toolkit that works **with or without a Claude subscription**. Give it a target — it handles recon, tests for vulnerabilities, validates findings through a strict gate, and writes submission-ready reports for HackerOne, Bugcrowd, Intigriti, and Immunefi.
 
 **It remembers everything.** Patterns found on one target inform the next. Sessions pick up where they left off.
 
 Works as a [Claude Code](https://claude.ai/claude-code) plugin **or** as a fully standalone CLI (`bughunter`) powered by free AI providers.
+
+<sub>AwareXone builds open-source security tools and research for a safer digital world — <a href="https://awarexone.com">Website</a> · <a href="https://x.com/awarexone">X / Twitter</a> · <a href="https://github.com/Awarexone">GitHub</a></sub>
 
 ---
 
@@ -76,8 +78,8 @@ Works as a [Claude Code](https://claude.ai/claude-code) plugin **or** as a fully
 Install once, use the `bughunter` command from any terminal on your machine:
 
 ```bash
-git clone https://github.com/shuvonsec/claude-bug-bounty.git
-cd claude-bug-bounty
+git clone https://github.com/Awarexone/Agentic-Bug-Hunter.git
+cd Agentic-Bug-Hunter
 ./install.sh --agent standalone
 ```
 
@@ -147,8 +149,8 @@ curl -fsSL https://ollama.ai/install.sh | sh
 ollama pull qwen2.5:14b          # ~9 GB, one-time download
 
 # 2. Install BugHunter
-git clone https://github.com/shuvonsec/claude-bug-bounty.git
-cd claude-bug-bounty
+git clone https://github.com/Awarexone/Agentic-Bug-Hunter.git
+cd Agentic-Bug-Hunter
 ./install.sh --agent standalone   # creates system-wide 'bughunter' command
 
 # 3. Hunt
@@ -172,8 +174,8 @@ bughunter hunt target.com
 **Option A — standalone (no subscription, works for everyone)**
 
 ```bash
-git clone https://github.com/shuvonsec/claude-bug-bounty.git
-cd claude-bug-bounty
+git clone https://github.com/Awarexone/Agentic-Bug-Hunter.git
+cd Agentic-Bug-Hunter
 ./install.sh --agent standalone   # creates system-wide 'bughunter' command
 bughunter setup                   # pick a free AI provider
 bughunter recon target.com
@@ -185,8 +187,8 @@ bughunter report
 **Option B — Claude Code plugin** *(requires Claude Code)*
 
 ```bash
-git clone https://github.com/shuvonsec/claude-bug-bounty.git
-cd claude-bug-bounty
+git clone https://github.com/Awarexone/Agentic-Bug-Hunter.git
+cd Agentic-Bug-Hunter
 chmod +x install_tools.sh && ./install_tools.sh   # subfinder · httpx · nuclei · katana · ffuf
 chmod +x install.sh      && ./install.sh          # skills + commands → ~/.claude/
 ```
@@ -204,7 +206,7 @@ claude
 Open your terminal, run `claude`, then paste:
 
 ```text
-Install the Claude Bug Bounty toolkit from https://github.com/shuvonsec/claude-bug-bounty
+Install the Claude Bug Bounty toolkit from https://github.com/Awarexone/Agentic-Bug-Hunter
 into ~/tools/. Clone the repo, run ./install_tools.sh then ./install.sh.
 Verify /recon /hunt /validate /report are available.
 ```
@@ -554,7 +556,7 @@ git push origin feature/your-contribution
 </table>
 
 <p align="center">
-  Using BugHunter in your team, program, or workflow? <b><a href="ADOPTERS.md">Add yourself</a></b> — a quick PR to <code>ADOPTERS.md</code>, or open an <a href="https://github.com/shuvonsec/claude-bug-bounty/issues">issue</a>. Real, verifiable entries only.
+  Using BugHunter in your team, program, or workflow? <b><a href="ADOPTERS.md">Add yourself</a></b> — a quick PR to <code>ADOPTERS.md</code>, or open an <a href="https://github.com/Awarexone/Agentic-Bug-Hunter/issues">issue</a>. Real, verifiable entries only.
 </p>
 
 ---
@@ -562,11 +564,11 @@ git push origin feature/your-contribution
 ## Star History
 
 <p align="center">
-  <a href="https://star-history.dera.page/#shuvonsec/claude-bug-bounty&type=date&legend=top-left">
+  <a href="https://star-history.dera.page/#Awarexone/Agentic-Bug-Hunter&type=date&legend=top-left">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=shuvonsec/claude-bug-bounty&type=date&theme=dark&legend=top-left" />
-      <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=shuvonsec/claude-bug-bounty&type=date&legend=top-left" />
-      <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=shuvonsec/claude-bug-bounty&type=date&legend=top-left" width="560" />
+      <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=Awarexone/Agentic-Bug-Hunter&type=date&theme=dark&legend=top-left" />
+      <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=Awarexone/Agentic-Bug-Hunter&type=date&legend=top-left" />
+      <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=Awarexone/Agentic-Bug-Hunter&type=date&legend=top-left" width="560" />
     </picture>
   </a>
 </p>

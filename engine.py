@@ -688,8 +688,8 @@ def _print_banner():
     for line, color in LINES:
         print(f"{color}{line}{NC}")
     print()
-    print(f"  {G3}by {W}shuvonsec{NC}  {G3}·{NC}  {G2}shuvonsec.me{NC}  {G3}·{NC}  {G1}bughunter.fun{NC}")
-    print(f"  {G3}github.com/{G2}shuvonsec{G3}/claude-bug-bounty{NC}")
+    print(f"  {G3}by {W}AwareXone{NC}  {G3}·{NC}  {G2}awarexone.com{NC}  {G3}·{NC}  {G1}bughunter.fun{NC}")
+    print(f"  {G3}github.com/{G2}Awarexone{G3}/Agentic-Bug-Hunter{NC}")
     print(f"  {G3}free · open · no subscription required{NC}")
     print()
 

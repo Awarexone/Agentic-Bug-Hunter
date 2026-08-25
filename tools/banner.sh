@@ -72,7 +72,7 @@ print_banner() {
         printf '  %s%s%s\n' "$CYAN" "$bar" "$NC"
         printf '  %s%s%s\n' "$CYAN" "$(_bb_center "$subtitle" $_BB_LOGO_WIDTH)" "$NC"
     fi
-    printf '  %s%s%s\n' "$DIM" "$(_bb_center 'bughunter.fun  ·  github.com/shuvonsec/claude-bug-bounty' $_BB_LOGO_WIDTH)" "$NC"
+    printf '  %s%s%s\n' "$DIM" "$(_bb_center 'bughunter.fun  ·  github.com/Awarexone/Agentic-Bug-Hunter' $_BB_LOGO_WIDTH)" "$NC"
     if [ -n "$target" ]; then
         printf '  %s%s%s\n' "$MAGENTA" "$(_bb_center "▸ target: $target" $_BB_LOGO_WIDTH)" "$NC"
     fi

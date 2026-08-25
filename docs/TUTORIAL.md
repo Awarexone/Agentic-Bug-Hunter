@@ -32,8 +32,8 @@ scanner available and skips the rest gracefully.
 ## A. Install (30 sec)
 
 ```bash
-git clone https://github.com/shuvonsec/claude-bug-bounty.git
-cd claude-bug-bounty
+git clone https://github.com/Awarexone/Agentic-Bug-Hunter.git
+cd Agentic-Bug-Hunter
 chmod +x install.sh && ./install.sh
 ```
 

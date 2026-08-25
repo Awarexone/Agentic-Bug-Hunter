@@ -433,7 +433,7 @@ class LLMClient:
             self._http.headers.update({
                 "Authorization": f"Bearer {key}",
                 "Content-Type": "application/json",
-                "HTTP-Referer": "https://github.com/shuvonsec/claude-bug-bounty",
+                "HTTP-Referer": "https://github.com/Awarexone/Agentic-Bug-Hunter",
                 "X-Title": "BugHunter",
             })
             self._api_base   = "https://openrouter.ai/api/v1"
@@ -450,7 +450,7 @@ class LLMClient:
             self._http.headers.update({
                 "Authorization": f"Bearer {key}",
                 "Content-Type": "application/json",
-                "HTTP-Referer": "https://github.com/shuvonsec/claude-bug-bounty",
+                "HTTP-Referer": "https://github.com/Awarexone/Agentic-Bug-Hunter",
                 "X-Title": "BugHunter",
             })
             self._api_base   = "https://api.orcarouter.ai/v1"

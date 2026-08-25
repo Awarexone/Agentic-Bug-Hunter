@@ -31,7 +31,7 @@ import uuid
 from dataclasses import dataclass, asdict
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
-USER_AGENT = "claude-bug-bounty/dom_xss_harness"
+USER_AGENT = "agentic-bug-hunter/dom_xss_harness"
 
 CONFIRMED, POSSIBLE = "[CONFIRMED]", "[POSSIBLE]"
 

@@ -29,7 +29,7 @@ import sys
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
-USER_AGENT = "claude-bug-bounty/port_scanner"
+USER_AGENT = "agentic-bug-hunter/port_scanner"
 
 # port -> (service, note). Anything here that is NOT 80/443 is worth a second
 # look because the HTTP pipeline never touched it.

@@ -23,8 +23,8 @@ Bug hunters welcome. Every improvement here makes real hunts more effective.
 
 ```bash
 # 1. Fork and clone
-git clone https://github.com/YOUR_USERNAME/claude-bug-bounty.git
-cd claude-bug-bounty
+git clone https://github.com/YOUR_USERNAME/Agentic-Bug-Hunter.git
+cd Agentic-Bug-Hunter
 
 # 2. Create a branch
 git checkout -b feat/your-contribution
@@ -58,4 +58,4 @@ chore: maintenance (deps, CI, cleanup)
 
 ## Questions?
 
-Open a [GitHub Discussion](https://github.com/shuvonsec/claude-bug-bounty/discussions) or reach out at [shuvonsec@gmail.com](mailto:shuvonsec@gmail.com).
+Open a [GitHub Discussion](https://github.com/Awarexone/Agentic-Bug-Hunter/discussions) or reach out at [shuvonsec@gmail.com](mailto:shuvonsec@gmail.com).

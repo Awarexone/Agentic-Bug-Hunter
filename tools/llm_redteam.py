@@ -34,7 +34,7 @@ import urllib.request
 import uuid
 from dataclasses import dataclass
 
-USER_AGENT = "claude-bug-bounty/llm_redteam"
+USER_AGENT = "agentic-bug-hunter/llm_redteam"
 
 
 @dataclass

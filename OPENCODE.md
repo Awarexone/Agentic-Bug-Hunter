@@ -19,8 +19,8 @@ You also need [OpenCode](https://opencode.ai) installed.
 ### Install
 
 ```bash
-git clone https://github.com/shuvonsec/claude-bug-bounty.git
-cd claude-bug-bounty
+git clone https://github.com/Awarexone/Agentic-Bug-Hunter.git
+cd Agentic-Bug-Hunter
 chmod +x install_tools.sh && ./install_tools.sh   # scanning tools
 chmod +x install.sh && ./install.sh --opencode    # skills + commands
 ```
@@ -33,7 +33,7 @@ The installer will:
 ### Verify Installation
 
 ```bash
-cd claude-bug-bounty
+cd Agentic-Bug-Hunter
 opencode
 # Ask: "do you have bug bounty skills?"
 # Should confirm skills are loaded
@@ -101,7 +101,7 @@ Commands auto-invoke based on context.
 ### Quick Start
 
 ```bash
-cd claude-bug-bounty
+cd Agentic-Bug-Hunter
 opencode
 
 # In OpenCode:

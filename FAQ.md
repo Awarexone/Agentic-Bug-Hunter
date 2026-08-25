@@ -189,7 +189,7 @@ Check your scope input. Run `/scope <asset>` before running `/hunt` or `/autopil
 **How do I update to the latest version?**
 
 ```bash
-cd claude-bug-bounty
+cd Agentic-Bug-Hunter
 git pull origin main
 chmod +x install.sh && ./install.sh   # reinstall skills + commands
 ```
@@ -198,7 +198,7 @@ chmod +x install.sh && ./install.sh   # reinstall skills + commands
 
 **Where do I report bugs or ask for help?**
 
-Open an issue on [GitHub](https://github.com/shuvonsec/claude-bug-bounty/issues). Include:
+Open an issue on [GitHub](https://github.com/Awarexone/Agentic-Bug-Hunter/issues). Include:
 - What command you ran
 - What you expected to happen
 - What actually happened

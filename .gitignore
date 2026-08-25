@@ -14,7 +14,7 @@ api_keys.txt
 .private/
 
 # Nested local clones / sub-repos (not tracked)
-claude-bug-bounty/
+Agentic-Bug-Hunter/
 
 # Python
 __pycache__/

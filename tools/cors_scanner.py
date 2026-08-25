@@ -40,7 +40,7 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 from tools.safe_http import safe_urlopen  # noqa: E402
 
-USER_AGENT = "claude-bug-bounty/cors_scanner"
+USER_AGENT = "agentic-bug-hunter/cors_scanner"
 
 CRITICAL, HIGH, MEDIUM, LOW, INFO = "CRITICAL", "HIGH", "MEDIUM", "MEDIUM_LOW", "INFO"
 

@@ -16,6 +16,8 @@
   ·
   <a href="#installation">Install</a>
   ·
+  <a href="#support-this-project">Support</a>
+  ·
   <a href="FAQ.md">FAQ</a>
   </br>
 </p>
@@ -45,6 +47,28 @@ Agentic Bug Hunter finds real, reportable bugs, not theoretical ones. Point it a
 It remembers everything: patterns found on one target inform the next, and sessions pick up where they left off.
 
 Works as a [Claude Code](https://claude.ai/claude-code) plugin, or as a fully standalone CLI (`bughunter`) with no subscription required.
+
+---
+
+## Support This Project
+
+If BugHunter helps your hunts, you can fuel more of them:
+
+<p align="center">
+  <a href="https://www.buymeacoffee.com/shuvonsec">
+    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50"/>
+  </a>
+</p>
+
+### Sponsorship
+
+We're open to sponsors. Sponsoring funds new features and keeps the standalone mode free for everyone, and gets your logo and a link right here in the README, plus a credit in every release.
+
+Want to sponsor? Reach out at [AwareXone.com](https://awarexone.com) or [shuvonsec@gmail.com](mailto:shuvonsec@gmail.com).
+
+### AwareXone
+
+BugHunter is built and maintained by [AwareXone](https://awarexone.com). Beyond open-source tools like this one, AwareXone builds AI-driven defenses against scams, fraud, and social engineering, and offers social engineering defense and human risk consultancy for organizations. If that's something your team needs, [get in touch](https://awarexone.com).
 
 ---
 
@@ -534,24 +558,6 @@ git push origin feature/your-contribution
 <p align="center">
   Using BugHunter in your team, program, or workflow? <b><a href="ADOPTERS.md">Add yourself</a></b> - a quick PR to <code>ADOPTERS.md</code>, or open an <a href="https://github.com/Awarexone/Agentic-Bug-Hunter/issues">issue</a>. Real, verifiable entries only.
 </p>
-
----
-
-## Support This Project
-
-If BugHunter helps your hunts, you can fuel more of them:
-
-<p align="center">
-  <a href="https://www.buymeacoffee.com/shuvonsec">
-    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50"/>
-  </a>
-</p>
-
-### Sponsorship
-
-We're open to sponsors. Sponsoring funds new features and keeps the standalone mode free for everyone, and gets your logo and a link right here in the README, plus a credit in every release.
-
-Want to sponsor? Reach out at [AwareXone.com](https://awarexone.com) or [shuvonsec@gmail.com](mailto:shuvonsec@gmail.com).
 
 ---
 

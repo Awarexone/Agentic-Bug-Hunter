@@ -40,19 +40,16 @@
 
 ---
 
-## What Is This?
-
-Agentic Bug Hunter finds real, reportable bugs, not theoretical ones. Point it at a target and it runs recon, tests for vulnerabilities, validates findings against a strict gate, and writes a submission-ready report for HackerOne, Bugcrowd, Intigriti, or Immunefi.
-
-It remembers everything: patterns found on one target inform the next, and sessions pick up where they left off.
-
-Works as a [Claude Code](https://claude.ai/claude-code) plugin, or as a fully standalone CLI (`bughunter`) with no subscription required.
-
----
-
 ## Support This Project
 
-If BugHunter helps your hunts, you can fuel more of them:
+If BugHunter helps your hunts, you can fuel more of them — every contribution helps build more open-source security tools.
+
+### Crypto Donations
+
+| | Address |
+|:---|:---|
+| **Bitcoin (BTC)** | `1GXwGqmLcnbZWgVNskUAZyw2cmqenkUFNY` |
+| **Solana (SOL)** | `4ArkPu1E7tkrt3d5X84grWzF1xjuLpScgGEy12Bp2cmE` |
 
 <p align="center">
   <a href="https://www.buymeacoffee.com/shuvonsec">
@@ -64,11 +61,21 @@ If BugHunter helps your hunts, you can fuel more of them:
 
 We're open to sponsors. Sponsoring funds new features and keeps the standalone mode free for everyone, and gets your logo and a link right here in the README, plus a credit in every release.
 
-Want to sponsor? Reach out at [AwareXone.com](https://awarexone.com) or [shuvonsec@gmail.com](mailto:shuvonsec@gmail.com).
+Want to sponsor? Reach out at [AwareXone.com](https://awarexone.com) or [awarexone@gmail.com](mailto:awarexone@gmail.com).
 
 ### AwareXone
 
 BugHunter is built and maintained by [AwareXone](https://awarexone.com). Beyond open-source tools like this one, AwareXone builds AI-driven defenses against scams, fraud, and social engineering, and offers social engineering defense and human risk consultancy for organizations. If that's something your team needs, [get in touch](https://awarexone.com).
+
+---
+
+## What Is This?
+
+Agentic Bug Hunter finds real, reportable bugs, not theoretical ones. Point it at a target and it runs recon, tests for vulnerabilities, validates findings against a strict gate, and writes a submission-ready report for HackerOne, Bugcrowd, Intigriti, or Immunefi.
+
+It remembers everything: patterns found on one target inform the next, and sessions pick up where they left off.
+
+Works as a [Claude Code](https://claude.ai/claude-code) plugin, or as a fully standalone CLI (`bughunter`) with no subscription required.
 
 ---
 
@@ -597,7 +604,7 @@ Thanks to everyone who has contributed to BugHunter. Click any avatar to open th
   ·
   <a href="https://x.com/shuvonsec">Twitter</a>
   ·
-  <a href="mailto:shuvonsec@gmail.com">shuvonsec@gmail.com</a><br>
+  <a href="mailto:awarexone@gmail.com">awarexone@gmail.com</a><br>
   <b>Built by bug hunters, for bug hunters.</b><br>
   <sub>MIT License · For authorized security testing only. Always test within an approved bug bounty program scope.</sub>
 </p>

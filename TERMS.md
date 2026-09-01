@@ -87,6 +87,6 @@ These terms may be updated at any time. Continued use of the tool after changes 
 
 ## 9. Contact
 
-Questions or concerns: [shuvonsec@gmail.com](mailto:shuvonsec@gmail.com)
+Questions or concerns: [awarexone@gmail.com](mailto:awarexone@gmail.com)
 
 For security disclosures about this tool itself, open a GitHub issue marked **[SECURITY]**.

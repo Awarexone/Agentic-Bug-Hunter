@@ -58,4 +58,4 @@ chore: maintenance (deps, CI, cleanup)
 
 ## Questions?
 
-Open a [GitHub Discussion](https://github.com/Awarexone/Agentic-Bug-Hunter/discussions) or reach out at [shuvonsec@gmail.com](mailto:shuvonsec@gmail.com).
+Open a [GitHub Discussion](https://github.com/Awarexone/Agentic-Bug-Hunter/discussions) or reach out at [awarexone@gmail.com](mailto:awarexone@gmail.com).

@@ -12,7 +12,7 @@
 
 If you find a security issue in this toolkit itself (not a bug bounty finding on a third-party target), please **do not open a public GitHub issue**.
 
-**Email:** [shuvonsec@gmail.com](mailto:shuvonsec@gmail.com)  
+**Email:** [awarexone@gmail.com](mailto:awarexone@gmail.com)  
 **Subject line:** `[SECURITY] Brief description`
 
 Include:

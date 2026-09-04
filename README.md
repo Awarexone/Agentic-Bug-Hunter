@@ -32,6 +32,8 @@
 
 <p align="center">
   <a href="https://trendshift.io/repositories/23808?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-23808" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/23808" alt="Awarexone%2FAgentic-Bug-Hunter | Trendshift" width="250" height="55"/></a>
+  &nbsp;
+  <a href="https://www.producthunt.com/products/agentic-bug-hunter?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-agentic-bug-hunter" target="_blank" rel="noopener noreferrer"><img alt="Agentic Bug Hunter - Open source AI bug bounty toolkit free or subscription based | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1241444&amp;theme=dark&amp;t=1788539612337"></a>
 </p>
 
 <p align="center">

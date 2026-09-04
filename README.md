@@ -602,7 +602,7 @@ Thanks to everyone who has contributed to BugHunter. Click any avatar to open th
 <p align="center">
   <a href="https://github.com/shuvonsec">GitHub</a>
   ·
-  <a href="https://x.com/shuvonsec">Twitter</a>
+  <a href="https://x.com/awarexone">Twitter</a>
   ·
   <a href="mailto:awarexone@gmail.com">awarexone@gmail.com</a><br>
   <b>Built by bug hunters, for bug hunters.</b><br>

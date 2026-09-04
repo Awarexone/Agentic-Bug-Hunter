@@ -3,8 +3,7 @@
 </p>
 
 <p align="center">
-  <b>AI-powered bug bounty hunting - recon to report, in your terminal.
-CA:0xc4c93ce7977ae04dbd4c75fe98304f107515ad73 </b>
+  <b>AI-powered bug bounty hunting - recon to report, in your terminal. </b>
   
   <br> 
   <a href="#standalone-mode-no-subscription-required">Free Setup</a>

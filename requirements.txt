@@ -1,2 +1,5 @@
-requests>=2.31.0
-pytest>=8.0.0
+# Patched beyond CVE-affected versions flagged by SkillsLLM security scanner
+# - requests: updated from >=2.31.0 to >=2.32.3 (resolves GHSA-9hjg-9r4m-mvj7, GHSA-9wx4-h78v-vm56, GHSA-gc5v-m9x4-r6x2, PYSEC-2026-1872/1873/2275)
+# - pytest: updated from >=8.0.0 to >=8.3.2 (resolves GHSA-6w46-j5rx-g56g, PYSEC-2026-1845)
+requests>=2.32.3
+pytest>=8.3.2

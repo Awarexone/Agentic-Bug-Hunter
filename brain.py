@@ -199,6 +199,7 @@ class LLMClient:
         "perplexity":  "sonar-pro",
         "openrouter":  "anthropic/claude-sonnet-4.6",
         "orcarouter":  "openai/gpt-4o",
+        "litellm":     "gpt-4o",
         "ollama":      None,  # resolved dynamically
     }
 
@@ -246,6 +247,9 @@ class LLMClient:
         "perplexity":  "PERPLEXITY_API_KEY",
         "openrouter":  "OPENROUTER_API_KEY",
         "orcarouter":  "ORCAROUTER_API_KEY",
+        # Kept last so auto-detect only reaches LiteLLM when LITELLM_API_KEY is
+        # set, and never preempts a directly-configured provider above.
+        "litellm":     "LITELLM_API_KEY",
     }
 
     def _auto_detect(self) -> str:
@@ -457,6 +461,21 @@ class LLMClient:
             self.available   = True
             self.description = "OrcaRouter (multi-model gateway)"
 
+        elif provider == "litellm":
+            # LiteLLM routes by the model-name prefix (e.g. "anthropic/claude-...",
+            # "gemini/gemini-...", "bedrock/...") and reads each target provider's
+            # own credential env var, so no single key is required here. Setting
+            # LITELLM_API_KEY / LITELLM_API_BASE instead targets a LiteLLM proxy.
+            try:
+                import litellm  # noqa: F401
+            except ImportError:
+                return
+            self._litellm_api_key  = os.environ.get("LITELLM_API_KEY", "")
+            self._litellm_api_base = (os.environ.get("LITELLM_API_BASE", "")
+                                      or os.environ.get("LITELLM_BASE_URL", ""))
+            self.available   = True
+            self.description = "LiteLLM (100+ provider gateway)"
+
     def chat(self, model: str | None, system: str, user: str,
              max_tokens: int = 4000, temperature: float = 0.1) -> str:
         """Send a chat request; return the assistant reply as a string."""
@@ -468,6 +487,8 @@ class LLMClient:
                 return self._chat_ollama(model, system, user, max_tokens, temperature)
             elif self.provider == "claude":
                 return self._chat_claude(model, system, user, max_tokens, temperature)
+            elif self.provider == "litellm":
+                return self._chat_litellm(model, system, user, max_tokens, temperature)
             elif self.provider in (
                 "openai", "grok", "groq", "deepseek",
                 "gemini", "kimi", "mistral", "together", "cerebras", "perplexity",
@@ -515,6 +536,29 @@ class LLMClient:
                             data=_json.dumps(body), timeout=120)
         r.raise_for_status()
         return r.json()["content"][0]["text"].strip()
+
+    def _chat_litellm(self, model, system, user, max_tokens, temperature) -> str:
+        import litellm
+        m = model or self.DEFAULT_MODELS["litellm"]
+        kwargs = {
+            "model": m,
+            "messages": [{"role": "system", "content": system},
+                         {"role": "user",   "content": user}],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            # Drop per-provider-unsupported params instead of erroring so one
+            # call shape works across every backend (Anthropic rejects seed,
+            # Gemini rejects OpenAI-schema response_format, etc.).
+            "drop_params": True,
+        }
+        # Omit creds when unset so LiteLLM falls back to each provider's own
+        # env var; set them only to target a LiteLLM proxy.
+        if self._litellm_api_key:
+            kwargs["api_key"] = self._litellm_api_key
+        if self._litellm_api_base:
+            kwargs["api_base"] = self._litellm_api_base
+        resp = litellm.completion(**kwargs)
+        return (resp.choices[0].message.content or "").strip()
 
     def _deepseek_model_and_thinking(self, model: str) -> tuple[str, dict]:
         """Resolve a DeepSeek model name and pin its thinking mode explicitly.
@@ -607,7 +651,42 @@ class LLMClient:
                 "deepseek/deepseek-v4-pro",
                 "qwen/qwen3.7-max",
             ]
+        elif self.provider == "litellm":
+            return self._litellm_list_models()
         return []
+
+    def _litellm_list_models(self) -> list[str]:
+        """Discover LiteLLM models dynamically (no hardcoded list).
+
+        Proxy mode (LITELLM_API_BASE set): query the proxy's OpenAI-compatible
+        ``/models`` endpoint. SDK mode: ask LiteLLM which models are reachable
+        with the provider credentials present in the environment.
+        """
+        if self._litellm_api_base:
+            import requests
+            headers = {}
+            if self._litellm_api_key:
+                headers["Authorization"] = f"Bearer {self._litellm_api_key}"
+            base = self._litellm_api_base.rstrip("/")
+            try:
+                r = requests.get(f"{base}/models", headers=headers, timeout=30)
+                r.raise_for_status()
+                return [m["id"] for m in r.json().get("data", []) if m.get("id")]
+            except Exception as e:
+                print(
+                    f"{YELLOW}[Brain] Could not list LiteLLM proxy models: {e}{NC}",
+                    file=sys.stderr,
+                )
+                return []
+        try:
+            import litellm
+            return litellm.get_valid_models()
+        except Exception as e:
+            print(
+                f"{YELLOW}[Brain] Could not list LiteLLM models: {e}{NC}",
+                file=sys.stderr,
+            )
+            return []
 
 # Model preference order — first available wins
 MODEL_PRIORITY = [

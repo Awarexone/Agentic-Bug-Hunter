@@ -1,2 +1,4 @@
 requests>=2.31.0
 pytest>=8.0.0
+# Optional: enables the `litellm` provider (100+ LLM backends via one gateway).
+litellm>=1.89.0,<2.0.0

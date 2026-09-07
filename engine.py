@@ -18,6 +18,10 @@ Providers (auto-detected, first available wins):
                     get key: https://openrouter.ai/keys
          orcarouter — multi-model gateway, set ORCAROUTER_API_KEY
                     get key: https://www.orcarouter.ai
+         litellm    — 100+ provider gateway (SDK), routes by "provider/model"
+                    prefix using each provider's own key; or set
+                    LITELLM_API_KEY/LITELLM_API_BASE for a LiteLLM proxy
+                    docs: https://docs.litellm.ai
 
 Usage:
   ./engine.py setup                        one-time config wizard
@@ -232,6 +236,7 @@ def cmd_setup(args):
         "6": ("grok",       "Grok/xAI   (paid)              — needs XAI_API_KEY"),
         "7": ("openrouter", "OpenRouter (multi-model)       — needs OPENROUTER_API_KEY"),
         "8": ("orcarouter", "OrcaRouter (multi-model)       — needs ORCAROUTER_API_KEY"),
+        "9": ("litellm",    "LiteLLM    (100+ providers)    — uses per-provider keys or LITELLM_API_KEY"),
     }
 
     requested_provider = (

@@ -1,0 +1,555 @@
+{
+  "title": "Netflix Privacy Hardening Guide — Simplified Opt-Out Instructions (2026)",
+  "author": "Compiled from Netflix Help Center (source-verified, retrieved 2026-09-13)",
+  "page_size": "letter",
+  "page_numbers": true,
+  "elements": [
+    {
+      "type": "heading",
+      "text": "Netflix Privacy Hardening Guide",
+      "level": 1
+    },
+    {
+      "type": "paragraph",
+      "text": "<b>Simplified Opt-Out &amp; PII-Exposure Reduction Instructions</b>"
+    },
+    {
+      "type": "paragraph",
+      "text": "Source of truth: Netflix Help Center article <b>“How to stop certain uses of your personal information”</b> (help.netflix.com/en/node/100637) and the Netflix Privacy Statement (help.netflix.com/en/legal/privacy, Last Updated: <b>April 10, 2026</b>). Retrieved and verbatim-captured 2026-09-13; cross-checked by an independent verification pass."
+    },
+    {
+      "type": "paragraph",
+      "text": "This guide translates Netflix's own published controls into a prioritized, plain-language checklist, framed with standard data-protection security principles: <b>data minimization</b> (collect/retain only what's needed), <b>least exposure</b> (limit what third parties can link to you), and <b>account-security hygiene</b> (an attacker who owns your login owns every setting below — harden the account first)."
+    },
+    {
+      "type": "paragraph",
+      "text": "<b>Scope note:</b> These are consumer self-service privacy controls Netflix documents publicly. This is not a bypass of any technical control and requires no special access — every action below is available to any signed-in Netflix account holder through the normal Account UI."
+    },
+    {
+      "type": "pagebreak"
+    },
+    {
+      "type": "heading",
+      "text": "Priority Action Matrix",
+      "level": 1
+    },
+    {
+      "type": "paragraph",
+      "text": "Do these in order. Each row is a self-contained action — skipping one does not block the others."
+    },
+    {
+      "type": "table",
+      "rows": [
+        [
+          "#",
+          "Action",
+          "Time",
+          "Effect"
+        ],
+        [
+          "1",
+          "Harden login (unique password + recovery phone)",
+          "2 min",
+          "Prevents an attacker from undoing every other setting below"
+        ],
+        [
+          "2",
+          "Behavioral Advertising → Off (each profile)",
+          "1 min",
+          "Stops on-Netflix ad targeting based on your activity"
+        ],
+        [
+          "3",
+          "Matched Identifier Communications → Off (each profile)",
+          "1 min",
+          "Stops Netflix matching your email/phone to ad-platform profiles"
+        ],
+        [
+          "4",
+          "Do Not Sell or Share My Personal Information",
+          "1 min",
+          "Opts out of CCPA-defined “sale/sharing” for ads + marketing"
+        ],
+        [
+          "5",
+          "Cookie preferences → reject non-essential",
+          "2 min",
+          "Blocks browser-based cross-site tracking technologies"
+        ],
+        [
+          "6",
+          "Device-level ad ID reset/limit (phone, TV, streaming box)",
+          "3 min/device",
+          "Breaks device-level ad tracking outside Netflix's own controls"
+        ],
+        [
+          "7",
+          "Review &amp; sign out unrecognized devices",
+          "2 min",
+          "Closes sessions you don't recognize; shrinks Netflix Household fingerprint surface"
+        ],
+        [
+          "8",
+          "Hide/clear viewing history (optional)",
+          "2 min",
+          "Removes titles from driving recommendations + visible activity"
+        ],
+        [
+          "9",
+          "Request your data copy (verify what's held)",
+          "5 min to request",
+          "Confirms exactly what personal data exists before you restrict further"
+        ],
+        [
+          "10",
+          "Delete phone number / unsubscribe marketing email+SMS",
+          "2 min",
+          "Stops marketing text/email; note password-reset SMS caveat below"
+        ],
+        [
+          "11",
+          "Full account deletion (if leaving Netflix entirely)",
+          "5 min",
+          "Triggers Netflix's deletion process; irreversible after grace window"
+        ]
+      ],
+      "header": true,
+      "col_widths": [
+        0.4,
+        2.6,
+        1.1,
+        2.9
+      ]
+    },
+    {
+      "type": "pagebreak"
+    },
+    {
+      "type": "heading",
+      "text": "Section 1 — Harden the Account First",
+      "level": 1
+    },
+    {
+      "type": "paragraph",
+      "text": "<b>Why this comes first:</b> every privacy toggle below lives behind your Netflix login. Standard security practice (defense-in-depth) says secure the perimeter before configuring the controls inside it — otherwise account takeover silently reverts every choice you make."
+    },
+    {
+      "type": "heading",
+      "text": "1.1 Use a unique, strong password",
+      "level": 2
+    },
+    {
+      "type": "paragraph",
+      "text": "• Password must be used ONLY for Netflix — credential reuse lets one breached site compromise this account."
+    },
+    {
+      "type": "paragraph",
+      "text": "• At least 8 characters; mix uppercase, lowercase, numbers, symbols; avoid personal info (name, birthday, address) [Source 11]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Change it any time at netflix.com/password, or via a reset email/SMS."
+    },
+    {
+      "type": "heading",
+      "text": "1.2 Add a recovery phone number",
+      "level": 2
+    },
+    {
+      "type": "paragraph",
+      "text": "• Account &gt; Security &gt; add a phone number, so you can recover access if you forget your password [Source 11]. (Tradeoff: this adds one more PII field Netflix holds — see Section 4 for the data-minimization counter-argument.)"
+    },
+    {
+      "type": "heading",
+      "text": "1.3 Recognize phishing",
+      "level": 2
+    },
+    {
+      "type": "paragraph",
+      "text": "• Netflix will NEVER ask for your card number, bank details, or password by text or email [Source 11][Source 12]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Never pay through a third-party site linked from an email/text claiming to be Netflix."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Forward suspicious emails to phishing@netflix.com; do not click links or reply [Source 12]."
+    },
+    {
+      "type": "heading",
+      "text": "1.4 Audit and sign out devices regularly",
+      "level": 2
+    },
+    {
+      "type": "paragraph",
+      "text": "• netflix.com/manageaccountaccess (“Manage Access &amp; Devices”) shows devices active in the last 90 days [Source 3][Source 9]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Sign out of anything you don't recognize, and always sign out before selling/returning a device [Source 11]."
+    },
+    {
+      "type": "pagebreak"
+    },
+    {
+      "type": "heading",
+      "text": "Section 2 — Stop Personalized Advertising Uses",
+      "level": 1
+    },
+    {
+      "type": "heading",
+      "text": "2.1 Behavioral Advertising opt-out (per profile)",
+      "level": 2
+    },
+    {
+      "type": "paragraph",
+      "text": "<b>What it stops:</b> ads selected based on your activity on unaffiliated third-party sites/apps over time [Source 1]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Sign in on a web browser → select the profile → Account → “Privacy and data settings” → toggle “Behavioral Advertising” off [Source 1][Source 2]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• You will still see ads (if on an ad-supported/live-event tier) — they simply won't be behaviorally targeted [Source 1]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Not offered on Kids profiles because Netflix states it does not run Behavioral Advertising there at all [Source 1][Source 3]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Repeat per profile — this setting is NOT account-wide."
+    },
+    {
+      "type": "heading",
+      "text": "2.2 Matched Identifier Communications opt-out (per profile)",
+      "level": 2
+    },
+    {
+      "type": "paragraph",
+      "text": "<b>What it stops:</b> Netflix using a hashed/pseudonymized version of your email or phone to match you on third-party ad platforms for marketing purposes [Source 1][Source 2]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Same location: Account → profile → “Privacy and data settings” → toggle “Matched Identifier Communications” off [Source 1][Source 2]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• This is a separate switch from Behavioral Advertising — disabling one does not disable the other."
+    },
+    {
+      "type": "heading",
+      "text": "2.3 Do Not Sell or Share My Personal Information",
+      "level": 2
+    },
+    {
+      "type": "paragraph",
+      "text": "Some US state laws classify Netflix's ad/marketing identifier use as a “sale” or “sharing” of personal information [Source 2]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Use the link in the footer of netflix.com, or go directly to netflix.com/dnsspi [Source 1][Source 2][Source 10]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• If your browser sends a Global Privacy Control (GPC) signal, Netflix states it honors that signal automatically where legally required [Source 2] — enabling GPC in a supporting browser/extension covers this without visiting the page manually."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Caveat (Netflix's own wording): this does not retroactively undo previously “sold/shared” data, and does not stop all Behavioral Advertising by itself [Source 2] — pair it with 2.1."
+    },
+    {
+      "type": "heading",
+      "text": "2.4 Cookie preferences &amp; “do not track” reality check",
+      "level": 2
+    },
+    {
+      "type": "paragraph",
+      "text": "• Manage cookie categories at help.netflix.com/en/legal/privacy#cookies [Source 1][Source 2]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• <b>Important:</b> Netflix explicitly states it does “not currently respond to web browser ‘do not track’ signals” [Source 2] — the browser DNT header does nothing here; use the cookie preference center and GPC instead."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Clearing browser storage (HTML5/IndexedDB/WebSQL) from your browser's own settings removes any similar-technology data Netflix may have stored client-side [Source 2]."
+    },
+    {
+      "type": "heading",
+      "text": "2.5 Digital Advertising Alliance (DAA) industry opt-outs",
+      "level": 2
+    },
+    {
+      "type": "paragraph",
+      "text": "These control OTHER companies' behavioral ads (not just Netflix's), for sites that participate in the DAA self-regulatory program [Source 1]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• United States — youradchoices.com [Source 1][Source 2]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Europe — European Interactive Digital Advertising Alliance: youronlinechoices.com [Source 1][Source 2]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Canada — Digital Advertising Alliance of Canada: youradchoices.ca [Source 1][Source 2]."
+    },
+    {
+      "type": "heading",
+      "text": "2.6 Resettable device identifiers (phones, tablets, streaming devices)",
+      "level": 2
+    },
+    {
+      "type": "paragraph",
+      "text": "Netflix may use a resettable device ID (e.g. Apple's IDFA, Google's Advertising ID) for marketing/ad delivery [Source 1][Source 2]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• This is controlled on the DEVICE, not in Netflix: look for “Privacy” or “Ads” in your device's OS settings and opt out / reset / limit ad tracking there [Source 1][Source 2]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• This choice is per-device — it does not carry over to a new phone, tablet, or streaming box [Source 1]."
+    },
+    {
+      "type": "pagebreak"
+    },
+    {
+      "type": "heading",
+      "text": "Section 3 — Reduce Device, Recommendation &amp; Communication Exposure",
+      "level": 1
+    },
+    {
+      "type": "heading",
+      "text": "3.1 Netflix Household device association",
+      "level": 2
+    },
+    {
+      "type": "paragraph",
+      "text": "Netflix determines whether a device is part of your “Netflix Household” using IP address, device IDs, and account activity — explicitly NOT GPS/precise location [Source 6]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• There is no in-app toggle to stop this signal selectively — Netflix's own guidance is: “If you would like us to stop collecting information for this purpose on a particular Netflix device, please sign out from that device” [Source 1]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Check/update Household from a TV, or review devices at netflix.com/manageaccountaccess and “Sign out of All Devices” [Source 6]."
+    },
+    {
+      "type": "heading",
+      "text": "3.2 Limit what powers your recommendations",
+      "level": 2
+    },
+    {
+      "type": "paragraph",
+      "text": "Netflix states recommendations use viewing history, ratings, similar-member patterns, and title metadata — and explicitly does NOT use demographic data (age/gender) for this purpose [Source 8]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Hide a title: Account → Profiles → choose profile → Viewing activity → click the hide icon next to a title, or “Hide all” to clear all viewing history for that profile [Source 7]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• A hidden title stops counting toward recommendations (unless you watch it again) and is removed from Continue Watching; propagation across devices can take up to 24 hours [Source 7]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• This cannot be done from a Kids profile's Viewing activity page [Source 7]."
+    },
+    {
+      "type": "heading",
+      "text": "3.3 Marketing email &amp; text messages (SMS)",
+      "level": 2
+    },
+    {
+      "type": "paragraph",
+      "text": "• Per-profile email/text preferences: Account → “Notification settings” for that profile [Source 1][Source 2]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Quick unsubscribe: click “unsubscribe” in any marketing email, or reply STOP to a text [Source 2]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• <b>Critical caveat:</b> opting out of alerts/offers/surveys via those settings does NOT stop password-reset texts — Netflix states you will still receive a text if you request a password reset by SMS while a number is on file [Source 1]. To stop ALL texts, remove the phone number entirely: Account → Security → Mobile phone → Delete Phone Number [Source 1]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Transactional messages (e.g., billing/account-critical notices) cannot be unsubscribed from regardless of channel [Source 2]."
+    },
+    {
+      "type": "heading",
+      "text": "3.4 Push notifications",
+      "level": 2
+    },
+    {
+      "type": "paragraph",
+      "text": "• Turn off in your mobile device's own notification settings, or via “Notification settings” for the relevant profile in the Account section [Source 1]."
+    },
+    {
+      "type": "pagebreak"
+    },
+    {
+      "type": "heading",
+      "text": "Section 4 — See, Correct, and Minimize What Netflix Holds",
+      "level": 1
+    },
+    {
+      "type": "heading",
+      "text": "4.1 Get a copy of your data (verify before you restrict)",
+      "level": 2
+    },
+    {
+      "type": "paragraph",
+      "text": "• Account owner: go to netflix.com/account/getmyinfo and follow the prompts; can take up to 30 days after verification [Source 3]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Profile user (email added to a profile, not the account owner): email privacy@netflix.com — note the account owner IS notified of this request [Source 3]."
+    },
+    {
+      "type": "heading",
+      "text": "4.2 Correct inaccurate data / object to processing",
+      "level": 2
+    },
+    {
+      "type": "paragraph",
+      "text": "• Update directly in Account (email, payment method, phone number) [Source 9]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• For anything else, or to object/restrict/withdraw consent, contact privacy@netflix.com [Source 2]."
+    },
+    {
+      "type": "heading",
+      "text": "4.3 Delete specific data vs. delete the account",
+      "level": 2
+    },
+    {
+      "type": "paragraph",
+      "text": "• Viewing history → Section 3.2 above. Payment methods, phone number, profiles: see the linked Account sections [Source 4]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Full account deletion: Account → Security → “Delete account” → complete Security Check → confirm. Deletion is deferred until the end of the current billing period if the membership is still active, and can be undone any time before that period ends [Source 13]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• If you only cancel (don't delete), Netflix's stated standard practice is to auto-delete the account 24 months after cancellation [Source 13] — cancel AND delete if you want the shorter, immediate path."
+    },
+    {
+      "type": "heading",
+      "text": "4.4 Retention — what Netflix actually commits to",
+      "level": 2
+    },
+    {
+      "type": "paragraph",
+      "text": "Netflix's stated retention rule is deliberately general, not a fixed number of days: it retains personal information “as required or permitted by applicable laws and regulations… for billing or records purposes, and as otherwise necessary to fulfil the purposes described in the Privacy Statement” [Source 2][Source 4]. The one concrete number published is that the Access &amp; Device Information view shows devices active in the <b>last 90 days</b> [Source 3][Source 9] — that is a display window, not a stated deletion timer for the underlying logs."
+    },
+    {
+      "type": "pagebreak"
+    },
+    {
+      "type": "heading",
+      "text": "Section 5 — Honest Limits (What These Controls Do NOT Do)",
+      "level": 1
+    },
+    {
+      "type": "paragraph",
+      "text": "A methodical privacy hardening pass should be explicit about residual exposure, not imply these toggles achieve zero data collection:"
+    },
+    {
+      "type": "paragraph",
+      "text": "• Core account/billing/fraud-prevention data collection continues regardless of these settings — it is not optional while you hold an active subscription [Source 2]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Opting out of “behavioral” ads does not stop ALL ads on ad-supported or live-event tiers — you get non-behavioral ads instead [Source 1]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• The Do Not Sell/Share opt-out does not retroactively claw back data already shared with third parties before you opted out [Source 2]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Choosing an ad-supported plan is treated by Netflix as a “financial incentive” exchange under US state law — switching to a non-ad plan to reduce ad-based data use will likely raise the monthly price [Source 2]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• Resettable device ID and cookie opt-outs are local to that specific browser/device — they do not travel with your account to new hardware [Source 1][Source 2]."
+    },
+    {
+      "type": "paragraph",
+      "text": "• No fixed universal retention period is published (Section 4.4) — you can request deletion, but Netflix retains discretion to keep data as long as legally permitted for billing, legal, or fraud-defense purposes [Source 2]."
+    },
+    {
+      "type": "pagebreak"
+    },
+    {
+      "type": "heading",
+      "text": "Sources",
+      "level": 1
+    },
+    {
+      "type": "paragraph",
+      "text": "All facts above are drawn verbatim from Netflix's own public Help Center and Privacy Statement, retrieved 2026-09-13:"
+    },
+    {
+      "type": "paragraph",
+      "text": "• [1] How to stop certain uses of your personal information — help.netflix.com/en/node/100637"
+    },
+    {
+      "type": "paragraph",
+      "text": "• [2] Netflix Privacy Statement (Last Updated April 10, 2026) — help.netflix.com/en/legal/privacy"
+    },
+    {
+      "type": "paragraph",
+      "text": "• [3] What personal information Netflix holds about you and how to request a copy — help.netflix.com/en/node/100624"
+    },
+    {
+      "type": "paragraph",
+      "text": "• [4] Deletion, removal and retention of information — help.netflix.com/en/node/100625"
+    },
+    {
+      "type": "paragraph",
+      "text": "• [6] What is a Netflix Household? — help.netflix.com/en/node/124925"
+    },
+    {
+      "type": "paragraph",
+      "text": "• [7] How to hide titles from viewing history — help.netflix.com/en/node/22205"
+    },
+    {
+      "type": "paragraph",
+      "text": "• [8] How Netflix's Recommendations System Works — help.netflix.com/en/node/100639"
+    },
+    {
+      "type": "paragraph",
+      "text": "• [9] Accessing and updating information associated with your account — help.netflix.com/en/node/100627"
+    },
+    {
+      "type": "paragraph",
+      "text": "• [10] Do Not Sell or Share My Personal Information — netflix.com/dnsspi"
+    },
+    {
+      "type": "paragraph",
+      "text": "• [11] How to keep your account secure — help.netflix.com/en/node/13243"
+    },
+    {
+      "type": "paragraph",
+      "text": "• [12] Phishing or suspicious emails or texts claiming to be from Netflix — help.netflix.com/en/node/65674"
+    },
+    {
+      "type": "paragraph",
+      "text": "• [13] Deleting your Netflix account — help.netflix.com/en/node/126558"
+    },
+    {
+      "type": "paragraph",
+      "text": "This guide is independent reference material, not a Netflix-published document, and not legal advice. Netflix's controls and UI locations can change; if a described menu path doesn't match what you see, re-check the live source URLs above."
+    }
+  ]
+}

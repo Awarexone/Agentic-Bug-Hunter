@@ -623,33 +623,201 @@ git push origin feature/your-contribution
 
 ## Thanks
 
-Thanks to everyone who has contributed to BugHunter. Click any avatar to open their GitHub profile.
-
 <p align="center">
-  <a href="https://github.com/shuvonsec"><img src="https://github.com/shuvonsec.png?size=96" width="48" height="48" alt="shuvonsec" title="shuvonsec"/></a>&nbsp;
-  <a href="https://github.com/shuv0n"><img src="https://github.com/shuv0n.png?size=96" width="48" height="48" alt="shuv0n" title="shuv0n"/></a>&nbsp;
-  <a href="https://github.com/letztek"><img src="https://github.com/letztek.png?size=96" width="48" height="48" alt="letztek" title="letztek"/></a>&nbsp;
-  <a href="https://github.com/bertolikimberly"><img src="https://github.com/bertolikimberly.png?size=96" width="48" height="48" alt="bertolikimberly" title="bertolikimberly"/></a>&nbsp;
-  <a href="https://github.com/venkatas"><img src="https://github.com/venkatas.png?size=96" width="48" height="48" alt="venkatas" title="venkatas"/></a>&nbsp;
-  <a href="https://github.com/adityaax"><img src="https://github.com/adityaax.png?size=96" width="48" height="48" alt="adityaax" title="adityaax"/></a>&nbsp;
-  <a href="https://github.com/BeargleIndustries"><img src="https://github.com/BeargleIndustries.png?size=96" width="48" height="48" alt="BeargleIndustries" title="BeargleIndustries"/></a>&nbsp;
-  <a href="https://github.com/ultra-supara"><img src="https://github.com/ultra-supara.png?size=96" width="48" height="48" alt="ultra-supara" title="ultra-supara"/></a>&nbsp;
-  <a href="https://github.com/AurisDSP"><img src="https://github.com/AurisDSP.png?size=96" width="48" height="48" alt="AurisDSP" title="AurisDSP"/></a>&nbsp;
-  <a href="https://github.com/Edneam"><img src="https://github.com/Edneam.png?size=96" width="48" height="48" alt="Edneam" title="Edneam"/></a>&nbsp;
-  <a href="https://github.com/depapp"><img src="https://github.com/depapp.png?size=96" width="48" height="48" alt="depapp" title="depapp"/></a>&nbsp;
-  <a href="https://github.com/Realgagenichols"><img src="https://github.com/Realgagenichols.png?size=96" width="48" height="48" alt="Realgagenichols" title="Realgagenichols"/></a>&nbsp;
-  <a href="https://github.com/thuvh"><img src="https://github.com/thuvh.png?size=96" width="48" height="48" alt="thuvh" title="thuvh"/></a>&nbsp;
-  <a href="https://github.com/onlybugs05"><img src="https://github.com/onlybugs05.png?size=96" width="48" height="48" alt="onlybugs05" title="onlybugs05"/></a>&nbsp;
-  <a href="https://github.com/savioruz"><img src="https://github.com/savioruz.png?size=96" width="48" height="48" alt="savioruz" title="savioruz"/></a>&nbsp;
-  <a href="https://github.com/Paebak"><img src="https://github.com/Paebak.png?size=96" width="48" height="48" alt="Paebak" title="Paebak"/></a>&nbsp;
-  <a href="https://github.com/nurazhardotcom"><img src="https://github.com/nurazhardotcom.png?size=96" width="48" height="48" alt="nurazhardotcom" title="nurazhardotcom"/></a>&nbsp;
-  <a href="https://github.com/SeekAndExploit"><img src="https://github.com/SeekAndExploit.png?size=96" width="48" height="48" alt="SeekAndExploit" title="SeekAndExploit"/></a>&nbsp;
-  <a href="https://github.com/Shawanga"><img src="https://github.com/Shawanga.png?size=96" width="48" height="48" alt="Shawanga" title="Shawanga"/></a>&nbsp;
-  <a href="https://github.com/zeze-zeze"><img src="https://github.com/zeze-zeze.png?size=96" width="48" height="48" alt="zeze-zeze" title="zeze-zeze"/></a>&nbsp;
-  <a href="https://github.com/grave0x"><img src="https://github.com/grave0x.png?size=96" width="48" height="48" alt="grave0x" title="grave0x"/></a>&nbsp;
-  <a href="https://github.com/kevinaimonster"><img src="https://github.com/kevinaimonster.png?size=96" width="48" height="48" alt="kevinaimonster" title="kevinaimonster"/></a>
+  <b>29 people</b> have contributed to BugHunter. Click any avatar to open their GitHub profile.
 </p>
 
+<table align="center">
+    <tr>
+      <td align="center" width="110">
+        <a href="https://github.com/shuvonsec">
+          <img src="https://github.com/shuvonsec.png?size=128" width="64" height="64" alt="shuvonsec"/>
+          <br/><sub><b>shuvonsec</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/shuv0n">
+          <img src="https://github.com/shuv0n.png?size=128" width="64" height="64" alt="shuv0n"/>
+          <br/><sub><b>shuv0n</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/letztek">
+          <img src="https://github.com/letztek.png?size=128" width="64" height="64" alt="letztek"/>
+          <br/><sub><b>letztek</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/bertolikimberly">
+          <img src="https://github.com/bertolikimberly.png?size=128" width="64" height="64" alt="bertolikimberly"/>
+          <br/><sub><b>bertolikimberly</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/venkatas">
+          <img src="https://github.com/venkatas.png?size=128" width="64" height="64" alt="venkatas"/>
+          <br/><sub><b>venkatas</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/DebasishTripathy13">
+          <img src="https://github.com/DebasishTripathy13.png?size=128" width="64" height="64" alt="DebasishTripathy13"/>
+          <br/><sub><b>DebasishTripathy13</b></sub>
+        </a>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" width="110">
+        <a href="https://github.com/adityaax">
+          <img src="https://github.com/adityaax.png?size=128" width="64" height="64" alt="adityaax"/>
+          <br/><sub><b>adityaax</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/BeargleIndustries">
+          <img src="https://github.com/BeargleIndustries.png?size=128" width="64" height="64" alt="BeargleIndustries"/>
+          <br/><sub><b>BeargleIndustries</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/ftacorn">
+          <img src="https://github.com/ftacorn.png?size=128" width="64" height="64" alt="ftacorn"/>
+          <br/><sub><b>ftacorn</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/ultra-supara">
+          <img src="https://github.com/ultra-supara.png?size=128" width="64" height="64" alt="ultra-supara"/>
+          <br/><sub><b>ultra-supara</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/AurisDSP">
+          <img src="https://github.com/AurisDSP.png?size=128" width="64" height="64" alt="AurisDSP"/>
+          <br/><sub><b>AurisDSP</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/Edneam">
+          <img src="https://github.com/Edneam.png?size=128" width="64" height="64" alt="Edneam"/>
+          <br/><sub><b>Edneam</b></sub>
+        </a>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" width="110">
+        <a href="https://github.com/depapp">
+          <img src="https://github.com/depapp.png?size=128" width="64" height="64" alt="depapp"/>
+          <br/><sub><b>depapp</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/Realgagenichols">
+          <img src="https://github.com/Realgagenichols.png?size=128" width="64" height="64" alt="Realgagenichols"/>
+          <br/><sub><b>Realgagenichols</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/H4d3es">
+          <img src="https://github.com/H4d3es.png?size=128" width="64" height="64" alt="H4d3es"/>
+          <br/><sub><b>H4d3es</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/thuvh">
+          <img src="https://github.com/thuvh.png?size=128" width="64" height="64" alt="thuvh"/>
+          <br/><sub><b>thuvh</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/onlybugs05">
+          <img src="https://github.com/onlybugs05.png?size=128" width="64" height="64" alt="onlybugs05"/>
+          <br/><sub><b>onlybugs05</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/savioruz">
+          <img src="https://github.com/savioruz.png?size=128" width="64" height="64" alt="savioruz"/>
+          <br/><sub><b>savioruz</b></sub>
+        </a>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" width="110">
+        <a href="https://github.com/Marc-oss-hub">
+          <img src="https://github.com/Marc-oss-hub.png?size=128" width="64" height="64" alt="Marc-oss-hub"/>
+          <br/><sub><b>Marc-oss-hub</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/Paebak">
+          <img src="https://github.com/Paebak.png?size=128" width="64" height="64" alt="Paebak"/>
+          <br/><sub><b>Paebak</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/NaorYaacov">
+          <img src="https://github.com/NaorYaacov.png?size=128" width="64" height="64" alt="NaorYaacov"/>
+          <br/><sub><b>NaorYaacov</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/nurazhardotcom">
+          <img src="https://github.com/nurazhardotcom.png?size=128" width="64" height="64" alt="nurazhardotcom"/>
+          <br/><sub><b>nurazhardotcom</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/OctoBored">
+          <img src="https://github.com/OctoBored.png?size=128" width="64" height="64" alt="OctoBored"/>
+          <br/><sub><b>OctoBored</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/prodmanpd">
+          <img src="https://github.com/prodmanpd.png?size=128" width="64" height="64" alt="prodmanpd"/>
+          <br/><sub><b>prodmanpd</b></sub>
+        </a>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" width="110">
+        <a href="https://github.com/SeekAndExploit">
+          <img src="https://github.com/SeekAndExploit.png?size=128" width="64" height="64" alt="SeekAndExploit"/>
+          <br/><sub><b>SeekAndExploit</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/Shawanga">
+          <img src="https://github.com/Shawanga.png?size=128" width="64" height="64" alt="Shawanga"/>
+          <br/><sub><b>Shawanga</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/zeze-zeze">
+          <img src="https://github.com/zeze-zeze.png?size=128" width="64" height="64" alt="zeze-zeze"/>
+          <br/><sub><b>zeze-zeze</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/grave0x">
+          <img src="https://github.com/grave0x.png?size=128" width="64" height="64" alt="grave0x"/>
+          <br/><sub><b>grave0x</b></sub>
+        </a>
+      </td>
+      <td align="center" width="110">
+        <a href="https://github.com/kevinaimonster">
+          <img src="https://github.com/kevinaimonster.png?size=128" width="64" height="64" alt="kevinaimonster"/>
+          <br/><sub><b>kevinaimonster</b></sub>
+        </a>
+      </td>
+    </tr>
+</table>
+
+<p align="center">
+  <a href="https://github.com/Awarexone/Agentic-Bug-Hunter/graphs/contributors"><img src="https://img.shields.io/github/contributors/Awarexone/Agentic-Bug-Hunter?style=for-the-badge&color=7F55FF&label=contributors" alt="Contributors"/></a>
+  <a href="#contributing"><img src="https://img.shields.io/badge/+-Add_your_name-24292F?style=for-the-badge" alt="Contribute"/></a>
+</p>
 ---
 
 <p align="center">

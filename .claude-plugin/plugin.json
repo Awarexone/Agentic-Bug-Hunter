@@ -1,0 +1,29 @@
+{
+  "name": "agentic-bug-hunter",
+  "description": "AI-powered bug bounty toolkit — recon, vulnerability hunting, validation gates, and submission-ready reports for HackerOne, Bugcrowd, Intigriti, and Immunefi.",
+  "version": "4.3.2",
+  "author": {
+    "name": "AwareXone",
+    "url": "https://awarexone.com"
+  },
+  "homepage": "https://github.com/Awarexone/Agentic-Bug-Hunter",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Awarexone/Agentic-Bug-Hunter.git"
+  },
+  "license": "MIT",
+  "keywords": [
+    "bug-bounty",
+    "security",
+    "recon",
+    "vulnerability-hunting",
+    "pentest",
+    "hackerone",
+    "bugcrowd",
+    "immunefi"
+  ],
+  "commands": "./commands",
+  "agents": "./agents",
+  "skills": "./skills",
+  "hooks": "./hooks/hooks.json"
+}

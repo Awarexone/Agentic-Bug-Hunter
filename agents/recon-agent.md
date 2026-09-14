@@ -1,12 +1,7 @@
 ---
 name: recon-agent
 description: Subdomain enumeration and live host discovery specialist. Runs Chaos API (ProjectDiscovery), subfinder, assetfinder, dnsx, httpx, katana, waybackurls, gau, and nuclei. Produces prioritized attack surface for a target. Use when starting recon on a new target domain.
-tools:
-  bash: true
-  read: true
-  write: true
-  glob: true
-  grep: true
+tools: bash,read,write,glob,grep
 model: claude-haiku-4-5-20251001
 ---
 

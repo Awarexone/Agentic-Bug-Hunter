@@ -87,6 +87,10 @@ These terms may be updated at any time. Continued use of the tool after changes 
 
 ## 9. Contact
 
-Questions or concerns: [awarexone@gmail.com](mailto:awarexone@gmail.com)
+Questions or concerns: [hello@awarexone.com](mailto:hello@awarexone.com)
+
+Business / partnership inquiries: [b2b@awarexone.com](mailto:b2b@awarexone.com)
+
+Maintainer: [shuvon@awarexone.com](mailto:shuvon@awarexone.com)
 
 For security disclosures about this tool itself, open a GitHub issue marked **[SECURITY]**.

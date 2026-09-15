@@ -42,6 +42,20 @@
 
 ---
 
+<p align="center">
+  <a href="https://github.com/Awarexone/AXguard">
+    <img src="https://raw.githubusercontent.com/Awarexone/AXguard/main/assets/cover.jpg" alt="AXguard by AwareXone — open-source AI security tool to scan and fix vulnerabilities in vibe-coded apps before you ship" width="100%"/>
+  </a>
+</p>
+
+<p align="center">
+  <b>Also from AwareXone — <a href="https://github.com/Awarexone/AXguard">AXguard</a></b><br/>
+  Open-source AI security tool to scan and fix vulnerabilities in vibe-coded apps before you ship.<br/>
+  <a href="https://github.com/Awarexone/AXguard">GitHub</a> · <a href="https://awarexone.com">awarexone.com</a> · <a href="mailto:hello@awarexone.com">hello@awarexone.com</a>
+</p>
+
+---
+
 ## Trusted By Engineers At
 
 <p align="center"><i>Where this project's stargazers say they work.</i></p>
@@ -113,7 +127,7 @@ If BugHunter helps your hunts, you can fuel more of them — every contribution 
 
 We're open to sponsors. Sponsoring funds new features and keeps the standalone mode free for everyone, and gets your logo and a link right here in the README, plus a credit in every release.
 
-Want to sponsor? Reach out at [AwareXone.com](https://awarexone.com) or [awarexone@gmail.com](mailto:awarexone@gmail.com).
+Want to sponsor? Reach out at [AwareXone.com](https://awarexone.com) or [b2b@awarexone.com](mailto:b2b@awarexone.com).
 
 ### AwareXone
 
@@ -825,7 +839,7 @@ git push origin feature/your-contribution
   ·
   <a href="https://x.com/awarexone">Twitter</a>
   ·
-  <a href="mailto:awarexone@gmail.com">awarexone@gmail.com</a><br>
+  <a href="mailto:hello@awarexone.com">hello@awarexone.com</a> · <a href="mailto:shuvon@awarexone.com">shuvon@awarexone.com</a><br>
   <b>Built by bug hunters, for bug hunters.</b><br>
   <sub>MIT License · For authorized security testing only. Always test within an approved bug bounty program scope.</sub>
 </p>

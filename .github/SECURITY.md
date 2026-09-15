@@ -12,7 +12,8 @@
 
 If you find a security issue in this toolkit itself (not a bug bounty finding on a third-party target), please **do not open a public GitHub issue**.
 
-**Email:** [awarexone@gmail.com](mailto:awarexone@gmail.com)  
+**Email:** [shuvon@awarexone.com](mailto:shuvon@awarexone.com)  
+**CC / general:** [hello@awarexone.com](mailto:hello@awarexone.com)  
 **Subject line:** `[SECURITY] Brief description`
 
 Include:

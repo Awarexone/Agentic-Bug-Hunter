@@ -24,7 +24,7 @@ This Code of Conduct applies in all project spaces — GitHub issues, PRs, discu
 
 ## Enforcement
 
-Violations can be reported to [awarexone@gmail.com](mailto:awarexone@gmail.com). All reports are reviewed confidentially. Maintainers may remove, edit, or reject contributions that violate this Code of Conduct.
+Violations can be reported to [shuvon@awarexone.com](mailto:shuvon@awarexone.com) or [hello@awarexone.com](mailto:hello@awarexone.com). All reports are reviewed confidentially. Maintainers may remove, edit, or reject contributions that violate this Code of Conduct.
 
 ---
 

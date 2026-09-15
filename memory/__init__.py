@@ -10,9 +10,12 @@ from memory.schemas import (
     validate_target_profile,
     validate_pattern_entry,
     validate_audit_entry,
+    make_research_event,
+    validate_research_block,
 )
 from memory.pattern_db import PatternDB
 from memory.audit_log import AuditLog, RateLimiter, CircuitBreaker
+from memory.hunt_journal import HuntJournal
 from memory.rotation import (
     DEFAULT_KEEP,
     DEFAULT_MAX_BYTES,
@@ -28,8 +31,11 @@ __all__ = [
     "validate_target_profile",
     "validate_pattern_entry",
     "validate_audit_entry",
+    "validate_research_block",
+    "make_research_event",
     "PatternDB",
     "AuditLog",
+    "HuntJournal",
     "RateLimiter",
     "CircuitBreaker",
     "DEFAULT_KEEP",

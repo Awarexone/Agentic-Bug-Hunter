@@ -8,11 +8,15 @@ Validation is strict on required fields, permissive on optional ones.
 import os
 from datetime import datetime, timezone
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
+SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2})
 
 # Required fields for each entry type
 JOURNAL_REQUIRED = {"ts", "target", "action", "vuln_class", "endpoint", "result", "schema_version"}
-JOURNAL_OPTIONAL = {"severity", "payout", "technique", "notes", "tags", "session_id"}
+JOURNAL_OPTIONAL = {
+    "severity", "payout", "technique", "notes", "tags", "session_id",
+    "finding_id", "lead_id", "research",
+}
 JOURNAL_ALL = JOURNAL_REQUIRED | JOURNAL_OPTIONAL
 
 PATTERN_REQUIRED = {"ts", "target", "vuln_class", "technique", "tech_stack", "schema_version"}
@@ -41,11 +45,49 @@ AUDIT_REQUIRED = {"ts", "url", "method", "scope_check", "schema_version"}
 AUDIT_OPTIONAL = {"response_status", "finding_id", "session_id", "error"}
 AUDIT_ALL = AUDIT_REQUIRED | AUDIT_OPTIONAL
 
-VALID_RESULTS = {"confirmed", "rejected", "partial", "informational"}
+VALID_RESULTS = {"confirmed", "rejected", "partial", "informational", "false_positive"}
 VALID_SEVERITIES = {"critical", "high", "medium", "low", "informational", "none"}
-VALID_ACTIONS = {"hunt", "recon", "validate", "report", "remember", "resume", "intel"}
+VALID_ACTIONS = {
+    "hunt", "recon", "validate", "report", "remember", "resume", "intel",
+    "correct", "contribute",
+}
 VALID_METHODS = {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"}
 VALID_SCOPE_CHECKS = {"pass", "fail", "skip"}
+
+VALID_RESEARCH_EVENTS = {
+    "candidate_created",
+    "finding_investigating",
+    "finding_validated",
+    "finding_rejected",
+    "finding_unverified",
+    "false_positive_identified",
+    "report_generated",
+    "report_outcome",
+    "technique_succeeded",
+    "technique_failed",
+    "user_corrected_agent",
+    "contribution_opportunity",
+}
+VALID_REPORT_OUTCOMES = {
+    "accepted", "duplicate", "informative", "not_applicable",
+    "out_of_scope", "rejected", "pending",
+}
+VALID_CONTRIBUTION_TYPES = {
+    "false_positive_test", "regression_test", "validation_method",
+    "skill_improvement", "new_payload", "documentation", "bug_fix",
+}
+VALID_GATE_VERDICTS = {"pass", "kill", "downgrade", "n/a"}
+VALID_TECHNIQUE_OUTCOMES = {"succeeded", "failed"}
+VALID_VALIDATION_STATUSES = {"validated_finding", "scanner_hit"}
+
+RESEARCH_OPTIONAL = {
+    "gate_verdict", "validation_status", "report_outcome", "fp_reason",
+    "kill_signal", "initial_hypothesis", "correction", "lesson",
+    "technique_outcome", "framework", "language", "security_control",
+    "contribution_type", "contribution_preview_id", "share_consent", "redacted",
+}
+RESEARCH_REQUIRED = {"event"}
+RESEARCH_ALL = RESEARCH_REQUIRED | RESEARCH_OPTIONAL
 
 
 class SchemaError(Exception):
@@ -76,6 +118,137 @@ def _check_schema_version(entry: dict) -> None:
     v = entry.get("schema_version")
     if not isinstance(v, int) or v < 1:
         raise SchemaError(f"schema_version must be a positive integer, got: {v!r}")
+    if v not in SUPPORTED_SCHEMA_VERSIONS and v > CURRENT_SCHEMA_VERSION:
+        raise SchemaError(
+            f"schema_version {v} is newer than supported {CURRENT_SCHEMA_VERSION}"
+        )
+
+
+def validate_research_block(research: dict) -> dict:
+    """Validate the optional journal ``research`` object (schema v2)."""
+    if not isinstance(research, dict):
+        raise SchemaError(f"research must be a dict, got {type(research).__name__}")
+
+    _check_required(research, RESEARCH_REQUIRED, "research")
+    _check_unknown_fields(research, RESEARCH_ALL, "research")
+
+    if research["event"] not in VALID_RESEARCH_EVENTS:
+        raise SchemaError(
+            f"research: 'event' must be one of {sorted(VALID_RESEARCH_EVENTS)}, "
+            f"got {research['event']!r}"
+        )
+
+    event = research["event"]
+
+    if "gate_verdict" in research and research["gate_verdict"] not in VALID_GATE_VERDICTS:
+        raise SchemaError(
+            f"research: 'gate_verdict' must be one of {sorted(VALID_GATE_VERDICTS)}, "
+            f"got {research['gate_verdict']!r}"
+        )
+
+    if "validation_status" in research and research["validation_status"] not in VALID_VALIDATION_STATUSES:
+        raise SchemaError(
+            f"research: 'validation_status' must be one of {sorted(VALID_VALIDATION_STATUSES)}, "
+            f"got {research['validation_status']!r}"
+        )
+
+    if event == "report_outcome" and "report_outcome" not in research:
+        raise SchemaError("research: 'report_outcome' is required when event is report_outcome")
+
+    if "report_outcome" in research and research["report_outcome"] not in VALID_REPORT_OUTCOMES:
+        raise SchemaError(
+            f"research: 'report_outcome' must be one of {sorted(VALID_REPORT_OUTCOMES)}, "
+            f"got {research['report_outcome']!r}"
+        )
+
+    if event == "false_positive_identified" and "fp_reason" not in research:
+        raise SchemaError("research: 'fp_reason' is required when event is false_positive_identified")
+
+    if event == "user_corrected_agent":
+        for field in ("initial_hypothesis", "correction"):
+            if field not in research or not str(research[field]).strip():
+                raise SchemaError(
+                    f"research: '{field}' is required when event is user_corrected_agent"
+                )
+
+    if "technique_outcome" in research and research["technique_outcome"] not in VALID_TECHNIQUE_OUTCOMES:
+        raise SchemaError(
+            f"research: 'technique_outcome' must be one of {sorted(VALID_TECHNIQUE_OUTCOMES)}, "
+            f"got {research['technique_outcome']!r}"
+        )
+
+    if "contribution_type" in research and research["contribution_type"] not in VALID_CONTRIBUTION_TYPES:
+        raise SchemaError(
+            f"research: 'contribution_type' must be one of {sorted(VALID_CONTRIBUTION_TYPES)}, "
+            f"got {research['contribution_type']!r}"
+        )
+
+    if "share_consent" in research:
+        if not isinstance(research["share_consent"], bool):
+            raise SchemaError("research: 'share_consent' must be a boolean")
+        # v1 writers must keep community sharing off
+        if research["share_consent"] is True:
+            raise SchemaError(
+                "research: share_consent=true is not allowed yet "
+                "(community learning is opt-in and not implemented)"
+            )
+
+    if "redacted" in research and not isinstance(research["redacted"], bool):
+        raise SchemaError("research: 'redacted' must be a boolean")
+
+    for text_field in (
+        "fp_reason", "kill_signal", "initial_hypothesis", "correction", "lesson",
+        "framework", "language", "security_control", "contribution_preview_id",
+    ):
+        if text_field in research:
+            if not isinstance(research[text_field], str) or not research[text_field].strip():
+                raise SchemaError(f"research: '{text_field}' must be a non-empty string")
+
+    return research
+
+
+def make_research_event(
+    event: str,
+    *,
+    gate_verdict: str | None = None,
+    validation_status: str | None = None,
+    report_outcome: str | None = None,
+    fp_reason: str | None = None,
+    kill_signal: str | None = None,
+    initial_hypothesis: str | None = None,
+    correction: str | None = None,
+    lesson: str | None = None,
+    technique_outcome: str | None = None,
+    framework: str | None = None,
+    language: str | None = None,
+    security_control: str | None = None,
+    contribution_type: str | None = None,
+    contribution_preview_id: str | None = None,
+    share_consent: bool = False,
+    redacted: bool = True,
+) -> dict:
+    """Build and validate a research block. share_consent defaults to False."""
+    research: dict = {"event": event, "share_consent": share_consent, "redacted": redacted}
+    optional = {
+        "gate_verdict": gate_verdict,
+        "validation_status": validation_status,
+        "report_outcome": report_outcome,
+        "fp_reason": fp_reason,
+        "kill_signal": kill_signal,
+        "initial_hypothesis": initial_hypothesis,
+        "correction": correction,
+        "lesson": lesson,
+        "technique_outcome": technique_outcome,
+        "framework": framework,
+        "language": language,
+        "security_control": security_control,
+        "contribution_type": contribution_type,
+        "contribution_preview_id": contribution_preview_id,
+    }
+    for key, value in optional.items():
+        if value is not None:
+            research[key] = value
+    return validate_research_block(research)
 
 
 def validate_journal_entry(entry: dict) -> dict:
@@ -117,6 +290,14 @@ def validate_journal_entry(entry: dict) -> dict:
     if "session_id" in entry:
         if not isinstance(entry["session_id"], str) or not entry["session_id"].strip():
             raise SchemaError("Journal entry: 'session_id' must be a non-empty string")
+
+    for id_field in ("finding_id", "lead_id"):
+        if id_field in entry:
+            if not isinstance(entry[id_field], str) or not entry[id_field].strip():
+                raise SchemaError(f"Journal entry: '{id_field}' must be a non-empty string")
+
+    if "research" in entry:
+        validate_research_block(entry["research"])
 
     return entry
 
@@ -185,6 +366,9 @@ def make_journal_entry(
     notes: str | None = None,
     tags: list[str] | None = None,
     session_id: str | None = None,
+    finding_id: str | None = None,
+    lead_id: str | None = None,
+    research: dict | None = None,
 ) -> dict:
     """Create and validate a new journal entry with current timestamp.
 
@@ -211,6 +395,12 @@ def make_journal_entry(
         entry["notes"] = notes
     if tags is not None:
         entry["tags"] = tags
+    if finding_id is not None:
+        entry["finding_id"] = finding_id
+    if lead_id is not None:
+        entry["lead_id"] = lead_id
+    if research is not None:
+        entry["research"] = validate_research_block(dict(research))
     if session_id is None:
         session_id = _current_session_id()
     if session_id is not None:

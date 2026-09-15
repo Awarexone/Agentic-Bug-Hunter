@@ -796,13 +796,33 @@ def write_validation_json(output_dir: str, info: dict, gate_notes: dict) -> str:
         if n.get("rejection_reason")
     ]
 
+    status = "validated_finding" if all_pass else "scanner_hit"
+    finding_id = None
+    try:
+        from tools.research_log import draft_from_validation, new_finding_id
+        finding_id = new_finding_id()
+        memory_dir = os.environ.get("BBHUNT_MEMORY_DIR", "hunt-memory")
+        draft_from_validation(
+            target=str(info.get("target") or "unknown"),
+            vuln_class=str(info.get("vuln_type") or "unknown"),
+            endpoint=str(info.get("endpoint") or "unknown"),
+            status=status,
+            rejection_reasons=rejection_reasons,
+            finding_id=finding_id,
+            memory_dir=memory_dir,
+            write=True,
+        )
+    except Exception as exc:  # noqa: BLE001 — learning must never break validation
+        print(f"[!] research log skipped: {exc}")
+
     payload = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         # scanner_confidence comes from --scanner-confidence CLI arg (confirmed/possible/informational/unknown)
         "scanner_confidence": info.get("scanner_confidence", "unknown"),
         # validated_finding = all 4 gates passed with real curl PoC
         # scanner_hit = gates failed or no PoC — do not submit
-        "status": "validated_finding" if all_pass else "scanner_hit",
+        "status": status,
+        "finding_id": finding_id,
         "curl_poc": info.get("curl_poc", ""),
         "scanner_summary": info.get("scanner_summary", {}),
         "rejection_reasons": rejection_reasons,

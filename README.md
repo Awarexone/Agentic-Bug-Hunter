@@ -3,9 +3,10 @@
 </p>
 
 <p align="center">
-  <b>AI-powered bug bounty hunting - recon to report, in your terminal. </b>
-  
-  <br> 
+  <b>AI-powered bug bounty hunting — recon to report, in your terminal.</b>
+  <br/>
+  <a href="#what-is-this">What Is This</a>
+  ·
   <a href="#standalone-mode-no-subscription-required">Free Setup</a>
   ·
   <a href="#quick-start">Quick Start</a>
@@ -14,12 +15,11 @@
   ·
   <a href="#what-it-finds">What It Finds</a>
   ·
-  <a href="#installation">Install</a>
+  <a href="#more-from-awarexone">AXguard</a>
   ·
   <a href="#support-this-project">Support</a>
   ·
   <a href="FAQ.md">FAQ</a>
-  </br>
 </p>
 
 <p align="center">
@@ -39,99 +39,6 @@
 <p align="center">
   Built and maintained by <b>AwareXone</b> · <a href="https://awarexone.com">Website</a> · <a href="https://x.com/awarexone">X</a> · <a href="https://github.com/Awarexone">GitHub</a>
 </p>
-
----
-
-<p align="center">
-  <a href="https://github.com/Awarexone/AXguard">
-    <img src="https://raw.githubusercontent.com/Awarexone/AXguard/main/assets/cover.jpg" alt="AXguard by AwareXone — open-source AI security tool to scan and fix vulnerabilities in vibe-coded apps before you ship" width="100%"/>
-  </a>
-</p>
-
-<p align="center">
-  <b>Also from AwareXone — <a href="https://github.com/Awarexone/AXguard">AXguard</a></b><br/>
-  Open-source AI security tool to scan and fix vulnerabilities in vibe-coded apps before you ship.<br/>
-  <a href="https://github.com/Awarexone/AXguard">GitHub</a> · <a href="https://awarexone.com">awarexone.com</a> · <a href="mailto:hello@awarexone.com">hello@awarexone.com</a>
-</p>
-
----
-
-## Trusted By Engineers At
-
-<p align="center"><i>Where this project's stargazers say they work.</i></p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/HackerOne-494649?style=for-the-badge&logo=hackerone&logoColor=white" alt="HackerOne"/>
-  <img src="https://img.shields.io/badge/Bugcrowd-F26822?style=for-the-badge&logo=bugcrowd&logoColor=white" alt="Bugcrowd"/>
-  <img src="https://img.shields.io/badge/IBM-052FAD?style=for-the-badge" alt="IBM"/>
-  <img src="https://img.shields.io/badge/Huawei-FF0000?style=for-the-badge&logo=huawei&logoColor=white" alt="Huawei"/>
-  <img src="https://img.shields.io/badge/Microsoft-0078D4?style=for-the-badge" alt="Microsoft"/>
-  <img src="https://img.shields.io/badge/OffSec-1A1A1A?style=for-the-badge" alt="OffSec"/>
-  <img src="https://img.shields.io/badge/TCS-EE3A43?style=for-the-badge&logo=tcs&logoColor=white" alt="TCS"/>
-  <img src="https://img.shields.io/badge/Tencent-1289FF?style=for-the-badge" alt="Tencent"/>
-  <img src="https://img.shields.io/badge/Apple-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Apple"/>
-  <img src="https://img.shields.io/badge/Canonical-E95420?style=for-the-badge&logo=canonical&logoColor=white" alt="Canonical"/>
-  <img src="https://img.shields.io/badge/Cognizant-1662BE?style=for-the-badge" alt="Cognizant"/>
-  <img src="https://img.shields.io/badge/Ericsson-0082F0?style=for-the-badge&logo=ericsson&logoColor=white" alt="Ericsson"/>
-  <img src="https://img.shields.io/badge/Goldman_Sachs-7399C6?style=for-the-badge&logo=goldmansachs&logoColor=white" alt="Goldman Sachs"/>
-  <img src="https://img.shields.io/badge/Google-4285F4?style=for-the-badge&logo=google&logoColor=white" alt="Google"/>
-  <img src="https://img.shields.io/badge/HashiCorp-000000?style=for-the-badge&logo=hashicorp&logoColor=white" alt="HashiCorp"/>
-  <img src="https://img.shields.io/badge/Intel-0071C5?style=for-the-badge&logo=intel&logoColor=white" alt="Intel"/>
-  <img src="https://img.shields.io/badge/KPMG-00338D?style=for-the-badge" alt="KPMG"/>
-  <img src="https://img.shields.io/badge/Meta-0467DF?style=for-the-badge&logo=meta&logoColor=white" alt="Meta"/>
-  <img src="https://img.shields.io/badge/Mozilla-000000?style=for-the-badge&logo=mozilla&logoColor=white" alt="Mozilla"/>
-  <img src="https://img.shields.io/badge/Nvidia-76B900?style=for-the-badge&logo=nvidia&logoColor=white" alt="Nvidia"/>
-  <img src="https://img.shields.io/badge/PwC-D04A02?style=for-the-badge" alt="PwC"/>
-  <img src="https://img.shields.io/badge/Qualcomm-3253DC?style=for-the-badge&logo=qualcomm&logoColor=white" alt="Qualcomm"/>
-  <img src="https://img.shields.io/badge/Siemens-009999?style=for-the-badge&logo=siemens&logoColor=white" alt="Siemens"/>
-  <img src="https://img.shields.io/badge/Snap-FFFC00?style=for-the-badge&logo=snapchat&logoColor=black" alt="Snap"/>
-  <img src="https://img.shields.io/badge/SpaceX-000000?style=for-the-badge&logo=spacex&logoColor=white" alt="SpaceX"/>
-  <img src="https://img.shields.io/badge/Synack-2C2C2C?style=for-the-badge" alt="Synack"/>
-  <img src="https://img.shields.io/badge/Tsinghua-660874?style=for-the-badge" alt="Tsinghua"/>
-  <img src="https://img.shields.io/badge/Wipro-341C53?style=for-the-badge&logo=wipro&logoColor=white" alt="Wipro"/>
-  <img src="https://img.shields.io/badge/YesWeHack-24BDB4?style=for-the-badge" alt="YesWeHack"/>
-  <img src="https://img.shields.io/badge/Zscaler-0068B5?style=for-the-badge" alt="Zscaler"/>
-</p>
-
-<p align="center">
-  <sub>
-    Compiled from public GitHub profiles of this repository's stargazers -
-    43 people across 30 organizations, counted from the employer
-    each person lists on their own profile or from their public organization
-    memberships. No individual accounts are named. These companies have not
-    endorsed or sponsored this project; their logos are shown as trademarks of
-    their respective owners.
-  </sub>
-</p>
-
----
-
-## Support This Project
-
-If BugHunter helps your hunts, you can fuel more of them — every contribution helps build more open-source security tools.
-
-### Crypto Donations
-
-| | Address |
-|:---|:---|
-| **Bitcoin (BTC)** | `1GXwGqmLcnbZWgVNskUAZyw2cmqenkUFNY` |
-| **Solana (SOL)** | `4ArkPu1E7tkrt3d5X84grWzF1xjuLpScgGEy12Bp2cmE` |
-
-<p align="center">
-  <a href="https://www.buymeacoffee.com/shuvonsec">
-    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50"/>
-  </a>
-</p>
-
-### Sponsorship
-
-We're open to sponsors. Sponsoring funds new features and keeps the standalone mode free for everyone, and gets your logo and a link right here in the README, plus a credit in every release.
-
-Want to sponsor? Reach out at [AwareXone.com](https://awarexone.com) or [b2b@awarexone.com](mailto:b2b@awarexone.com).
-
-### AwareXone
-
-BugHunter is built and maintained by [AwareXone](https://awarexone.com). Beyond open-source tools like this one, AwareXone builds AI-driven defenses against scams, fraud, and social engineering, and offers social engineering defense and human risk consultancy for organizations. If that's something your team needs, [get in touch](https://awarexone.com).
 
 ---
 
@@ -285,6 +192,56 @@ Install the Claude Bug Bounty toolkit from https://github.com/Awarexone/Agentic-
 into ~/tools/. Clone the repo, run ./install_tools.sh then ./install.sh.
 Verify /recon /hunt /validate /report are available.
 ```
+
+---
+
+## Trusted By Engineers At
+
+<p align="center"><i>Where this project's stargazers say they work.</i></p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/HackerOne-494649?style=for-the-badge&logo=hackerone&logoColor=white" alt="HackerOne"/>
+  <img src="https://img.shields.io/badge/Bugcrowd-F26822?style=for-the-badge&logo=bugcrowd&logoColor=white" alt="Bugcrowd"/>
+  <img src="https://img.shields.io/badge/IBM-052FAD?style=for-the-badge" alt="IBM"/>
+  <img src="https://img.shields.io/badge/Huawei-FF0000?style=for-the-badge&logo=huawei&logoColor=white" alt="Huawei"/>
+  <img src="https://img.shields.io/badge/Microsoft-0078D4?style=for-the-badge" alt="Microsoft"/>
+  <img src="https://img.shields.io/badge/OffSec-1A1A1A?style=for-the-badge" alt="OffSec"/>
+  <img src="https://img.shields.io/badge/TCS-EE3A43?style=for-the-badge&logo=tcs&logoColor=white" alt="TCS"/>
+  <img src="https://img.shields.io/badge/Tencent-1289FF?style=for-the-badge" alt="Tencent"/>
+  <img src="https://img.shields.io/badge/Apple-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Apple"/>
+  <img src="https://img.shields.io/badge/Canonical-E95420?style=for-the-badge&logo=canonical&logoColor=white" alt="Canonical"/>
+  <img src="https://img.shields.io/badge/Cognizant-1662BE?style=for-the-badge" alt="Cognizant"/>
+  <img src="https://img.shields.io/badge/Ericsson-0082F0?style=for-the-badge&logo=ericsson&logoColor=white" alt="Ericsson"/>
+  <img src="https://img.shields.io/badge/Goldman_Sachs-7399C6?style=for-the-badge&logo=goldmansachs&logoColor=white" alt="Goldman Sachs"/>
+  <img src="https://img.shields.io/badge/Google-4285F4?style=for-the-badge&logo=google&logoColor=white" alt="Google"/>
+  <img src="https://img.shields.io/badge/HashiCorp-000000?style=for-the-badge&logo=hashicorp&logoColor=white" alt="HashiCorp"/>
+  <img src="https://img.shields.io/badge/Intel-0071C5?style=for-the-badge&logo=intel&logoColor=white" alt="Intel"/>
+  <img src="https://img.shields.io/badge/KPMG-00338D?style=for-the-badge" alt="KPMG"/>
+  <img src="https://img.shields.io/badge/Meta-0467DF?style=for-the-badge&logo=meta&logoColor=white" alt="Meta"/>
+  <img src="https://img.shields.io/badge/Mozilla-000000?style=for-the-badge&logo=mozilla&logoColor=white" alt="Mozilla"/>
+  <img src="https://img.shields.io/badge/Nvidia-76B900?style=for-the-badge&logo=nvidia&logoColor=white" alt="Nvidia"/>
+  <img src="https://img.shields.io/badge/PwC-D04A02?style=for-the-badge" alt="PwC"/>
+  <img src="https://img.shields.io/badge/Qualcomm-3253DC?style=for-the-badge&logo=qualcomm&logoColor=white" alt="Qualcomm"/>
+  <img src="https://img.shields.io/badge/Siemens-009999?style=for-the-badge&logo=siemens&logoColor=white" alt="Siemens"/>
+  <img src="https://img.shields.io/badge/Snap-FFFC00?style=for-the-badge&logo=snapchat&logoColor=black" alt="Snap"/>
+  <img src="https://img.shields.io/badge/SpaceX-000000?style=for-the-badge&logo=spacex&logoColor=white" alt="SpaceX"/>
+  <img src="https://img.shields.io/badge/Synack-2C2C2C?style=for-the-badge" alt="Synack"/>
+  <img src="https://img.shields.io/badge/Tsinghua-660874?style=for-the-badge" alt="Tsinghua"/>
+  <img src="https://img.shields.io/badge/Wipro-341C53?style=for-the-badge&logo=wipro&logoColor=white" alt="Wipro"/>
+  <img src="https://img.shields.io/badge/YesWeHack-24BDB4?style=for-the-badge" alt="YesWeHack"/>
+  <img src="https://img.shields.io/badge/Zscaler-0068B5?style=for-the-badge" alt="Zscaler"/>
+</p>
+
+<p align="center">
+  <sub>
+    Compiled from public GitHub profiles of this repository's stargazers -
+    43 people across 30 organizations, counted from the employer
+    each person lists on their own profile or from their public organization
+    memberships. No individual accounts are named. These companies have not
+    endorsed or sponsored this project; their logos are shown as trademarks of
+    their respective owners.
+  </sub>
+</p>
 
 ---
 
@@ -631,6 +588,53 @@ git push origin feature/your-contribution
 
 <p align="center">
   Using BugHunter in your team, program, or workflow? <b><a href="ADOPTERS.md">Add yourself</a></b> - a quick PR to <code>ADOPTERS.md</code>, or open an <a href="https://github.com/Awarexone/Agentic-Bug-Hunter/issues">issue</a>. Real, verifiable entries only.
+</p>
+
+---
+
+## Support This Project
+
+If BugHunter helps your hunts, you can fuel more of them — every contribution helps build more open-source security tools.
+
+### Crypto Donations
+
+| | Address |
+|:---|:---|
+| **Bitcoin (BTC)** | `1GXwGqmLcnbZWgVNskUAZyw2cmqenkUFNY` |
+| **Solana (SOL)** | `4ArkPu1E7tkrt3d5X84grWzF1xjuLpScgGEy12Bp2cmE` |
+
+<p align="center">
+  <a href="https://www.buymeacoffee.com/shuvonsec">
+    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="50"/>
+  </a>
+</p>
+
+### Sponsorship
+
+We're open to sponsors. Sponsoring funds new features and keeps the standalone mode free for everyone, and gets your logo and a link right here in the README, plus a credit in every release.
+
+Want to sponsor? Reach out at [AwareXone.com](https://awarexone.com) or [b2b@awarexone.com](mailto:b2b@awarexone.com).
+
+### AwareXone
+
+BugHunter is built and maintained by [AwareXone](https://awarexone.com). Beyond open-source tools like this one, AwareXone builds AI-driven defenses against scams, fraud, and social engineering, and offers social engineering defense and human risk consultancy for organizations. If that's something your team needs, [get in touch](https://awarexone.com).
+
+---
+
+## More from AwareXone
+
+Building apps with AI? Pair BugHunter with **[AXguard](https://github.com/Awarexone/AXguard)** — scan and fix common security issues in vibe-coded apps before you ship.
+
+<p align="center">
+  <a href="https://github.com/Awarexone/AXguard">
+    <img src="https://raw.githubusercontent.com/Awarexone/AXguard/main/assets/cover.jpg" alt="AXguard by AwareXone" width="720"/>
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Awarexone/AXguard"><b>View AXguard on GitHub →</b></a>
+  ·
+  <a href="mailto:hello@awarexone.com">hello@awarexone.com</a>
 </p>
 
 ---

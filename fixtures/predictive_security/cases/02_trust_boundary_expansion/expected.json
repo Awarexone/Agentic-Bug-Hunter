@@ -1,0 +1,14 @@
+{
+  "case_id": "02_trust_boundary_expansion",
+  "label": "predictive_risk",
+  "not_a_vulnerability": true,
+  "expect": {
+    "categories_any": ["TRUST_BOUNDARY_EXPANSION", "EXTERNAL_INTEGRATION_RISK"],
+    "trigger_change_required": true,
+    "supporting_evidence_min": 1,
+    "historical_evidence_fabricated": false,
+    "confidence_in": ["HIGH", "MEDIUM", "LOW"],
+    "language_must_not_claim_vulnerability": true,
+    "example_language": "Trust boundary expanded: untrusted partner ingress now reaches an internal financial service."
+  }
+}

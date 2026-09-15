@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0.0",
+  "tool": "axguard",
+  "kind": "security_twin",
+  "target": "fixtures/predictive_security/cases/03_new_public_endpoint",
+  "revision": "rev-before-surface",
+  "disclaimer": "Synthetic twin snapshot for predictive fixtures — not a live scan.",
+  "entities": [
+    {
+      "id": "ep.health",
+      "type": "Endpoint",
+      "name": "GET /health",
+      "fact_layer": "OBSERVED",
+      "reachability": "public",
+      "auth": "none",
+      "methods": ["GET"]
+    },
+    {
+      "id": "ctrl.authz",
+      "type": "SecurityControl",
+      "name": "authz_middleware",
+      "fact_layer": "OBSERVED",
+      "effectiveness": "confirmed"
+    }
+  ],
+  "relationships": [],
+  "summary": {
+    "public_endpoint_count": 1,
+    "finding_count": 0
+  },
+  "findings": [],
+  "attack_graph": {
+    "kind": "attack_graph",
+    "graph": {
+      "nodes": [
+        {
+          "id": "ep:health",
+          "type": "entrypoint",
+          "name": "GET /health",
+          "reachability": "public"
+        },
+        {
+          "id": "control:authz",
+          "type": "control",
+          "name": "authz_middleware",
+          "effectiveness": "confirmed"
+        }
+      ],
+      "edges": []
+    },
+    "paths": []
+  }
+}

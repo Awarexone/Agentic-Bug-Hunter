@@ -1,0 +1,71 @@
+{
+  "schema_version": "1.0.0",
+  "tool": "axguard",
+  "kind": "security_twin",
+  "target": "fixtures/predictive_security/cases/02_trust_boundary_expansion",
+  "revision": "rev-before-trust",
+  "disclaimer": "Synthetic twin snapshot for predictive fixtures — not a live scan.",
+  "entities": [
+    {
+      "id": "svc.billing",
+      "type": "Service",
+      "name": "billing",
+      "fact_layer": "OBSERVED",
+      "network_exposure": "internal"
+    },
+    {
+      "id": "tb.internal",
+      "type": "TrustBoundary",
+      "name": "vpc-internal",
+      "fact_layer": "OBSERVED"
+    },
+    {
+      "id": "db.invoices",
+      "type": "Database",
+      "name": "invoices",
+      "fact_layer": "OBSERVED",
+      "sensitivity": "financial"
+    }
+  ],
+  "relationships": [
+    {"from": "svc.billing", "to": "tb.internal", "type": "INSIDE"},
+    {"from": "svc.billing", "to": "db.invoices", "type": "READS"}
+  ],
+  "summary": {
+    "ai_agent_count": 0,
+    "public_endpoint_count": 0,
+    "external_service_count": 0,
+    "finding_count": 0
+  },
+  "findings": [],
+  "attack_graph": {
+    "kind": "attack_graph",
+    "graph": {
+      "nodes": [
+        {
+          "id": "svc:billing",
+          "type": "asset",
+          "kind": "service",
+          "name": "billing",
+          "reachability": "internal"
+        },
+        {
+          "id": "tb:vpc",
+          "type": "trust_boundary",
+          "name": "vpc-internal"
+        },
+        {
+          "id": "asset:db.invoices",
+          "type": "asset",
+          "kind": "database",
+          "name": "invoices"
+        }
+      ],
+      "edges": [
+        {"from": "svc:billing", "to": "tb:vpc", "type": "inside"},
+        {"from": "svc:billing", "to": "asset:db.invoices", "type": "reads"}
+      ]
+    },
+    "paths": []
+  }
+}

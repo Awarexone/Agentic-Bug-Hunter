@@ -1,0 +1,126 @@
+{
+  "schema_version": "1.0.0",
+  "tool": "axguard",
+  "kind": "security_twin",
+  "target": "fixtures/predictive_security/cases/01_privilege_expansion",
+  "revision": "rev-after-priv",
+  "disclaimer": "Synthetic twin snapshot for predictive fixtures — not a live scan.",
+  "entities": [
+    {
+      "id": "agent.assistant",
+      "type": "AIAgent",
+      "name": "assistant",
+      "fact_layer": "OBSERVED",
+      "permissions": ["db.read", "db.write"],
+      "tools": ["query_db", "mutate_db"]
+    },
+    {
+      "id": "tool.query_db",
+      "type": "AITool",
+      "name": "query_db",
+      "fact_layer": "OBSERVED",
+      "capability": "read",
+      "target": "db.customers"
+    },
+    {
+      "id": "tool.mutate_db",
+      "type": "AITool",
+      "name": "mutate_db",
+      "fact_layer": "OBSERVED",
+      "capability": "write",
+      "target": "db.customers"
+    },
+    {
+      "id": "db.customers",
+      "type": "Database",
+      "name": "customers",
+      "fact_layer": "OBSERVED",
+      "sensitivity": "pii"
+    },
+    {
+      "id": "ctrl.approval_gate",
+      "type": "SecurityControl",
+      "name": "tool_approval_gate",
+      "fact_layer": "OBSERVED",
+      "effectiveness": "confirmed"
+    }
+  ],
+  "relationships": [
+    {"from": "agent.assistant", "to": "tool.query_db", "type": "USES_TOOL"},
+    {"from": "agent.assistant", "to": "tool.mutate_db", "type": "USES_TOOL"},
+    {"from": "tool.query_db", "to": "db.customers", "type": "READS"},
+    {"from": "tool.mutate_db", "to": "db.customers", "type": "WRITES"},
+    {"from": "ctrl.approval_gate", "to": "tool.query_db", "type": "GATES"}
+  ],
+  "summary": {
+    "ai_agent_count": 1,
+    "ai_tool_count": 2,
+    "mcp_server_count": 0,
+    "public_endpoint_count": 0,
+    "finding_count": 0
+  },
+  "findings": [],
+  "attack_graph": {
+    "kind": "attack_graph",
+    "graph": {
+      "nodes": [
+        {
+          "id": "ai:assistant",
+          "type": "ai_component",
+          "name": "assistant",
+          "permissions": ["db.read", "db.write"]
+        },
+        {
+          "id": "tool:query_db",
+          "type": "tool",
+          "name": "query_db",
+          "capability": "read"
+        },
+        {
+          "id": "tool:mutate_db",
+          "type": "tool",
+          "name": "mutate_db",
+          "capability": "write"
+        },
+        {
+          "id": "asset:db.customers",
+          "type": "asset",
+          "kind": "database",
+          "name": "customers"
+        },
+        {
+          "id": "control:approval",
+          "type": "control",
+          "name": "tool_approval_gate",
+          "effectiveness": "confirmed"
+        }
+      ],
+      "edges": [
+        {"from": "ai:assistant", "to": "tool:query_db", "type": "uses"},
+        {"from": "ai:assistant", "to": "tool:mutate_db", "type": "uses"},
+        {"from": "tool:query_db", "to": "asset:db.customers", "type": "reads"},
+        {"from": "tool:mutate_db", "to": "asset:db.customers", "type": "writes"},
+        {"from": "ai:assistant", "to": "tool:mutate_db", "type": "grants"}
+      ]
+    },
+    "paths": [
+      {
+        "id": "path.priv.write",
+        "status": "UNVERIFIED",
+        "tags": ["privilege_escalation", "vertical"],
+        "hops": ["ai:assistant", "tool:mutate_db", "asset:db.customers"],
+        "entry": "ai:assistant",
+        "target": "asset:db.customers"
+      }
+    ]
+  },
+  "observable_changes": [
+    {
+      "kind": "privilege_expansion",
+      "component": "agent.assistant",
+      "before": ["db.read"],
+      "after": ["db.read", "db.write"],
+      "detail": "Agent privilege expanded from read-only to write on PII database"
+    }
+  ]
+}

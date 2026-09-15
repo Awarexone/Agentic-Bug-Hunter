@@ -1,0 +1,14 @@
+{
+  "case_id": "04_new_mcp_server",
+  "label": "predictive_risk",
+  "not_a_vulnerability": true,
+  "expect": {
+    "categories_any": ["MCP_TRUST_RISK", "AI_AGENT_PRIVILEGE_RISK", "TOOL_PERMISSION_RISK"],
+    "trigger_change_required": true,
+    "supporting_evidence_min": 1,
+    "historical_evidence_fabricated": false,
+    "confidence_in": ["HIGH", "MEDIUM", "LOW"],
+    "language_must_not_claim_vulnerability": true,
+    "example_language": "MCP trust boundary expanded via new external server with filesystem and network tools."
+  }
+}

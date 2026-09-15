@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.0.0",
+  "tool": "axguard",
+  "kind": "security_twin",
+  "target": "fixtures/predictive_security/cases/06_insufficient_evidence",
+  "revision": "rev-after-rename",
+  "disclaimer": "Synthetic twin snapshot for predictive fixtures — not a live scan.",
+  "entities": [
+    {
+      "id": "fn.helper",
+      "type": "Function",
+      "name": "format_heading",
+      "fact_layer": "OBSERVED",
+      "file": "util.py",
+      "line": 3,
+      "notes": "Renamed from format_title — no privilege, surface, auth, or data-flow change"
+    }
+  ],
+  "relationships": [],
+  "summary": {"finding_count": 0, "public_endpoint_count": 0},
+  "findings": [],
+  "attack_graph": {
+    "kind": "attack_graph",
+    "graph": {
+      "nodes": [
+        {
+          "id": "fn:helper",
+          "type": "asset",
+          "kind": "function",
+          "name": "format_heading"
+        }
+      ],
+      "edges": []
+    },
+    "paths": []
+  },
+  "observable_changes": [
+    {
+      "kind": "rename",
+      "component": "fn.helper",
+      "detail": "Symbol rename only; no security-relevant structural change observed"
+    }
+  ]
+}

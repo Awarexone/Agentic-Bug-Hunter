@@ -1,0 +1,108 @@
+{
+  "schema_version": "1.0.0",
+  "tool": "axguard",
+  "kind": "security_twin",
+  "target": "fixtures/predictive_security/cases/02_trust_boundary_expansion",
+  "revision": "rev-after-trust",
+  "disclaimer": "Synthetic twin snapshot for predictive fixtures — not a live scan.",
+  "entities": [
+    {
+      "id": "svc.billing",
+      "type": "Service",
+      "name": "billing",
+      "fact_layer": "OBSERVED",
+      "network_exposure": "internal"
+    },
+    {
+      "id": "tb.internal",
+      "type": "TrustBoundary",
+      "name": "vpc-internal",
+      "fact_layer": "OBSERVED"
+    },
+    {
+      "id": "ext.partner_webhook",
+      "type": "ExternalService",
+      "name": "partner_webhook_ingress",
+      "fact_layer": "OBSERVED",
+      "trust": "untrusted"
+    },
+    {
+      "id": "ep.partner_callback",
+      "type": "Endpoint",
+      "name": "POST /internal/partner/callback",
+      "fact_layer": "OBSERVED",
+      "reachability": "partner-authenticated",
+      "accepts_untrusted_body": true
+    },
+    {
+      "id": "db.invoices",
+      "type": "Database",
+      "name": "invoices",
+      "fact_layer": "OBSERVED",
+      "sensitivity": "financial"
+    }
+  ],
+  "relationships": [
+    {"from": "svc.billing", "to": "tb.internal", "type": "INSIDE"},
+    {"from": "ext.partner_webhook", "to": "ep.partner_callback", "type": "CALLS"},
+    {"from": "ep.partner_callback", "to": "svc.billing", "type": "INVOKES"},
+    {"from": "svc.billing", "to": "db.invoices", "type": "READS"}
+  ],
+  "summary": {
+    "ai_agent_count": 0,
+    "public_endpoint_count": 0,
+    "external_service_count": 1,
+    "finding_count": 0
+  },
+  "findings": [],
+  "attack_graph": {
+    "kind": "attack_graph",
+    "graph": {
+      "nodes": [
+        {
+          "id": "svc:billing",
+          "type": "asset",
+          "kind": "service",
+          "name": "billing",
+          "reachability": "internal"
+        },
+        {
+          "id": "tb:vpc",
+          "type": "trust_boundary",
+          "name": "vpc-internal"
+        },
+        {
+          "id": "ext:partner",
+          "type": "external_service",
+          "name": "partner_webhook_ingress",
+          "trust": "untrusted"
+        },
+        {
+          "id": "ep:partner_callback",
+          "type": "entrypoint",
+          "name": "POST /internal/partner/callback",
+          "reachability": "partner-authenticated"
+        },
+        {
+          "id": "asset:db.invoices",
+          "type": "asset",
+          "kind": "database",
+          "name": "invoices"
+        }
+      ],
+      "edges": [
+        {"from": "ext:partner", "to": "ep:partner_callback", "type": "calls"},
+        {"from": "ep:partner_callback", "to": "svc:billing", "type": "invokes"},
+        {"from": "svc:billing", "to": "asset:db.invoices", "type": "reads"}
+      ]
+    },
+    "paths": []
+  },
+  "observable_changes": [
+    {
+      "kind": "trust_boundary_expansion",
+      "component": "svc.billing",
+      "detail": "New untrusted partner webhook reaches previously internal billing service"
+    }
+  ]
+}

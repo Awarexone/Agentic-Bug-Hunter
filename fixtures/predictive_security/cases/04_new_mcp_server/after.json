@@ -1,0 +1,133 @@
+{
+  "schema_version": "1.0.0",
+  "tool": "axguard",
+  "kind": "security_twin",
+  "target": "fixtures/predictive_security/cases/04_new_mcp_server",
+  "revision": "rev-after-mcp",
+  "disclaimer": "Synthetic twin snapshot for predictive fixtures — not a live scan.",
+  "entities": [
+    {
+      "id": "agent.ops",
+      "type": "AIAgent",
+      "name": "ops_agent",
+      "fact_layer": "OBSERVED",
+      "permissions": ["ticket.read", "filesystem.read", "network.fetch"],
+      "tools": ["list_tickets", "mcp.fs.read", "mcp.http.fetch"],
+      "mcp_servers": ["mcp.external_docs"]
+    },
+    {
+      "id": "tool.list_tickets",
+      "type": "AITool",
+      "name": "list_tickets",
+      "fact_layer": "OBSERVED",
+      "capability": "read"
+    },
+    {
+      "id": "mcp.external_docs",
+      "type": "MCPServer",
+      "name": "external_docs_mcp",
+      "fact_layer": "OBSERVED",
+      "trust": "external",
+      "authentication": "none",
+      "tools": ["mcp.fs.read", "mcp.http.fetch"]
+    },
+    {
+      "id": "tool.mcp.fs.read",
+      "type": "AITool",
+      "name": "mcp.fs.read",
+      "fact_layer": "OBSERVED",
+      "capability": "filesystem.read",
+      "sensitive": true
+    },
+    {
+      "id": "tool.mcp.http.fetch",
+      "type": "AITool",
+      "name": "mcp.http.fetch",
+      "fact_layer": "OBSERVED",
+      "capability": "network.fetch",
+      "untrusted_content": true
+    },
+    {
+      "id": "ctrl.human_confirm",
+      "type": "SecurityControl",
+      "name": "confirm_with_user",
+      "fact_layer": "OBSERVED",
+      "effectiveness": "confirmed"
+    }
+  ],
+  "relationships": [
+    {"from": "agent.ops", "to": "tool.list_tickets", "type": "USES_TOOL"},
+    {"from": "agent.ops", "to": "mcp.external_docs", "type": "CONNECTS_MCP"},
+    {"from": "mcp.external_docs", "to": "tool.mcp.fs.read", "type": "PROVIDES_TOOL"},
+    {"from": "mcp.external_docs", "to": "tool.mcp.http.fetch", "type": "PROVIDES_TOOL"},
+    {"from": "ctrl.human_confirm", "to": "tool.list_tickets", "type": "GATES"}
+  ],
+  "summary": {
+    "ai_agent_count": 1,
+    "ai_tool_count": 3,
+    "mcp_server_count": 1,
+    "finding_count": 0
+  },
+  "findings": [],
+  "attack_graph": {
+    "kind": "attack_graph",
+    "graph": {
+      "nodes": [
+        {
+          "id": "ai:ops",
+          "type": "ai_component",
+          "name": "ops_agent",
+          "permissions": ["ticket.read", "filesystem.read", "network.fetch"]
+        },
+        {
+          "id": "tool:list_tickets",
+          "type": "tool",
+          "name": "list_tickets",
+          "capability": "read"
+        },
+        {
+          "id": "mcp:external_docs",
+          "type": "mcp_server",
+          "name": "external_docs_mcp",
+          "trust": "external",
+          "authentication": "none"
+        },
+        {
+          "id": "tool:mcp.fs.read",
+          "type": "tool",
+          "name": "mcp.fs.read",
+          "capability": "filesystem.read",
+          "sensitive": true
+        },
+        {
+          "id": "tool:mcp.http.fetch",
+          "type": "tool",
+          "name": "mcp.http.fetch",
+          "capability": "network.fetch",
+          "untrusted_content": true
+        },
+        {
+          "id": "control:confirm",
+          "type": "control",
+          "name": "confirm_with_user",
+          "effectiveness": "confirmed"
+        }
+      ],
+      "edges": [
+        {"from": "ai:ops", "to": "tool:list_tickets", "type": "uses"},
+        {"from": "ai:ops", "to": "mcp:external_docs", "type": "connects_mcp"},
+        {"from": "mcp:external_docs", "to": "tool:mcp.fs.read", "type": "provides_tool"},
+        {"from": "mcp:external_docs", "to": "tool:mcp.http.fetch", "type": "provides_tool"},
+        {"from": "control:confirm", "to": "tool:list_tickets", "type": "gates"}
+      ]
+    },
+    "paths": []
+  },
+  "observable_changes": [
+    {
+      "kind": "mcp_trust_expansion",
+      "component": "mcp.external_docs",
+      "detail": "New external MCP server grants filesystem and network tools to ops_agent; approval gate does not cover MCP tools"
+    }
+  ]
+}

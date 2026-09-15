@@ -1,0 +1,16 @@
+{
+  "case_id": "01_privilege_expansion",
+  "label": "predictive_risk",
+  "not_a_vulnerability": true,
+  "expect": {
+    "categories_any": ["PRIVILEGE_EXPANSION", "AI_AGENT_PRIVILEGE_RISK"],
+    "trigger_change_required": true,
+    "supporting_evidence_min": 1,
+    "historical_evidence_fabricated": false,
+    "confidence_in": ["HIGH", "MEDIUM", "LOW"],
+    "forbid_confidence": [],
+    "language_must_not_claim_vulnerability": true,
+    "example_language": "Agent privilege expanded from read to write on a sensitive database."
+  },
+  "notes": "Approval gate still present on read tool only; write path is a risk expansion, not proven exploitability."
+}

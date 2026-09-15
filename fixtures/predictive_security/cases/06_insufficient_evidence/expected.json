@@ -1,0 +1,14 @@
+{
+  "case_id": "06_insufficient_evidence",
+  "label": "insufficient_evidence",
+  "not_a_vulnerability": true,
+  "expect": {
+    "confidence": "UNKNOWN",
+    "emit_empty_or_unknown_ok": true,
+    "forbid_fabricated_historical_evidence": true,
+    "forbid_cve_claims": true,
+    "forbid_label": ["vulnerability"],
+    "example_language": "Insufficient evidence to assess predictive security risk for this change."
+  },
+  "notes": "Benchmark rewards UNKNOWN here. Inventing history or CVE predictions is a hard fail."
+}

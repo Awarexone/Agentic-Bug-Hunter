@@ -1,0 +1,74 @@
+{
+  "schema_version": "1.0.0",
+  "tool": "axguard",
+  "kind": "security_twin",
+  "target": "fixtures/predictive_security/cases/04_new_mcp_server",
+  "revision": "rev-before-mcp",
+  "disclaimer": "Synthetic twin snapshot for predictive fixtures — not a live scan.",
+  "entities": [
+    {
+      "id": "agent.ops",
+      "type": "AIAgent",
+      "name": "ops_agent",
+      "fact_layer": "OBSERVED",
+      "permissions": ["ticket.read"],
+      "tools": ["list_tickets"],
+      "mcp_servers": []
+    },
+    {
+      "id": "tool.list_tickets",
+      "type": "AITool",
+      "name": "list_tickets",
+      "fact_layer": "OBSERVED",
+      "capability": "read"
+    },
+    {
+      "id": "ctrl.human_confirm",
+      "type": "SecurityControl",
+      "name": "confirm_with_user",
+      "fact_layer": "OBSERVED",
+      "effectiveness": "confirmed"
+    }
+  ],
+  "relationships": [
+    {"from": "agent.ops", "to": "tool.list_tickets", "type": "USES_TOOL"},
+    {"from": "ctrl.human_confirm", "to": "tool.list_tickets", "type": "GATES"}
+  ],
+  "summary": {
+    "ai_agent_count": 1,
+    "ai_tool_count": 1,
+    "mcp_server_count": 0,
+    "finding_count": 0
+  },
+  "findings": [],
+  "attack_graph": {
+    "kind": "attack_graph",
+    "graph": {
+      "nodes": [
+        {
+          "id": "ai:ops",
+          "type": "ai_component",
+          "name": "ops_agent",
+          "permissions": ["ticket.read"]
+        },
+        {
+          "id": "tool:list_tickets",
+          "type": "tool",
+          "name": "list_tickets",
+          "capability": "read"
+        },
+        {
+          "id": "control:confirm",
+          "type": "control",
+          "name": "confirm_with_user",
+          "effectiveness": "confirmed"
+        }
+      ],
+      "edges": [
+        {"from": "ai:ops", "to": "tool:list_tickets", "type": "uses"},
+        {"from": "control:confirm", "to": "tool:list_tickets", "type": "gates"}
+      ]
+    },
+    "paths": []
+  }
+}

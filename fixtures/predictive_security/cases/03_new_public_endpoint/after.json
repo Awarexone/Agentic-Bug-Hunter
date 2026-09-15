@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0.0",
+  "tool": "axguard",
+  "kind": "security_twin",
+  "target": "fixtures/predictive_security/cases/03_new_public_endpoint",
+  "revision": "rev-after-surface",
+  "disclaimer": "Synthetic twin snapshot for predictive fixtures — not a live scan.",
+  "entities": [
+    {
+      "id": "ep.health",
+      "type": "Endpoint",
+      "name": "GET /health",
+      "fact_layer": "OBSERVED",
+      "reachability": "public",
+      "auth": "none",
+      "methods": ["GET"]
+    },
+    {
+      "id": "ep.import",
+      "type": "Endpoint",
+      "name": "POST /api/import",
+      "fact_layer": "OBSERVED",
+      "reachability": "public",
+      "auth": "session",
+      "methods": ["POST"],
+      "accepts": "attacker-controlled file upload",
+      "sinks": ["filesystem.write", "parser.deserialize"]
+    },
+    {
+      "id": "ctrl.authz",
+      "type": "SecurityControl",
+      "name": "authz_middleware",
+      "fact_layer": "OBSERVED",
+      "effectiveness": "confirmed"
+    }
+  ],
+  "relationships": [
+    {"from": "ctrl.authz", "to": "ep.import", "type": "GATES"}
+  ],
+  "summary": {
+    "public_endpoint_count": 2,
+    "finding_count": 0
+  },
+  "findings": [],
+  "attack_graph": {
+    "kind": "attack_graph",
+    "graph": {
+      "nodes": [
+        {
+          "id": "ep:health",
+          "type": "entrypoint",
+          "name": "GET /health",
+          "reachability": "public"
+        },
+        {
+          "id": "ep:api.import",
+          "type": "entrypoint",
+          "name": "POST /api/import",
+          "reachability": "public",
+          "auth": "session"
+        },
+        {
+          "id": "control:authz",
+          "type": "control",
+          "name": "authz_middleware",
+          "effectiveness": "confirmed"
+        }
+      ],
+      "edges": [
+        {"from": "control:authz", "to": "ep:api.import", "type": "gates"}
+      ]
+    },
+    "paths": []
+  },
+  "observable_changes": [
+    {
+      "kind": "attack_surface_expansion",
+      "component": "ep.import",
+      "detail": "New public POST /api/import file-ingestion surface"
+    }
+  ]
+}

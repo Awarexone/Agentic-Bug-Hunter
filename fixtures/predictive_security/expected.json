@@ -1,0 +1,80 @@
+{
+  "kind": "predictive_security_fixture",
+  "notes": "Golden catalog: PREDICTIVE RISK vs ACTUAL VULNERABILITY. Predictive cases must never be labeled vulnerability. Actual vuln case must not be downgraded to predictive_risk only.",
+  "schema_version": "1.0.0",
+  "tool": "axguard",
+  "labels": {
+    "predictive_risk": "Observable change raises future security risk; not a confirmed vulnerability.",
+    "vulnerability": "Current evidence supports a verified or likely finding (taint/path/control failure).",
+    "insufficient_evidence": "Change observed but evidence too weak — emit UNKNOWN, do not invent risk."
+  },
+  "forbidden_language": [
+    "will definitely contain a vulnerability",
+    "will be exploited",
+    "predicted CVE",
+    "CVE-",
+    "guaranteed exploit",
+    "future vulnerability confirmed"
+  ],
+  "cases": [
+    {
+      "id": "01_privilege_expansion",
+      "dir": "cases/01_privilege_expansion",
+      "narrative": "secure → privilege expansion",
+      "expect_label": "predictive_risk",
+      "expect_categories_any": ["PRIVILEGE_EXPANSION", "AI_AGENT_PRIVILEGE_RISK"],
+      "forbid_label": ["vulnerability"],
+      "min_confidence": "MEDIUM",
+      "allow_confidence": ["HIGH", "MEDIUM", "LOW"]
+    },
+    {
+      "id": "02_trust_boundary_expansion",
+      "dir": "cases/02_trust_boundary_expansion",
+      "narrative": "secure → trust boundary expansion",
+      "expect_label": "predictive_risk",
+      "expect_categories_any": ["TRUST_BOUNDARY_EXPANSION", "EXTERNAL_INTEGRATION_RISK"],
+      "forbid_label": ["vulnerability"],
+      "min_confidence": "MEDIUM",
+      "allow_confidence": ["HIGH", "MEDIUM", "LOW"]
+    },
+    {
+      "id": "03_new_public_endpoint",
+      "dir": "cases/03_new_public_endpoint",
+      "narrative": "secure → new public endpoint → attack surface risk",
+      "expect_label": "predictive_risk",
+      "expect_categories_any": ["ATTACK_SURFACE_EXPANSION", "API_EXPOSURE_RISK"],
+      "forbid_label": ["vulnerability"],
+      "min_confidence": "MEDIUM",
+      "allow_confidence": ["HIGH", "MEDIUM", "LOW"]
+    },
+    {
+      "id": "04_new_mcp_server",
+      "dir": "cases/04_new_mcp_server",
+      "narrative": "secure → new MCP server → agent trust risk",
+      "expect_label": "predictive_risk",
+      "expect_categories_any": ["MCP_TRUST_RISK", "AI_AGENT_PRIVILEGE_RISK", "TOOL_PERMISSION_RISK"],
+      "forbid_label": ["vulnerability"],
+      "min_confidence": "MEDIUM",
+      "allow_confidence": ["HIGH", "MEDIUM", "LOW"]
+    },
+    {
+      "id": "05_actual_vulnerability",
+      "dir": "cases/05_actual_vulnerability",
+      "narrative": "secure → vulnerability introduced (ACTUAL)",
+      "expect_label": "vulnerability",
+      "expect_categories_any": [],
+      "forbid_label": [],
+      "notes": "May also emit predictive_risk for surface change, but must surface a vulnerability / verified finding separately — never only predictive."
+    },
+    {
+      "id": "06_insufficient_evidence",
+      "dir": "cases/06_insufficient_evidence",
+      "narrative": "cosmetic rename with no security-relevant change",
+      "expect_label": "insufficient_evidence",
+      "expect_categories_any": [],
+      "expect_confidence": "UNKNOWN",
+      "forbid_label": ["vulnerability"],
+      "notes": "Reward UNKNOWN. Do not invent historical evidence or CVE claims."
+    }
+  ]
+}

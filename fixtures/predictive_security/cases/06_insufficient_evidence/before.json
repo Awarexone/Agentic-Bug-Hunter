@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0.0",
+  "tool": "axguard",
+  "kind": "security_twin",
+  "target": "fixtures/predictive_security/cases/06_insufficient_evidence",
+  "revision": "rev-before-rename",
+  "disclaimer": "Synthetic twin snapshot for predictive fixtures — not a live scan.",
+  "entities": [
+    {
+      "id": "fn.helper",
+      "type": "Function",
+      "name": "format_title",
+      "fact_layer": "OBSERVED",
+      "file": "util.py",
+      "line": 3
+    }
+  ],
+  "relationships": [],
+  "summary": {"finding_count": 0, "public_endpoint_count": 0},
+  "findings": [],
+  "attack_graph": {
+    "kind": "attack_graph",
+    "graph": {
+      "nodes": [
+        {
+          "id": "fn:helper",
+          "type": "asset",
+          "kind": "function",
+          "name": "format_title"
+        }
+      ],
+      "edges": []
+    },
+    "paths": []
+  }
+}

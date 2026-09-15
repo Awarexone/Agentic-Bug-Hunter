@@ -1,0 +1,15 @@
+{
+  "case_id": "03_new_public_endpoint",
+  "label": "predictive_risk",
+  "not_a_vulnerability": true,
+  "expect": {
+    "categories_any": ["ATTACK_SURFACE_EXPANSION", "API_EXPOSURE_RISK"],
+    "trigger_change_required": true,
+    "supporting_evidence_min": 1,
+    "historical_evidence_fabricated": false,
+    "confidence_in": ["HIGH", "MEDIUM", "LOW"],
+    "language_must_not_claim_vulnerability": true,
+    "example_language": "New attacker-influenced file ingestion surface at POST /api/import."
+  },
+  "notes": "Authz middleware present — do not auto-call this a vulnerability."
+}

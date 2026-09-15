@@ -36,6 +36,23 @@ from memory.rotation import (  # noqa: E402
 ROTATABLE = ("audit.jsonl", "patterns.jsonl", "journal.jsonl")
 
 
+def _cases_report(root: Path) -> None:
+    """Report local research_case fixture usage (not rotated)."""
+    cases = root / "cases"
+    if not cases.is_dir():
+        return
+    files = sorted(cases.glob("*.json"))
+    if not files:
+        print(f"\nCases: {cases} (empty)")
+        return
+    total = sum(f.stat().st_size for f in files)
+    print(f"\nCases: {cases}  files={len(files)}  bytes={total}")
+    for f in files[:10]:
+        print(f"  {f.name}")
+    if len(files) > 10:
+        print(f"  … +{len(files) - 10} more")
+
+
 def _human_size(n: int) -> str:
     for unit in ("B", "KB", "MB", "GB"):
         if n < 1024 or unit == "GB":
@@ -69,6 +86,7 @@ def report(root: Path, max_bytes: int, keep: int) -> int:
     targets = _find_targets(root)
     if not targets:
         print(f"No rotatable files under {root}")
+        _cases_report(root)
         return 0
 
     print(f"Scanning {root} (cap: {_human_size(max_bytes)}, keep: {keep})")
@@ -89,6 +107,7 @@ def report(root: Path, max_bytes: int, keep: int) -> int:
             f"{str(rel):<60} {_human_size(live):>10} "
             f"{_human_size(total):>10} {backups:>8}  {status}"
         )
+    _cases_report(root)
     return over
 
 

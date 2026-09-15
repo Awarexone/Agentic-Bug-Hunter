@@ -353,7 +353,7 @@ def show_next(target):
     print(f"  start it:  lead_board.py touch {target} {l['id']} --status investigating")
 
 
-def touch(target, lead_id, status, note):
+def touch(target, lead_id, status, note, finding_id=None):
     leads = load_ledger(target)
     hit = None
     for l in leads:
@@ -362,6 +362,8 @@ def touch(target, lead_id, status, note):
                 l["status"] = status
             if note is not None:
                 l["note"] = note
+            if finding_id:
+                l["finding_id"] = finding_id
             l["updated"] = now_iso()
             hit = l
     if not hit:
@@ -371,7 +373,7 @@ def touch(target, lead_id, status, note):
     print(f"[+] {lead_id} -> {hit['status']}" + (f"  ({hit['note']})" if hit.get("note") else ""))
 
 
-def add(target, skill, evidence, signal, priority):
+def add(target, skill, evidence, signal, priority, finding_id=None):
     leads = load_ledger(target)
     if any(dedup_key(l["skill"], l["evidence"]) == dedup_key(skill, evidence) for l in leads):
         print("[!] lead already exists (same skill+evidence)")
@@ -380,6 +382,8 @@ def add(target, skill, evidence, signal, priority):
           "priority": priority, "signal": signal or "manual", "why": "manually added",
           "evidence": norm_evidence(evidence), "source": "manual", "status": "new",
           "note": "", "created": now_iso(), "last_seen": now_iso(), "seen_count": 1}
+    if finding_id:
+        ld["finding_id"] = finding_id
     leads.append(ld)
     save_ledger(target, leads)
     print(f"[+] added {ld['id']}  {skill}  {evidence}")
@@ -396,9 +400,11 @@ def main():
     pt = sub.add_parser("touch"); pt.add_argument("target"); pt.add_argument("lead_id")
     pt.add_argument("--status", choices=["new", "investigating", "killed", "reported", "parked"])
     pt.add_argument("--note", default=None)
+    pt.add_argument("--finding-id", default=None, help="Optional research finding_id to attach")
     pa = sub.add_parser("add"); pa.add_argument("target"); pa.add_argument("--skill", required=True)
     pa.add_argument("--evidence", required=True); pa.add_argument("--signal", default="")
     pa.add_argument("--priority", default="med", choices=["high", "med", "low"])
+    pa.add_argument("--finding-id", default=None, help="Optional research finding_id to attach")
     args = ap.parse_args()
 
     if args.cmd == "ingest":
@@ -419,9 +425,10 @@ def main():
     elif args.cmd == "next":
         show_next(args.target)
     elif args.cmd == "touch":
-        touch(args.target, args.lead_id, args.status, args.note)
+        touch(args.target, args.lead_id, args.status, args.note, finding_id=args.finding_id)
     elif args.cmd == "add":
-        add(args.target, args.skill, args.evidence, args.signal, args.priority)
+        add(args.target, args.skill, args.evidence, args.signal, args.priority,
+            finding_id=args.finding_id)
     return 0
 
 
